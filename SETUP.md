@@ -40,8 +40,8 @@ This reads the `.nvmrc` file in the repo and installs the correct Node version a
 ### Step 1 — Clone the repository
 
 ```bash
-git clone https://bitbucket.org/<your-team>/guest-lecturer-match-making.git
-cd guest-lecturer-match-making
+git clone https://21664322@bitbucket.org/curtincomputingprojects/bentley-sem-1-05.git
+cd bentley-sem-1-05
 ```
 
 ### Step 2 — Set the correct Node.js version
@@ -102,34 +102,9 @@ Verify both are running:
 docker compose ps
 ```
 
-You should see both `db-1` and `pgadmin-1` with `Up` status. If `db-1` shows `Restarting`, see the Troubleshooting section below.
+You should see both `db-1` and `pgadmin-1` with `Up` status. If `db-1` shows `Restarting`, see the Troubleshooting section below
 
-### Step 7 — Apply the database schema
-
-```bash
-cd backend
-npx prisma migrate dev --name init
-```
-
-This creates all the tables in your local database.
-
-### Step 8 — Load seed data
-
-```bash
-npx prisma db seed
-```
-
-This inserts dummy data (test users, departments, lecturers, and matches) so you can verify everything is working.
-
-### Step 9 — Verify the database
-
-```bash
-npx prisma studio
-```
-
-This opens a visual table browser at http://localhost:5555. You should see the `users`, `departments`, `lecturers`, and `matches` tables with data in them. If you can see data, your setup is complete.
-
-### Step 10 — Start the app
+### Step 7 — Start the app
 
 Open two separate terminals:
 
@@ -210,12 +185,6 @@ This means the containers are not on the same Docker network. Run:
 ```bash
 docker compose down
 docker compose up -d
-```
-
-If it still fails, find the database container's IP and use that instead of `db`:
-
-```bash
-docker inspect guest-lecturer-match-making-db-1 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}'
 ```
 
 ### Port 5432 already in use
