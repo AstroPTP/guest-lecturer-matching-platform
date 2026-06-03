@@ -50,3 +50,23 @@ Thumbs.db
 
 # Environment file
 .env
+
+# Next.js
+.next/
+out/
+
+# NestJS build output
+backend/dist/
+
+# TypeScript
+*.tsbuildinfo
+
+# Test coverage
+coverage/
+
+# Env variants
+.env.local
+.env.*.local
+
+# Prisma
+prisma/generated/
