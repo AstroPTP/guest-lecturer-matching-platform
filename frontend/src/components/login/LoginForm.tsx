@@ -26,7 +26,7 @@ export default function LoginForm() {
 
     // Need to connect to backend for login authentication.
 
-    
+
     const result = await authenticateAccount(email, password);
 
     if (!result.success) {
