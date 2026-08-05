@@ -22,7 +22,7 @@ export default function VerifyEmailForm() {
         router.push("/success");
       }}
       onResendCode={async () => {
-        
+
         //need to connect 
 
         alert("A new verification code has been sent.");
