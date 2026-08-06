@@ -2,17 +2,7 @@ import type { ChatMessage, Conversation, ConversationSeed } from "@/types/messag
 
 import type { UserRole } from "@/types/shared/userRole";
 
-// TODO(API): This module simulated conversations/messages in browser
-// storage. Replace with the endpoints in BACKEND_HANDOFF.md:
-//   getConversations   -> GET /api/conversations (cursor, limit)
-//   getMessages        -> GET /api/conversations/:id/messages (cursor, limit)
-//   sendMessage        -> POST /api/conversations/:id/messages (accept a
-//                         client-generated idempotency id)
-//   deleteConversation -> DELETE equivalent once defined by backend
-// ensureConversations was a client-only seeding helper for the storage
-// prototype; a real API should return existing conversations directly, with
-// a conversation created lazily on first message instead. No
-// conversation/message data may be persisted in the browser.
+// need to connect
 
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
 

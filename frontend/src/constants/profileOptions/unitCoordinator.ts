@@ -34,12 +34,7 @@ export const academicRoleOptions: SelectOption[] = [
   { value: "academic-lead", label: "Academic Lead" },
 ];
 
-/**
- * Delivery format for Unit Coordinator engagements. Values are
- * kebab-case (distinct from Guest Lecturer's "formatOptions" in
- * "shared.ts", which stores the display string itself as the value) —
- * this is the standardized, backend-friendly encoding for this field.
- */
+
 export const formatOptions: SelectOption[] = [
   { value: "face-to-face", label: "Face-to-Face" },
   { value: "online", label: "Online" },

@@ -6,11 +6,8 @@ import type {
   UnitCoordinatorProfileData,
 } from "@/types/profile/unitCoordinatorProfileTypes";
 
-// TODO(API): Replace every function below with GET/PUT /api/users/me/profile.
-// Parse the response into UnitCoordinatorProfileData
-// (@/types/profile/unitCoordinatorProfileTypes) and keep these exported
-// function names/signatures so callers do not change. No profile data may be
-// persisted in the browser (localStorage/sessionStorage).
+// need to connect
+
 
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
 

@@ -1,6 +1,4 @@
-/**
- * Shared expertise topics used by both profile roles and Discovery filters.
- */
+
 export const expertiseTopics: string[] = [
   "Accounting",
   "Banking & Finance",
@@ -22,12 +20,7 @@ export const expertiseTopics: string[] = [
   "ESG & Sustainability",
 ];
 
-/**
- * Experience-level options are identical between the Guest Lecturer and
- * Unit Coordinator onboarding/edit flows (same values, titles and
- * descriptions in both "ExpertiseForm.tsx" files and both "my_profile"
- * pages) — kept in one place instead of four.
- */
+
 export interface ExperienceLevelOption {
   value: string;
   title: string;
@@ -57,16 +50,10 @@ export const experienceLevels: ExperienceLevelOption[] = [
   },
 ];
 
-/**
- * Delivery format chips shown when picking how a session will be run.
- * Identical between Guest Lecturer and Unit Coordinator engagement forms.
- */
+
 export const formatOptions: string[] = ["Face-to-Face", "Online", "Pre-recorded"];
 
-/**
- * Delivery focus chips (what kind of session it will be).
- * Identical between Guest Lecturer and Unit Coordinator engagement forms.
- */
+
 export const deliveryFocusOptions: string[] = ["Seminar/Lecture", "Case Study", "Interactive Workshop", "Discussion Lead", "AMA Session"];
 
 export interface WeekDayOption {
@@ -75,11 +62,7 @@ export interface WeekDayOption {
   label: string;
 }
 
-/**
- * Weekday picker options. Identical between Guest Lecturer and Unit
- * Coordinator engagement forms (only the JSX using "shortLabel" vs
- * "label" differs, not the data).
- */
+
 export const weekDays: WeekDayOption[] = [
   { value: "monday", shortLabel: "M", label: "Monday" },
   { value: "tuesday", shortLabel: "T", label: "Tuesday" },
@@ -93,10 +76,7 @@ export interface SelectOption {
   label: string;
 }
 
-/**
- * Session duration options shared by Guest Lecturers, Unit Coordinators,
- * Discovery filters and event-related views.
- */
+
 export const sessionDurationOptions: SelectOption[] = [
   { value: "30-minutes", label: "30 minutes" },
   { value: "60-minutes", label: "60 minutes" },
@@ -105,11 +85,7 @@ export const sessionDurationOptions: SelectOption[] = [
   { value: "flexible", label: "Flexible" },
 ];
 
-/**
- * "Preferred Audience Size" options for Guest Lecturer — standardized on
- * the more descriptive labels from the onboarding form (kept for both
- * screens so profile editors remember exactly what each size means).
- */
+
 export const guestLecturerAudienceSizeOptions: SelectOption[] = [
   { value: "small", label: "Small — up to 30 people" },
   { value: "medium", label: "Medium — 31 to 100 people" },
@@ -117,10 +93,7 @@ export const guestLecturerAudienceSizeOptions: SelectOption[] = [
   { value: "no-preference", label: "No preference" },
 ];
 
-/**
- * "Preferred Audience Size" options — identical between Unit
- * Coordinator's "EngagementProfileForm.tsx" and "my_profile/page.tsx".
- */
+
 export const unitCoordinatorAudienceSizeOptions: SelectOption[] = [
   { value: "small", label: "Small — up to 30 students" },
   { value: "medium", label: "Medium — 31 to 100 students" },
@@ -128,8 +101,7 @@ export const unitCoordinatorAudienceSizeOptions: SelectOption[] = [
   { value: "unknown", label: "Not confirmed yet" },
 ];
 
-// Mirrors the inline <select> options in Guest Lecturer's
-// EngagementProfileForm.tsx / my_profile page — keep in sync.
+
 export const guestLecturerAvailabilityFrequencyOptions: SelectOption[] = [
   { value: "weekly", label: "Every week" },
   { value: "fortnightly", label: "Every fortnight" },

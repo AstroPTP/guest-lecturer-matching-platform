@@ -1,9 +1,6 @@
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 
-// TODO(API): Replace with GET/PUT /api/users/me/discovery-filters. Keep the
-// get/save/clear function names below stable; confirm with backend whether
-// filters are persisted per account or per device. No filter data may be
-// persisted in the browser.
+//need to connect
 
 export const emptyGuestLecturerFilters: GuestLecturerDiscoveryFilters = {
   topics: [],

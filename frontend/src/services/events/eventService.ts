@@ -1,15 +1,6 @@
 import type { AcademicEvent, CreateAcademicEventData } from "@/types/events/eventTypes";
 
-// TODO(API): This module simulated event invitations in browser storage.
-// Replace with the endpoints in BACKEND_HANDOFF.md:
-//   getAllEvents / getEventsForCoordinator / getEventsForGuestLecturer
-//     -> GET /api/events (cursor, limit, status, date range)
-//   createEvent    -> POST /api/events
-//   acceptEvent/declineEvent -> PATCH /api/events/:id/response
-//   cancelEvent/completeEvent -> PATCH /api/events/:id/status
-// TODO(BACKEND): Define event timezone handling and who may create/edit/
-// cancel/complete an event; the client must not enforce these permissions.
-// No event data may be persisted in the browser.
+//need to connect
 
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
 
