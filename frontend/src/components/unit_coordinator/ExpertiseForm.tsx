@@ -40,7 +40,7 @@ export default function ExpertiseForm() {
 
         setLearningObjective(data.learningObjective);
       } catch {
-        // TODO(API): No backend to load a saved draft from yet; continue with a blank form.
+        // If the draft cannot be loaded, we can just ignore it and let the user start fresh.
       }
     }
 
