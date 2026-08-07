@@ -82,21 +82,24 @@ export default function ResetPasswordForm() {
 
     setError("");
 
-    try {
-      // TODO(AUTH): Replace with POST /api/auth/password-reset/confirm using
-      // the secure reset-session/token the backend established during the
-      // password-reset/verify step (e.g. an HttpOnly cookie) — the email is
-      // never read from client storage.
-      const wasReset = await resetAccountPassword(newPassword);
 
-      if (!wasReset) {
-        setError("Your password reset session is invalid. Please request a new code.");
-        return;
-      }
-    } catch {
-      setError("This isn't connected to a backend yet. Please try again later.");
-      return;
-    }
+    // need to get the code back
+
+    // try {
+    //   // TODO(AUTH): Replace with POST /api/auth/password-reset/confirm using
+    //   // the secure reset-session/token the backend established during the
+    //   // password-reset/verify step (e.g. an HttpOnly cookie) — the email is
+    //   // never read from client storage.
+    //   const wasReset = await resetAccountPassword(newPassword);
+
+    //   if (!wasReset) {
+    //     setError("Your password reset session is invalid. Please request a new code.");
+    //     return;
+    //   }
+    // } catch {
+    //   setError("This isn't connected to a backend yet. Please try again later.");
+    //   return;
+    // }
 
     router.replace("/login");
   }
