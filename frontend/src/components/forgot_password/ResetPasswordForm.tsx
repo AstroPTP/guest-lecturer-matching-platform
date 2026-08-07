@@ -101,7 +101,7 @@ export default function ResetPasswordForm() {
     //   return;
     // }
 
-    router.replace("/login");
+    router.push("/success");
   }
 
   return (
