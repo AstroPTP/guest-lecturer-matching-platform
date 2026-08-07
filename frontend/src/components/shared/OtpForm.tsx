@@ -55,11 +55,7 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
   async function handleSubmit() {
     const verificationCode = code.join("");
 
-    if (verificationCode.length !== 6) {
-      setError("Please enter the complete 6-digit code.");
-      return;
-    }
-
+    // TODO(AUTH): Restore the 6-digit requirement once backend OTP verification is wired up.
     try {
       setError("");
       await onVerify(verificationCode);
