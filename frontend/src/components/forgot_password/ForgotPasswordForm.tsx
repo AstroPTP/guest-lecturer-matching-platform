@@ -25,15 +25,15 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
 
     setError("");
 
-    try {
-      if (!(await accountExists(normalizedEmail))) {
-        setError("No account was found for this email.");
-        return;
-      }
-    } catch {
-      setError("This isn't connected to a backend yet. Please try again later.");
-      return;
-    }
+    // try {
+    //   if (!(await accountExists(normalizedEmail))) {
+    //     setError("No account was found for this email.");
+    //     return;
+    //   }
+    // } catch {
+    //   setError("This isn't connected to a backend yet. Please try again later.");
+    //   return;
+    // }
 
     onSubmitted(normalizedEmail);
   }
@@ -63,7 +63,8 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
               name="email"
               type="email"
               placeholder="abc@university.edu"
-              required
+              // need to open "required" for enter email
+              // required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-lg py-3 pl-12 pr-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
