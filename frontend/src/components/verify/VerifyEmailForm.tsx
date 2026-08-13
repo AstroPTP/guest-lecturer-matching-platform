@@ -18,7 +18,9 @@ export default function VerifyEmailForm() {
 
 
         //need to connect 
-        await verifyRegisteredAccount(code);
+
+        // need to get the code back
+        // await verifyRegisteredAccount(code);
         router.push("/success");
       }}
       onResendCode={async () => {

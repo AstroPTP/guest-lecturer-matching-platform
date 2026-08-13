@@ -47,12 +47,14 @@ export default function RegisterForm() {
     const email = formData.get("email") as string;
 
     // need to connect to backend to register the account
-    const result = await registerAccount({ fullName, email, password, role });
 
-    if (!result.success) {
-      alert(result.error);
-      return;
-    }
+    // need to get the code back
+    // const result = await registerAccount({ fullName, email, password, role });
+
+    // if (!result.success) {
+    //   alert(result.error);
+    //   return;
+    // }
 
     router.push("/verify");
   }
