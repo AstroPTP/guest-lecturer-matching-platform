@@ -9,4 +9,5 @@ module.exports = {
     const rel = files.map((f) => path.relative('frontend', f));
     return [`cd frontend && npx eslint --fix ${rel.join(' ')}`];
   },
+  '**/*.{ts,tsx,js,jsx,md,json}': ['npx cspell --no-must-find-files'],
 };
