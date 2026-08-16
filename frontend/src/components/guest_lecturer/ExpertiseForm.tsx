@@ -2,76 +2,51 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import FormNavButtons from "@/components/shared/FormNavButtons";
-
 import type { GuestLecturerExpertiseData } from "@/types/profile/guestLecturerProfileTypes";
-
 import { getGuestLecturerExpertise, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
-
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
-
 export default function ExpertiseForm() {
   const router = useRouter();
-
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-
   const [experienceLevel, setExperienceLevel] = useState("");
-
   const [hasSpeakingExperience, setHasSpeakingExperience] = useState(false);
   const [speakingDetails, setSpeakingDetails] = useState("");
-
   const [hasInternationalExperience, setHasInternationalExperience] = useState(false);
   const [internationalDetails, setInternationalDetails] = useState("");
-
   const [linkedin, setLinkedin] = useState("");
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getGuestLecturerExpertise();
-
         if (cancelled || !data) {
           return;
         }
-
         setSelectedTopics(data.selectedTopics);
-
         setExperienceLevel(data.experienceLevel);
-
         setHasSpeakingExperience(data.hasSpeakingExperience);
-
         setSpeakingDetails(data.speakingDetails);
-
         setHasInternationalExperience(data.hasInternationalExperience);
-
         setInternationalDetails(data.internationalDetails);
-
         setLinkedin(data.linkedin);
       } catch {
-        // TODO(API): No backend to load a saved draft from yet; continue with a blank form.
       }
     }
-
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
   }, []);
-
   function handleTopicClick(topic: string) {
     if (selectedTopics.includes(topic)) {
       setSelectedTopics(selectedTopics.filter((selectedTopic) => selectedTopic !== topic));
       return;
     }
-
     if (selectedTopics.length >= 5) {
       alert("You can select up to 5 topics.");
       return;
     }
-
     setSelectedTopics([...selectedTopics, topic]);
   }
 
@@ -92,28 +67,15 @@ export default function ExpertiseForm() {
       selectedTopics,
       experienceLevel,
       hasSpeakingExperience,
-
       speakingDetails: hasSpeakingExperience ? speakingDetails : "",
-
       hasInternationalExperience,
-
       internationalDetails: hasInternationalExperience ? internationalDetails : "",
-
       linkedin,
     };
-
-    try {
-      await saveGuestLecturerExpertise(expertiseData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/guest_lecturer/engagement");
   }
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 2 of 4</p>
 
@@ -125,7 +87,6 @@ export default function ExpertiseForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-12 text-center">
         <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-[#1f1f1f] md:text-5xl">What can you speak about?</h1>
 
@@ -135,7 +96,6 @@ export default function ExpertiseForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        {/* Expertise Topics */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
 
@@ -164,7 +124,6 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        {/* Experience Level */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Experience Level</h2>
 
@@ -193,7 +152,6 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        {/* Prior Speaking Engagements */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Prior Speaking Engagements</h2>
 
@@ -240,7 +198,6 @@ export default function ExpertiseForm() {
           )}
         </section>
 
-        {/* International Experience */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">International Experience</h2>
 
@@ -281,7 +238,6 @@ export default function ExpertiseForm() {
           )}
         </section>
 
-        {/* LinkedIn */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <label htmlFor="linkedin" className="mb-2 block text-xs font-bold uppercase tracking-widest text-[#2d2d2d]">
             LinkedIn Profile
@@ -296,11 +252,9 @@ export default function ExpertiseForm() {
             placeholder="https://linkedin.com/in/your-profile"
             className="w-full border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none focus:bg-white"
           />
-
           <p className="mt-2 text-sm text-gray-500">Optional, but highly recommended for verification.</p>
         </section>
 
-        {/* Buttons */}
         <FormNavButtons submitLabel="Next" />
       </form>
     </main>

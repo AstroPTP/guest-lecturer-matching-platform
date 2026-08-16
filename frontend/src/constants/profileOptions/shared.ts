@@ -1,4 +1,3 @@
-
 export const expertiseTopics: string[] = [
   "Accounting",
   "Banking & Finance",
@@ -19,7 +18,6 @@ export const expertiseTopics: string[] = [
   "Taxation Law",
   "ESG & Sustainability",
 ];
-
 
 export interface ExperienceLevelOption {
   value: string;
@@ -49,11 +47,6 @@ export const experienceLevels: ExperienceLevelOption[] = [
     description: "15+ years of experience, or a senior leadership role.",
   },
 ];
-
-
-export const formatOptions: string[] = ["Face-to-Face", "Online", "Pre-recorded"];
-
-
 export const deliveryFocusOptions: string[] = ["Seminar/Lecture", "Case Study", "Interactive Workshop", "Discussion Lead", "AMA Session"];
 
 export interface WeekDayOption {
@@ -61,8 +54,6 @@ export interface WeekDayOption {
   shortLabel: string;
   label: string;
 }
-
-
 export const weekDays: WeekDayOption[] = [
   { value: "monday", shortLabel: "M", label: "Monday" },
   { value: "tuesday", shortLabel: "T", label: "Tuesday" },
@@ -76,6 +67,11 @@ export interface SelectOption {
   label: string;
 }
 
+export const formatOptions: SelectOption[] = [
+  { value: "face-to-face", label: "Face-to-Face" },
+  { value: "online", label: "Online" },
+  { value: "pre-recorded", label: "Pre-recorded" },
+];
 
 export const sessionDurationOptions: SelectOption[] = [
   { value: "30-minutes", label: "30 minutes" },
