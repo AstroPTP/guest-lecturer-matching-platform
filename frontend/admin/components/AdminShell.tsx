@@ -11,7 +11,7 @@ import historyIcon from "@/assets/history.png";
 import logoutIcon from "@/assets/log_out.png";
 import notificationIcon from "@/assets/notification.png";
 import schoolIcon from "@/assets/school.png";
-import settingsIcon from "@/assets/settings.png";
+import settingsIcon from "../../assets/settings.png";
 
 interface NavigationItem {
   href: string;
