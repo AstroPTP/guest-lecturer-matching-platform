@@ -4,14 +4,10 @@ import analyticsIcon from "@/assets/analytics.png";
 import groupIcon from "@/assets/group.png";
 import historyIcon from "@/assets/history.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
-import {
-  analyticsStats,
-  eventFunnel,
-  monthlyRegistrations,
-} from "@/data/analytics";
-import { mostActiveGuestLecturers, topCoordinatorEngagement } from "@/data/engagement_leaders";
-import { eventFormats } from "@/data/event_formats";
-import { topRequestedExpertise } from "@/data/expertise_topics";
+import {  analyticsStats, eventFunnel, monthlyRegistrations} from "@/data/analytics";
+import { mostActiveGuestLecturers, topCoordinatorEngagement } from "@/data/engagement-leaders";
+import { eventFormats } from "@/data/event-formats";
+import { topRequestedExpertise } from "@/data/expertise-topics";
 
 const statIcons: Record<(typeof analyticsStats)[number]["key"], StaticImageData> = {
   matches: verifiedUserIcon,

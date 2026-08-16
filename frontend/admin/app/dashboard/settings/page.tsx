@@ -6,11 +6,7 @@ import groupIcon from "@/assets/group.png";
 import notificationIcon from "@/assets/notification.png";
 import ruleIcon from "@/assets/rule.png";
 import schoolIcon from "@/assets/school.png";
-import {
-  defaultAdminConfiguration,
-  notificationSettingDefinitions,
-  registrationSettingDefinitions,
-} from "@/data/settings";
+import { defaultAdminConfiguration, notificationSettingDefinitions, registrationSettingDefinitions} from "@/data/settings";
 import type { AdminConfiguration } from "@/types/admin";
 
 const settingsNav: Array<{ label: string; href: string; icon: StaticImageData }> = [

@@ -2,8 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import arrowBackIcon from "@/assets/arrow_back.png";
-import { guestLecturerDirectory } from "@/data/engagement_leaders";
-import { lecturerEventHistory, type LecturerEventParticipation } from "@/data/lecturer_event_history";
+import { guestLecturerDirectory } from "@/data/engagement-leaders";
+import { lecturerEventHistory, type LecturerEventParticipation } from "@/data/lecturer-event-history";
 
 interface LecturerActivityPageProps {
   params: Promise<{ lecturerId: string }>;
