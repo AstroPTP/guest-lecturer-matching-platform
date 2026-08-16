@@ -2,10 +2,7 @@ import type { GuestLecturerBasicInformationData, GuestLecturerEngagementData, Gu
 
 export interface PublicGuestLecturerProfile {
   id: string;
-
   basicInformation: GuestLecturerBasicInformationData;
-
   expertise: GuestLecturerExpertiseData;
-
   engagementProfile: GuestLecturerEngagementData;
 }

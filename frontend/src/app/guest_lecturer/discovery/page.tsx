@@ -1,17 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import DiscoveryPageContent from "@/components/discovery/DiscoveryPageContent";
-
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
-import { DEMO_GUEST_LECTURER_ID } from "@/config/demoUsers";
-
 import { getPublicUnitCoordinatorProfiles } from "@/services/discovery/guestLecturerDiscoveryService";
-
 import { getGuestLecturerProfile } from "@/services/profile/guestLecturerProfileService";
-
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 
 export default function GuestLecturerDiscoveryPage() {
@@ -24,7 +18,6 @@ export default function GuestLecturerDiscoveryPage() {
   useEffect(() => {
     async function loadDiscovery() {
       setErrorMessage(null);
-
       try {
         const currentProfile = await getGuestLecturerProfile();
 
@@ -32,15 +25,11 @@ export default function GuestLecturerDiscoveryPage() {
           setCurrentUserName(currentProfile.basicInformation.fullName);
           setCurrentUserPhoto(currentProfile.basicInformation.photoPreview);
         }
-
         const profiles = await getPublicUnitCoordinatorProfiles();
-
         const discoveryItems: DiscoveryItem[] = profiles.map((profile) => ({profileType: "unitCoordinator", profile}));
-
         setItems(discoveryItems);
       } catch (error) {
         console.error("Unable to load unit coordinator profiles:", error);
-
         setErrorMessage("Unable to load data. Please try again.");
       } finally {
         setIsLoading(false);
@@ -53,7 +42,6 @@ export default function GuestLecturerDiscoveryPage() {
   return (
     <DashboardShell
       role="guestLecturer"
-      currentUserId={DEMO_GUEST_LECTURER_ID}
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
       messagesHref="/guest_lecturer/messages"
@@ -72,7 +60,6 @@ export default function GuestLecturerDiscoveryPage() {
           initialItems={items}
           title="Discover Opportunities"
           description="Review unit coordinator requirements that may match your expertise and availability."
-          currentUserId={DEMO_GUEST_LECTURER_ID}
           currentUserType="guestLecturer"
           currentUserName={currentUserName}
           currentUserPhoto={currentUserPhoto}
