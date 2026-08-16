@@ -6,16 +6,9 @@ import { useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
 import ruleIcon from "@/assets/rule.png";
 import { initialUsers, userDirectoryTabs, userDirectoryTotal, userSummary } from "@/data/users";
-import {
-  accountStatusOptions,
-  statusColors,
-  verificationStatusOptions,
-} from "@/lib/user_status";
-import { getUserDirectoryAction } from "@/lib/user_directory_actions";
-import {
-  AccountStatus,
-  VerificationStatus,
-  type UserDirectoryTab,
+import { accountStatusOptions, statusColors, verificationStatusOptions} from "@/lib/user-status";
+import { getUserDirectoryAction } from "@/lib/user-directory-actions";
+import { AccountStatus, VerificationStatus, type UserDirectoryTab,
 } from "@/types/admin";
 
 const USERS_PER_PAGE = 10;
