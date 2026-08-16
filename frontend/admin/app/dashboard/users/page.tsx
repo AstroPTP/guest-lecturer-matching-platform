@@ -221,11 +221,11 @@ export default function UsersPage() {
             </button>
             {paginationItems.map((item, index) =>
               item === "ellipsis" ? (
-                <span aria-hidden="true" key={`ellipsis-${index}`}>…</span>
+                <span aria-hidden="true" key={"ellipsis-" + index}>…</span>
               ) : (
                 <button
                   aria-current={currentPage === item ? "page" : undefined}
-                  aria-label={`Page ${item}`}
+                  aria-label={"Page " + item}
                   className={currentPage === item ? "current" : ""}
                   key={item}
                   onClick={() => setCurrentPage(item)}

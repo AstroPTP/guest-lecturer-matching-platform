@@ -80,7 +80,7 @@ export default function Dashboard() {
           </div>
           <div className="bar-chart">
             <div className="bar-grid" />
-            <div className={`bars ${registrationPeriod === "monthly" ? "six-columns" : ""}`}>
+            <div className={"bars " + (registrationPeriod === "monthly" ? "six-columns" : "")}>
               {registrations.map((registration) => (
                 <div className="bar-column" key={registration.label}>
                   <strong>{registration.value}</strong>
@@ -114,7 +114,7 @@ export default function Dashboard() {
                   <small>{registration.date}</small>
                 </p>
                 <span
-                  className={`verification-status ${verificationStatusClassNames[registration.verificationStatus]}`}
+                  className={"verification-status " + verificationStatusClassNames[registration.verificationStatus]}
                 >
                   {registration.verificationStatus}
                 </span>

@@ -152,7 +152,7 @@ export default function AnalyticsPage() {
                 <span>
                   <b>{lecturer.participationRate}%</b> attended
                 </span>
-                <Link href={`/dashboard/lecturers/${encodeURIComponent(lecturer.id)}`}>View</Link>
+                <Link href={"/dashboard/lecturers/" + encodeURIComponent(lecturer.id)}>View</Link>
               </div>
             ))}
           </div>
@@ -181,7 +181,7 @@ export default function AnalyticsPage() {
                   </p>
                   <span><b>{coordinator.guestLecturers}</b> lecturers</span>
                   <span><b>{coordinator.eventsHosted}</b> events</span>
-                  <Link href={`/dashboard/coordinators/${encodeURIComponent(coordinator.id)}`}>View</Link>
+                  <Link href={"/dashboard/coordinators/" + encodeURIComponent(coordinator.id)}>View</Link>
                 </div>
               );
             })}

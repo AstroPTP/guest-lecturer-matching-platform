@@ -201,8 +201,8 @@ function Protocol({
       <p><strong>{label}</strong><small>{description}</small></p>
       <button
         aria-checked={checked}
-        aria-label={`${label}: ${checked ? "enabled" : "disabled"}`}
-        className={`settings-toggle ${checked ? "enabled" : ""}`}
+        aria-label={label + ": " + (checked ? "enabled" : "disabled")}
+        className={"settings-toggle " + (checked ? "enabled" : "")}
         onClick={onChange}
         role="switch"
         type="button"

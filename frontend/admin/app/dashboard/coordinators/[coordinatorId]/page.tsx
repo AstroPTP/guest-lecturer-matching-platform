@@ -61,7 +61,7 @@ function CoordinatorEventSection({
               <div><strong>{event.title}</strong><small>{event.id} · {event.date}</small></div>
               <span>{event.format}</span>
               <p><small>Guest Lecturers</small><strong>{event.guestLecturers}</strong></p>
-              <b className={`event-participation-status ${event.status.toLowerCase()}`}>{event.status}</b>
+              <b className={"event-participation-status " + event.status.toLowerCase()}>{event.status}</b>
             </article>
           ))}
         </div>
