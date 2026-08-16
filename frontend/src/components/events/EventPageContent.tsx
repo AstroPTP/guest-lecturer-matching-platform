@@ -2,33 +2,18 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-
 import infoIcon from "@/assets/info.png";
-
 import CreateEventModal from "./CreateEventModal";
 import PastEventItem from "./PastEventItem";
 import UpcomingEventCard from "./UpcomingEventCard";
-
 import type { AcademicEvent, CreateAcademicEventData } from "@/types/events/eventTypes";
-
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 import type { UserRole } from "@/types/shared/userRole";
 
-import {
-  acceptEvent,
-  cancelEvent,
-  completeEvent,
-  createEvent,
-  declineEvent,
-  getEventsForCoordinator,
-  getEventsForGuestLecturer,
-} from "@/services/events/eventService";
+import { acceptEvent, cancelEvent,completeEvent, createEvent, declineEvent, getEventsForCoordinator, getEventsForGuestLecturer} from "@/services/events/eventService";
 
 interface EventPageContentProps {
-  currentUserId: string;
-
   currentUserType: UserRole;
-
   currentUserName: string;
   currentUserRole: string;
   currentUserOrganisation: string;
@@ -37,7 +22,6 @@ interface EventPageContentProps {
 }
 
 export default function EventPageContent({
-  currentUserId,
   currentUserType,
   currentUserName,
   currentUserRole,
@@ -45,9 +29,7 @@ export default function EventPageContent({
   matchedGuestLecturers = [],
 }: EventPageContentProps) {
   const [events, setEvents] = useState<AcademicEvent[]>([]);
-
   const [showCreateModal, setShowCreateModal] = useState(false);
-
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -57,8 +39,7 @@ export default function EventPageContent({
     setErrorMessage(null);
 
     try {
-      const nextEvents =
-        currentUserType === "unitCoordinator" ? await getEventsForCoordinator(currentUserId) : await getEventsForGuestLecturer(currentUserId);
+      const nextEvents = currentUserType === "unitCoordinator" ? await getEventsForCoordinator() : await getEventsForGuestLecturer();
 
       setEvents(nextEvents);
     } catch (error) {
@@ -67,14 +48,13 @@ export default function EventPageContent({
     } finally {
       setIsLoading(false);
     }
-  }, [currentUserId, currentUserType]);
+  }, [currentUserType]);
 
   useEffect(() => {
     void loadEvents();
   }, [loadEvents]);
 
   const upcomingEvents = events.filter((event) => event.status !== "completed" && event.status !== "declined" && event.status !== "cancelled");
-
   const pastEvents = events.filter((event) => event.status === "completed" || event.status === "declined" || event.status === "cancelled");
 
   if (isLoading) {
@@ -148,7 +128,6 @@ export default function EventPageContent({
     }
 
     await loadEvents();
-
     showMessage("Event invitation declined.");
   }
 
@@ -267,7 +246,6 @@ export default function EventPageContent({
 
       {showCreateModal && currentUserType === "unitCoordinator" && (
         <CreateEventModal
-          coordinatorId={currentUserId}
           coordinatorName={currentUserName}
           matchedGuestLecturers={matchedGuestLecturers}
           onClose={() => setShowCreateModal(false)}

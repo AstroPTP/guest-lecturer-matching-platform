@@ -10,34 +10,17 @@ import arrowBackIcon from "@/assets/arrow_back.png";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
 
-import {
-  emptyGuestLecturerFilters,
-  emptyUnitCoordinatorFilters,
-  getGuestLecturerDiscoveryFilters,
-  getUnitCoordinatorDiscoveryFilters,
-  saveGuestLecturerDiscoveryFilters,
-  saveUnitCoordinatorDiscoveryFilters,
-} from "@/services/filter/discoveryFilterService";
-
+import { emptyGuestLecturerFilters, emptyUnitCoordinatorFilters,getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters, saveGuestLecturerDiscoveryFilters, saveUnitCoordinatorDiscoveryFilters,} from "@/services/filter/discoveryFilterService";
 import { professionalFields } from "@/constants/profileOptions/guestLecturer";
-import { formatOptions } from "@/constants/profileOptions/unitCoordinator";
-import {
-  experienceLevels,
-  expertiseTopics,
-  sessionDurationOptions,
-  unitCoordinatorAudienceSizeOptions,
-  weekDays,
-} from "@/constants/profileOptions/shared";
+import { experienceLevels, expertiseTopics, formatOptions,sessionDurationOptions, unitCoordinatorAudienceSizeOptions,weekDays} from "@/constants/profileOptions/shared";
 
 interface FilterPageContentProps {
   role: UserRole;
-
   discoveryHref: string;
 }
 
 export default function FilterPageContent({ role, discoveryHref }: FilterPageContentProps) {
   const router = useRouter();
-
   const [guestLecturerFilters, setGuestLecturerFilters] = useState<GuestLecturerDiscoveryFilters>({
     ...emptyGuestLecturerFilters,
   });
@@ -90,8 +73,7 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
         await saveUnitCoordinatorDiscoveryFilters(unitCoordinatorFilters);
       }
     } catch {
-      alert("This isn't connected to a backend yet, so your filters couldn't be saved.");
-      return;
+  
     }
 
     router.push(discoveryHref);
@@ -102,7 +84,6 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
       setGuestLecturerFilters({
         ...emptyGuestLecturerFilters,
       });
-
       return;
     }
 

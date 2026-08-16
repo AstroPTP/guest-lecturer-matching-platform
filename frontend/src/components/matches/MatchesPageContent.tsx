@@ -2,38 +2,26 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-
 import { useRouter } from "next/navigation";
-
 import infoIcon from "@/assets/info.png";
-
 import MatchCard from "./MatchCard";
 import MatchedProfileView from "./MatchedProfileView";
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
-
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
-
 import type { UserRole } from "@/types/shared/userRole";
 
 interface MatchesPageContentProps {
-  currentUserId: string;
   currentUserType: UserRole;
-
   title: string;
   description: string;
-
   messagesHref: string;
 }
 
-export default function MatchesPageContent({ currentUserId, currentUserType, title, description, messagesHref }: MatchesPageContentProps) {
+export default function MatchesPageContent({ currentUserType, title, description, messagesHref }: MatchesPageContentProps) {
   const router = useRouter();
-
   const [matchedProfiles, setMatchedProfiles] = useState<MatchedProfile[]>([]);
-
   const [selectedProfile, setSelectedProfile] = useState<MatchedProfile | null>(null);
-
   const [search, setSearch] = useState("");
-
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -42,7 +30,7 @@ export default function MatchesPageContent({ currentUserId, currentUserType, tit
       setErrorMessage(null);
 
       try {
-        const profiles = await getMatchedProfiles(currentUserId, currentUserType);
+        const profiles = await getMatchedProfiles(currentUserType);
 
         setMatchedProfiles(profiles);
       } catch (error) {
@@ -55,7 +43,7 @@ export default function MatchesPageContent({ currentUserId, currentUserType, tit
     }
 
     loadMatches();
-  }, [currentUserId, currentUserType]);
+  }, [currentUserType]);
 
   const filteredProfiles = matchedProfiles.filter((item) => {
     const searchableText = [item.profile.basicInformation.fullName, ...item.profile.expertise.selectedTopics].join(" ").toLowerCase();

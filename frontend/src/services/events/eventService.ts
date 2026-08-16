@@ -1,19 +1,17 @@
 import type { AcademicEvent, CreateAcademicEventData } from "@/types/events/eventTypes";
 
-//need to connect
-
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
 
 export async function getAllEvents(): Promise<AcademicEvent[]> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  return [];
 }
 
-export async function getEventsForCoordinator(_coordinatorId: string): Promise<AcademicEvent[]> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+export async function getEventsForCoordinator(): Promise<AcademicEvent[]> {
+  return [];
 }
 
-export async function getEventsForGuestLecturer(_guestLecturerId: string): Promise<AcademicEvent[]> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+export async function getEventsForGuestLecturer(): Promise<AcademicEvent[]> {
+  return [];
 }
 
 export async function createEvent(_data: CreateAcademicEventData): Promise<AcademicEvent> {

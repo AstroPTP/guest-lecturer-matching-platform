@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
-
 import callIcon from "@/assets/call.png";
 import attachIcon from "@/assets/attach.png";
 import closeIcon from "@/assets/close.png";
@@ -24,17 +23,19 @@ import { unmatchUsers } from "@/services/discovery/matchService";
 import { reportUser } from "@/services/reports/reportService";
 import { getInitials } from "@/utils/displayFormatters";
 
+// TODO(AUTH): No client-side identity exists yet, so a message's sender can't
+// be compared against "me". Replace with the signed-in user's id once auth exists.
+const CURRENT_USER_PLACEHOLDER_ID = "";
+
 interface MessagesPageContentProps {
   userType: UserRole;
-
-  currentUserId: string;
 
   conversationSeeds: ConversationSeed[];
 
   participantProfileHref: string;
 }
 
-export default function MessagesPageContent({ userType, currentUserId, conversationSeeds, participantProfileHref }: MessagesPageContentProps) {
+export default function MessagesPageContent({ userType, conversationSeeds, participantProfileHref }: MessagesPageContentProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -57,7 +58,7 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
       setErrorMessage(null);
 
       try {
-        const nextConversations = await ensureConversations(userType, currentUserId, conversationSeeds);
+        const nextConversations = await ensureConversations(userType, conversationSeeds);
 
         if (cancelled) {
           return;
@@ -109,7 +110,7 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
     return () => {
       cancelled = true;
     };
-  }, [userType, currentUserId, conversationSeeds]);
+  }, [userType, conversationSeeds]);
 
   if (isLoading) {
     return (
@@ -161,7 +162,7 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
     setActionError(null);
 
     try {
-      const newMessage = await sendMessage(userType, currentUserId, selectedConversation.id, messageText);
+      const newMessage = await sendMessage(userType, selectedConversation.id, messageText);
 
       setMessages((currentMessages) => [...currentMessages, newMessage]);
 
@@ -182,7 +183,6 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
 
     try {
       await reportUser({
-        reporterId: currentUserId,
         reportedUserId: conversation.participant.id,
         conversationId: conversation.id,
         reason,
@@ -199,7 +199,7 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
     setActionError(null);
 
     try {
-      await unmatchUsers(currentUserId, conversation.participant.id);
+      await unmatchUsers(conversation.participant.id);
       await deleteConversation(conversation.id);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
@@ -243,7 +243,6 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
           <ChatThread
             conversation={selectedConversation}
             messages={messages}
-            currentUserId={currentUserId}
             messageText={messageText}
             setMessageText={setMessageText}
             onSubmit={handleSubmit}
@@ -342,7 +341,6 @@ function ConversationList({
 function ChatThread({
   conversation,
   messages,
-  currentUserId,
   messageText,
   setMessageText,
   onSubmit,
@@ -350,7 +348,6 @@ function ChatThread({
 }: {
   conversation: Conversation;
   messages: ChatMessage[];
-  currentUserId: string;
   messageText: string;
 
   setMessageText: (value: string) => void;
@@ -400,7 +397,7 @@ function ChatThread({
             Start the conversation with {conversation.participant.fullName}.
           </div>
         ) : (
-          messages.map((message) => <MessageBubble key={message.id} message={message} currentUserId={currentUserId} participant={conversation.participant} />)
+          messages.map((message) => <MessageBubble key={message.id} message={message} participant={conversation.participant} />)
         )}
       </div>
 
@@ -438,17 +435,17 @@ function ChatThread({
   );
 }
 
+// TODO(AUTH): "Mine vs theirs" bubble alignment needs the signed-in user's id
+// once auth exists. Until then every message renders on the "their" side.
 function MessageBubble({
   message,
-  currentUserId,
   participant,
 }: {
   message: ChatMessage;
-  currentUserId: string;
 
   participant: ConversationParticipant;
 }) {
-  const isCurrentUser = message.senderId === currentUserId;
+  const isCurrentUser = message.senderId === CURRENT_USER_PLACEHOLDER_ID;
 
   return (
     <div className={"flex max-w-3xl items-start gap-4 " + (isCurrentUser ? "ml-auto justify-end" : "")}>

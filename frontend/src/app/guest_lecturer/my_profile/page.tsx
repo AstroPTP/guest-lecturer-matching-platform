@@ -2,58 +2,25 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
-
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
-import { DEMO_GUEST_LECTURER_ID } from "@/config/demoUsers";
-
-import type {
-  GuestLecturerBasicInformationData,
-  GuestLecturerEngagementData,
-  GuestLecturerExpertiseData,
-  GuestLecturerProfileData,
-} from "@/types/profile/guestLecturerProfileTypes";
-
-import {
-  getGuestLecturerProfile,
-  saveGuestLecturerBasicInformation,
-  saveGuestLecturerEngagement,
-  saveGuestLecturerExpertise,
-} from "@/services/profile/guestLecturerProfileService";
-
+import type { GuestLecturerBasicInformationData, GuestLecturerEngagementData, GuestLecturerExpertiseData, GuestLecturerProfileData} from "@/types/profile/guestLecturerProfileTypes";
+import { getGuestLecturerProfile, saveGuestLecturerBasicInformation, saveGuestLecturerEngagement, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 import { formatStoredValue } from "@/utils/displayFormatters";
-
-import {
-  deliveryFocusOptions,
-  experienceLevels,
-  expertiseTopics,
-  formatOptions,
-  guestLecturerAudienceSizeOptions,
-  guestLecturerAvailabilityFrequencyOptions,
-  sessionDurationOptions,
-  weekDays,
-} from "@/constants/profileOptions/shared";
+import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
 
 export default function GuestLecturerMyProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [profile, setProfile] = useState<GuestLecturerProfileData | null>(null);
-
   const [isLoading, setIsLoading] = useState(true);
-
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
-
   const [basicDraft, setBasicDraft] = useState<GuestLecturerBasicInformationData | null>(null);
-
   const [expertiseDraft, setExpertiseDraft] = useState<GuestLecturerExpertiseData | null>(null);
-
   const [engagementDraft, setEngagementDraft] = useState<GuestLecturerEngagementData | null>(null);
-
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
 
@@ -67,9 +34,7 @@ export default function GuestLecturerMyProfilePage() {
         if (cancelled) {
           return;
         }
-
         setProfile(savedProfile);
-
         if (savedProfile) {
           setBasicDraft(cloneData(savedProfile.basicInformation));
           setExpertiseDraft(cloneData(savedProfile.expertise));
@@ -229,7 +194,7 @@ export default function GuestLecturerMyProfilePage() {
 
     const updatedEngagement = {
       ...engagementDraft,
-      format: selectedFormats.join(", "),
+      format: formatLabelsFor(selectedFormats),
       formats: selectedFormats,
     };
 
@@ -326,11 +291,12 @@ export default function GuestLecturerMyProfilePage() {
 
     const selectedFormats = getSelectedFormats(engagementDraft);
     const isSelected = selectedFormats.includes(option);
+    const nextFormats = isSelected ? selectedFormats.filter((selectedOption) => selectedOption !== option) : [...selectedFormats, option];
 
     setEngagementDraft({
       ...engagementDraft,
-      format: isSelected ? selectedFormats.filter((selectedOption) => selectedOption !== option).join(", ") : [...selectedFormats, option].join(", "),
-      formats: isSelected ? selectedFormats.filter((selectedOption) => selectedOption !== option) : [...selectedFormats, option],
+      format: formatLabelsFor(nextFormats),
+      formats: nextFormats,
     });
   }
 
@@ -370,7 +336,6 @@ export default function GuestLecturerMyProfilePage() {
     return (
       <DashboardShell
         role="guestLecturer"
-        currentUserId={DEMO_GUEST_LECTURER_ID}
         menuItems={guestLecturerMenu}
         notificationHref="/guest_lecturer/notifications"
         messagesHref="/guest_lecturer/messages"
@@ -387,7 +352,6 @@ export default function GuestLecturerMyProfilePage() {
     return (
       <DashboardShell
         role="guestLecturer"
-        currentUserId={DEMO_GUEST_LECTURER_ID}
         menuItems={guestLecturerMenu}
         notificationHref="/guest_lecturer/notifications"
         messagesHref="/guest_lecturer/messages"
@@ -405,15 +369,12 @@ export default function GuestLecturerMyProfilePage() {
   return (
     <DashboardShell
       role="guestLecturer"
-      currentUserId={DEMO_GUEST_LECTURER_ID}
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
       messagesHref="/guest_lecturer/messages"
       profileHref="/guest_lecturer/my_profile"
     >
       <div className="mx-auto w-full max-w-6xl">
-        {/* Heading */}
-
         <div className="mb-8">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Guest Lecturer</p>
 
@@ -423,8 +384,6 @@ export default function GuestLecturerMyProfilePage() {
         </div>
 
         {savedMessage && <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 font-medium text-green-700">{savedMessage}</div>}
-
-        {/* Profile header */}
 
         <section className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
@@ -457,7 +416,6 @@ export default function GuestLecturerMyProfilePage() {
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="space-y-6 xl:col-span-2">
-            {/* Basic Information */}
 
             <EditableProfileSection
               title="Basic Information"
@@ -480,7 +438,6 @@ export default function GuestLecturerMyProfilePage() {
               </div>
             </EditableProfileSection>
 
-            {/* Expertise */}
 
             <EditableProfileSection
               title="Expertise"
@@ -511,7 +468,6 @@ export default function GuestLecturerMyProfilePage() {
               </div>
             </EditableProfileSection>
 
-            {/* Engagement */}
 
             <EditableProfileSection
               title="Engagement Profile"
@@ -531,16 +487,11 @@ export default function GuestLecturerMyProfilePage() {
               <div className="space-y-7">
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <ProfileField label="Primary Location" value={profile.engagementProfile.primaryLocation} />
-
                   <ProfileField label="Session Duration" value={formatStoredValue(profile.engagementProfile.sessionDuration)} />
-
                   <ProfileField label="Audience Size" value={formatAudienceSize(profile.engagementProfile.audienceSize)} />
-
                   <ProfileField
                     label="Delivery Format"
-                    value={getSelectedFormats(profile.engagementProfile)
-                      .map((item) => formatStoredValue(item))
-                      .join(", ")}
+                    value={getSelectedFormats(profile.engagementProfile).map((item) => formatStoredValue(item)).join(", ")}
                   />
                 </div>
 
@@ -549,7 +500,6 @@ export default function GuestLecturerMyProfilePage() {
             </EditableProfileSection>
           </div>
 
-          {/* Availability */}
 
           <div>
             <EditableProfileSection
@@ -562,14 +512,12 @@ export default function GuestLecturerMyProfilePage() {
             >
               <div className="space-y-6">
                 <TagList label="Available Days" items={profile.engagementProfile.schedule.availableDays} />
-
                 <ProfileField
                   label="Available Time"
                   value={formatTimeRange(profile.engagementProfile.schedule.availableFrom, profile.engagementProfile.schedule.availableTo)}
                 />
 
                 <ProfileField label="Frequency" value={formatStoredValue(profile.engagementProfile.schedule.availabilityFrequency)} />
-
                 <ProfileField label="Availability Notes" value={profile.engagementProfile.schedule.availabilityNotes} />
               </div>
             </EditableProfileSection>
@@ -834,16 +782,16 @@ function EngagementEditor({
 
           <div className="flex flex-wrap gap-2">
             {formatOptions.map((option) => {
-              const selected = getSelectedFormats(draft).includes(option);
+              const selected = getSelectedFormats(draft).includes(option.value);
 
               return (
                 <button
-                  key={option}
+                  key={option.value}
                   type="button"
-                  onClick={() => onToggleFormat(option)}
+                  onClick={() => onToggleFormat(option.value)}
                   className={"rounded-full px-4 py-2 text-sm font-semibold " + (selected ? "bg-[#2d2d2d] text-white" : "bg-gray-200 text-gray-700")}
                 >
-                  {option}
+                  {option.label}
                 </button>
               );
             })}
@@ -1083,6 +1031,10 @@ function ToggleEditor({ label, checked, onChange }: { label: string; checked: bo
 
 function cloneData<T>(data: T): T {
   return JSON.parse(JSON.stringify(data)) as T;
+}
+
+function formatLabelsFor(values: string[]) {
+  return values.map((value) => formatOptions.find((option) => option.value === value)?.label ?? value).join(", ");
 }
 
 function getSelectedFormats(engagement: GuestLecturerEngagementData) {

@@ -2,17 +2,12 @@
 
 import Image from "next/image";
 import { FormEvent, useState } from "react";
-
 import closeIcon from "@/assets/close.png";
-
-import { formatOptions } from "@/constants/profileOptions/unitCoordinator";
-
+import { formatOptions } from "@/constants/profileOptions/shared";
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
-
 import type { CreateAcademicEventData, EventFormat } from "@/types/events/eventTypes";
 
 interface CreateEventModalProps {
-  coordinatorId: string;
   coordinatorName: string;
 
   matchedGuestLecturers: MatchedProfile[];
@@ -22,29 +17,18 @@ interface CreateEventModalProps {
   onCreate: (data: CreateAcademicEventData) => Promise<boolean>;
 }
 
-export default function CreateEventModal({ coordinatorId, coordinatorName, matchedGuestLecturers, onClose, onCreate }: CreateEventModalProps) {
+export default function CreateEventModal({ coordinatorName, matchedGuestLecturers, onClose, onCreate }: CreateEventModalProps) {
   const [selectedGuestId, setSelectedGuestId] = useState("");
   const [submitError, setSubmitError] = useState("");
-
   const [title, setTitle] = useState("");
-
   const [description, setDescription] = useState("");
-
   const [date, setDate] = useState("");
-
   const [startTime, setStartTime] = useState("");
-
   const [endTime, setEndTime] = useState("");
-
   const [location, setLocation] = useState("");
-
   const [format, setFormat] = useState<EventFormat>("face-to-face");
-
-  const guestLecturerOptions = matchedGuestLecturers
-    .filter((item) => item.profileType === "guestLecturer")
-    .map((item) => ({
+  const guestLecturerOptions = matchedGuestLecturers.filter((item) => item.profileType === "guestLecturer").map((item) => ({
       value: item.profile.id,
-
       label: item.profile.basicInformation.fullName,
     }));
 
@@ -76,7 +60,6 @@ export default function CreateEventModal({ coordinatorId, coordinatorName, match
     const succeeded = await onCreate({
       matchId: selectedMatch.match.id,
 
-      coordinatorId,
       coordinatorName,
 
       guestLecturerId: selectedMatch.profile.id,

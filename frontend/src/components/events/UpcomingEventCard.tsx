@@ -6,25 +6,17 @@ import { formatStoredValue } from "@/utils/displayFormatters";
 
 interface UpcomingEventCardProps {
   event: AcademicEvent;
-
   currentUserType: UserRole;
-
   onAccept?: (eventId: string) => void;
-
   onDecline?: (eventId: string) => void;
-
   onCancel?: (eventId: string) => void;
-
   onComplete?: (eventId: string) => void;
 }
 
 export default function UpcomingEventCard({ event, currentUserType, onAccept, onDecline, onCancel, onComplete }: UpcomingEventCardProps) {
   const canGuestRespond = currentUserType === "guestLecturer" && event.status === "invitation-sent";
-
   const canCoordinatorCancel = currentUserType === "unitCoordinator" && (event.status === "invitation-sent" || event.status === "accepted");
-
   const canCoordinatorComplete = currentUserType === "unitCoordinator" && event.status === "accepted" && isEventInPast(event);
-
   return (
     <article className="group relative min-h-[350px] overflow-hidden rounded-[2rem] bg-white p-8 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
       <div className="absolute -right-8 -top-8 h-32 w-32 rounded-bl-[4rem] bg-gray-200 transition-transform duration-500 group-hover:scale-110" />
@@ -112,13 +104,9 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
 function EventStatusBadge({ status }: { status: AcademicEvent["status"] }) {
   const styles: Record<AcademicEvent["status"], string> = {
     "invitation-sent": "bg-amber-100 text-amber-700",
-
     accepted: "bg-green-100 text-green-700",
-
     declined: "bg-red-100 text-red-700",
-
     completed: "bg-gray-200 text-gray-700",
-
     cancelled: "bg-red-100 text-red-700",
   };
 
@@ -142,9 +130,7 @@ function formatTime(value: string): string {
   }
 
   const [hours, minutes] = value.split(":");
-
   const date = new Date();
-
   date.setHours(Number(hours), Number(minutes), 0, 0);
 
   return new Intl.DateTimeFormat("en-AU", {
@@ -156,6 +142,5 @@ function formatTime(value: string): string {
 
 function isEventInPast(event: AcademicEvent): boolean {
   const eventDate = new Date(event.date + "T" + event.endTime);
-
   return eventDate.getTime() < Date.now();
 }

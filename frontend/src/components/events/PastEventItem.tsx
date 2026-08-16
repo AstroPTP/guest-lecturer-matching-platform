@@ -1,8 +1,6 @@
 import Image from "next/image";
-
 import checkIcon from "@/assets/check.png";
 import closeIcon from "@/assets/close.png";
-
 import type { AcademicEvent } from "@/types/events/eventTypes";
 import type { UserRole } from "@/types/shared/userRole";
 

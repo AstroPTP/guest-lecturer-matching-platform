@@ -6,6 +6,7 @@ import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 
 import {
   experienceLevels,
+  formatOptions as unitCoordinatorFormatOptions,
   guestLecturerAudienceSizeOptions,
   guestLecturerAvailabilityFrequencyOptions,
   sessionDurationOptions,
@@ -17,7 +18,6 @@ import {
 import {
   academicRoleOptions,
   engagementFrequencyOptions,
-  formatOptions as unitCoordinatorFormatOptions,
   schoolDepartmentOptions,
 } from "@/constants/profileOptions/unitCoordinator";
 

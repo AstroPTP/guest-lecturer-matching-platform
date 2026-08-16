@@ -1,7 +1,5 @@
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 
-//need to connect
-
 export const emptyGuestLecturerFilters: GuestLecturerDiscoveryFilters = {
   topics: [],
   formats: [],
@@ -23,28 +21,33 @@ export const emptyUnitCoordinatorFilters: UnitCoordinatorDiscoveryFilters = {
   requiresInternationalExperience: false,
 };
 
-const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
+// TODO(API): No backend yet, so filters are held in memory (not localStorage,
+// not mock data) just so selections survive navigating between Filter and
+// Discovery. This resets on a full page reload; replace with the real
+// GET/PUT /api/users/me/discovery-filters calls once available.
+let currentGuestLecturerFilters: GuestLecturerDiscoveryFilters = { ...emptyGuestLecturerFilters };
+let currentUnitCoordinatorFilters: UnitCoordinatorDiscoveryFilters = { ...emptyUnitCoordinatorFilters };
 
 export async function getGuestLecturerDiscoveryFilters(): Promise<GuestLecturerDiscoveryFilters> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  return currentGuestLecturerFilters;
 }
 
-export async function saveGuestLecturerDiscoveryFilters(_filters: GuestLecturerDiscoveryFilters): Promise<void> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+export async function saveGuestLecturerDiscoveryFilters(filters: GuestLecturerDiscoveryFilters): Promise<void> {
+  currentGuestLecturerFilters = filters;
 }
 
 export async function clearGuestLecturerDiscoveryFilters(): Promise<void> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  currentGuestLecturerFilters = { ...emptyGuestLecturerFilters };
 }
 
 export async function getUnitCoordinatorDiscoveryFilters(): Promise<UnitCoordinatorDiscoveryFilters> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  return currentUnitCoordinatorFilters;
 }
 
-export async function saveUnitCoordinatorDiscoveryFilters(_filters: UnitCoordinatorDiscoveryFilters): Promise<void> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+export async function saveUnitCoordinatorDiscoveryFilters(filters: UnitCoordinatorDiscoveryFilters): Promise<void> {
+  currentUnitCoordinatorFilters = filters;
 }
 
 export async function clearUnitCoordinatorDiscoveryFilters(): Promise<void> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  currentUnitCoordinatorFilters = { ...emptyUnitCoordinatorFilters };
 }

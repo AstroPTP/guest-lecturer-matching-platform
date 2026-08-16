@@ -3,20 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
 import arrowIcon from "@/assets/arrow.png";
 import emailIcon from "@/assets/email.png";
 import infoIcon from "@/assets/info.png";
 import matchIcon from "@/assets/match.png";
 import messageIcon from "@/assets/message.png";
-
 import { getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "@/services/notifications/notificationService";
-
 import type { AppNotification, NotificationType } from "@/types/notifications/notificationTypes";
-
-interface NotificationsPageContentProps {
-  currentUserId: string;
-}
 
 const NOTIFICATION_ICONS = {
   match: matchIcon,
@@ -25,7 +18,7 @@ const NOTIFICATION_ICONS = {
   profile: infoIcon,
 } satisfies Record<NotificationType, typeof matchIcon>;
 
-export default function NotificationsPageContent({ currentUserId }: NotificationsPageContentProps) {
+export default function NotificationsPageContent() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -38,7 +31,7 @@ export default function NotificationsPageContent({ currentUserId }: Notification
       setErrorMessage(null);
 
       try {
-        const data = await getNotifications(currentUserId);
+        const data = await getNotifications();
 
         if (!cancelled) {
           setNotifications(data);
@@ -60,13 +53,13 @@ export default function NotificationsPageContent({ currentUserId }: Notification
     return () => {
       cancelled = true;
     };
-  }, [currentUserId]);
+  }, []);
 
   async function handleMarkAllAsRead() {
     setActionError(null);
 
     try {
-      await markAllNotificationsAsRead(currentUserId);
+      await markAllNotificationsAsRead();
 
       setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
     } catch {
