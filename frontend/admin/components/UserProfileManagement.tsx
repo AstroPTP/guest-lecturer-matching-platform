@@ -4,8 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import arrowBackIcon from "@/assets/arrow_back.png";
-import { getProfileManagementActions, type ProfileManagementAction } from "lib/user_directory_actions";
-import { statusColors } from "@/lib/user-status";
+import { getProfileManagementActions, type ProfileManagementAction } from "@/lib/user_directory_actions";
+import { statusColors } from "@/lib/user_status";
 import { AccountStatus, VerificationStatus, type DirectoryUser } from "@/types/admin";
 
 const actionLabels: Record<ProfileManagementAction, string> = {

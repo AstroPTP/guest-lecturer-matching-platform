@@ -1,5 +1,5 @@
 import { EngagementDirectory } from "@/components/EngagementDirectory";
-import { guestLecturerDirectory } from "@/data/engagement-leaders";
+import { guestLecturerDirectory } from "@/data/engagement_leaders";
 
 export default function LecturerDirectoryPage() {
   return (

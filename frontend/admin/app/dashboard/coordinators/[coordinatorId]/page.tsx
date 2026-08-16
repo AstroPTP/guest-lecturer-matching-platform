@@ -2,8 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import arrowBackIcon from "@/assets/arrow_back.png";
-import { coordinatorEventHistory, type CoordinatorEventActivity } from "@/data/coordinator-event-history";
-import { coordinatorDirectory } from "@/data/engagement-leaders";
+import { coordinatorEventHistory, type CoordinatorEventActivity } from "@/data/coordinator_event_history";
+import { coordinatorDirectory } from "@/data/engagement_leaders";
 
 interface CoordinatorActivityPageProps {
   params: Promise<{ coordinatorId: string }>;

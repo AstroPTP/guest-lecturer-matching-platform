@@ -1,5 +1,5 @@
 import { EngagementDirectory } from "@/components/EngagementDirectory";
-import { coordinatorDirectory } from "@/data/engagement-leaders";
+import { coordinatorDirectory } from "@/data/engagement_leaders";
 
 export default function CoordinatorDirectoryPage() {
   return (
