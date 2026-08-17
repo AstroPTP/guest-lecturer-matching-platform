@@ -1,2 +1,1 @@
-echo PRE-COMMIT HOOK FIRED
-
+npx lint-staged
