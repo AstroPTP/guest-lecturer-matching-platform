@@ -7,7 +7,7 @@ version: 2.1
 jobs:
   backend:
     docker:
-      - image: cimg/node:22.11   # pinned to match .nvmrc, not "current"
+      - image: cimg/node:22.13  # pinned to match .nvmrc, not "current"
     steps:
       - checkout   # checks out to the job's default working_directory (~/project)
       - restore_cache:
