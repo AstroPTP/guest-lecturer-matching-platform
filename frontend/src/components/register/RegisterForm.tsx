@@ -11,8 +11,6 @@ import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import check from "@/assets/check.png";
 
-import { registerAccount } from "@/services/auth/authService";
-
 import type { AccountRole } from "@/types/auth/authTypes";
 
 import { getPasswordRequirements } from "@/lib/validation";
@@ -41,20 +39,6 @@ export default function RegisterForm() {
       alert("Please make sure your password meets all requirements.");
       return;
     }
-
-    const formData = new FormData(event.currentTarget);
-    const fullName = formData.get("fullName") as string;
-    const email = formData.get("email") as string;
-
-    // need to connect to backend to register the account
-
-    // need to get the code back
-    // const result = await registerAccount({ fullName, email, password, role });
-
-    // if (!result.success) {
-    //   alert(result.error);
-    //   return;
-    // }
 
     router.push("/verify");
   }

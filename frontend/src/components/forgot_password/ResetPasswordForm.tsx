@@ -7,7 +7,6 @@ import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import check from "@/assets/check.png";
 import arrow_back from "@/assets/arrow_back.png";
-import { resetAccountPassword } from "@/services/auth/authService";
 
 export default function ResetPasswordForm() {
   const router = useRouter();
@@ -23,17 +22,9 @@ export default function ResetPasswordForm() {
   const hasMinLength = newPassword.length >= 8;
   const hasSpecialCharacter = /[^A-Za-z0-9]/.test(newPassword);
   const hasNumber = /\d/.test(newPassword);
-
-  // Only used to calculate password strength
   const hasUppercase = /[A-Z]/.test(newPassword);
-
-  // Check if passwords match
   const passwordsMatch = newPassword === confirmPassword && confirmPassword !== "";
-
-  // Password is valid when all 3 requirements are met
   const isPasswordValid = hasMinLength && hasSpecialCharacter && hasNumber && hasUppercase;
-
-  // Calculate password strength
   let passwordStrength = 0;
 
   if (hasMinLength) {
@@ -52,7 +43,6 @@ export default function ResetPasswordForm() {
     passwordStrength++;
   }
 
-  // Password strength label
   let strengthLabel = "";
 
   if (newPassword.length > 0) {
@@ -83,32 +73,12 @@ export default function ResetPasswordForm() {
     setError("");
 
 
-    // need to get the code back
-
-    // try {
-    //   // TODO(AUTH): Replace with POST /api/auth/password-reset/confirm using
-    //   // the secure reset-session/token the backend established during the
-    //   // password-reset/verify step (e.g. an HttpOnly cookie) — the email is
-    //   // never read from client storage.
-    //   const wasReset = await resetAccountPassword(newPassword);
-
-    //   if (!wasReset) {
-    //     setError("Your password reset session is invalid. Please request a new code.");
-    //     return;
-    //   }
-    // } catch {
-    //   setError("This isn't connected to a backend yet. Please try again later.");
-    //   return;
-    // }
-
     router.push("/success");
   }
 
   return (
     <main className="w-full max-w-md bg-white rounded-xl p-8 md:p-12">
-      {/* Header */}
       <div className="mb-8">
-        {/* Back Button */}
         <button
           type="button"
           aria-label="Go back"
@@ -123,11 +93,8 @@ export default function ResetPasswordForm() {
         <p className="text-gray-600 leading-relaxed">Your new password must be different from previous used passwords.</p>
       </div>
 
-      {/* Form */}
       <form className="space-y-6" onSubmit={handleSubmit}>
-        {/* Password Inputs */}
         <div className="space-y-4">
-          {/* New Password */}
           <div className="relative">
             <input
               id="newPassword"
@@ -150,7 +117,6 @@ export default function ResetPasswordForm() {
             </button>
           </div>
 
-          {/* Confirm Password */}
           <div className="relative">
             <input
               id="confirmPassword"
@@ -174,19 +140,15 @@ export default function ResetPasswordForm() {
           </div>
         </div>
 
-        {/* Password Strength */}
         <div className="space-y-4 pt-2">
-          {/* Strength Bars */}
           <div className="flex items-center gap-2">
             {[1, 2, 3, 4].map((level) => (
               <div key={level} className={"h-1 flex-1 rounded-full " + (passwordStrength >= level ? "bg-teal-500" : "bg-gray-300")} />
             ))}
           </div>
 
-          {/* Strength Label */}
           <p className="min-h-5 text-sm text-right font-medium text-gray-700">{strengthLabel}</p>
 
-          {/* Password Requirements */}
           <div className="space-y-3 pt-2">
             <p className="text-sm font-bold text-[#2d2d2d] uppercase tracking-wider">Password Requirements</p>
 
@@ -221,7 +183,6 @@ export default function ResetPasswordForm() {
             </ul>
           </div>
 
-          {/* Password Match Message */}
           {confirmPassword !== "" && (
             <p className={"text-sm " + (passwordsMatch ? "text-gray-600" : "text-red-600")}>
               {passwordsMatch ? "Passwords match." : "Passwords do not match."}
@@ -229,7 +190,6 @@ export default function ResetPasswordForm() {
           )}
         </div>
 
-        {/* Submit Button */}
         <div className="pt-8">
           <button
             type="submit"

@@ -56,18 +56,8 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
     const verificationCode = code.join("");
 
 
-//need to get the code back 
 
 
-
-// TODO(AUTH): Restore the 6-digit requirement once backend OTP verification is wired up.
-// =======
-//     if (verificationCode.length !== 6) {
-//       setError("Please enter the complete 6-digit code.");
-//       return;
-//     }
-
-// >>>>>>> develop
     try {
       setError("");
       await onVerify(verificationCode);
@@ -79,22 +69,18 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
 
   return (
     <main className="w-full max-w-md bg-white rounded-xl p-8 md:p-10 flex flex-col items-center text-center shadow-[0_12px_32px_rgba(0,0,0,0.06)]">
-      {/* Mail Icon */}
       <div className="w-16 h-16 bg-blue-50 ring-1 ring-blue-100 rounded-xl flex items-center justify-center mb-7">
         <Image src={email} alt="Email verification" width={32} height={32} className="object-contain" />
       </div>
 
-      {/* Fixed title area */}
       <div className="h-12 flex items-center justify-center">
         <h1 className="text-4xl font-bold text-[#2d2d2d]">{title}</h1>
       </div>
 
-      {/* Fixed description area */}
       <div className="h-20 flex items-start justify-center mt-3 mb-7">
         <p className="text-gray-600 leading-relaxed max-w-[300px]">{description}</p>
       </div>
 
-      {/* OTP Form */}
       <form
         className="w-full"
         onSubmit={(event) => {
@@ -133,7 +119,6 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
         </button>
       </form>
 
-      {/* Resend */}
       <p className="text-sm text-gray-600 mt-8">
         Didn&apos;t receive the code?{" "}
         <button type="button" onClick={onResendCode} className="font-semibold text-blue-600 hover:text-blue-700 hover:underline">
@@ -141,7 +126,6 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
         </button>
       </p>
 
-      {/* Spam */}
       <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
         <Image src={info} alt="" width={18} height={18} className="object-contain" />
 
