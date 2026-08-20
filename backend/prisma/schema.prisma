@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model availability {
+  id             BigInt    @id @default(autoincrement())
+  user_id        BigInt?
+  monday         Boolean?  @default(false)
+  tuesday        Boolean?  @default(false)
+  wednesday      Boolean?  @default(false)
+  thursday       Boolean?  @default(false)
+  friday         Boolean?  @default(false)
+  available_from DateTime? @db.Time(6)
+  available_to   DateTime? @db.Time(6)
+  frequency      Int?
+  notes          String?   @db.VarChar
+  users          users?    @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model coordinator {
+  coordinator_id     BigInt   @id @default(autoincrement())
+  user_id            BigInt?
+  first_name         String?  @db.VarChar
+  last_name          String?  @db.VarChar
+  faculty            String?  @db.VarChar
+  role               String?  @db.VarChar
+  bio                String?  @db.VarChar
+  experience         Int?
+  discipline         String?  @db.VarChar
+  learning_objective String?  @db.VarChar
+  duration           Int?
+  audience           Int?
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+  location           String?  @db.VarChar
+  users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model expertise {
+  user_id   BigInt @default(autoincrement())
+  expertise String @db.VarChar
+  users     users  @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+
+  @@id([user_id, expertise])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model guest {
+  guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
+  user_id               BigInt?
+  first_name            String?  @db.VarChar
+  last_name             String?  @db.VarChar
+  field                 String?  @db.VarChar
+  role                  String?  @db.VarChar
+  bio                   String?  @db.VarChar
+  prior_details         String?  @db.VarChar
+  international_details String?  @db.VarChar
+  linkedIn_profile      String?  @db.VarChar
+  location              String?  @db.VarChar
+  duration              Int?
+  audience              Int?
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  users                 users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "Guest_user_id_fkey")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model users {
+  userid       BigInt         @id @default(autoincrement())
+  userauthid   BigInt?
+  email        String?
+  role         Int?
+  consentstate Boolean?
+  createdat    DateTime?      @db.Timestamp(6)
+  lastloginat  DateTime?      @db.Timestamp(6)
+  deletedat    DateTime?      @db.Timestamp(6)
+  availability availability[]
+  coordinator  coordinator[]
+  expertise    expertise[]
+  guest        guest[]
+}

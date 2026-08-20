@@ -7,7 +7,7 @@ export type DiscoveryItem =
       profileType: "guestLecturer";
       profile: PublicGuestLecturerProfile;
     }
-   {
+  | {
       profileType: "unitCoordinator";
       profile: PublicUnitCoordinatorProfile;
     };
