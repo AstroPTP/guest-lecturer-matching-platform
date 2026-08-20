@@ -12,6 +12,7 @@ This document is the single source of truth for how we work together.
 - [Commit Messages](#commit-messages)
 - [Workflow](#workflow)
 - [Pull Requests](#pull-requests)
+- [Automated Checks (Pre-commit & CI)](#automated-checks-pre-commit--ci)
 - [What Not To Do](#what-not-to-do)
 
 ---
@@ -133,6 +134,53 @@ A PR should be focused — one feature or fix per PR. Avoid bundling unrelated c
 
 ---
 
+## Automated Checks (Pre-commit & CI)
+
+Two separate automated checks run on your code — one on your machine before a commit is
+even created, one on Bitbucket after you push. Understanding what each one does (and does
+not do) will save you time.
+
+### 1. Pre-commit hook (runs on your machine, instantly)
+
+Every time you run `git commit`, a Husky hook automatically runs `lint-staged` against
+**only the files you staged** (`git add`) — not your whole project. This does two things:
+
+| Check         | What it does                                              | Applies to                          |
+|---------------|-------------------------------------------------------------|--------------------------------------|
+| **ESLint**    | Checks code quality/correctness, auto-fixes what it can     | Staged `.ts`/`.js` in `backend/`, staged `.ts`/`.tsx`/`.js`/`.jsx` in `frontend/` |
+| **cspell**    | Checks spelling in code, comments, and docs                 | Staged `.ts`/`.tsx`/`.js`/`.jsx`/`.md`/`.json` anywhere in the repo |
+
+**If it fails:** your commit is stopped — nothing gets committed. Read the terminal output,
+it will tell you exactly which file and which rule failed. Fix the issue, `git add` the file
+again, and re-run `git commit`.
+
+**Do not use `git commit --no-verify` to skip this.** It bypasses the check entirely instead
+of fixing the underlying problem, and CircleCI will likely catch the same issue anyway — just
+later, and after it's already pushed.
+
+### 2. CircleCI pipeline (runs on Bitbucket, after you push)
+
+Once you `git push`, CircleCI automatically picks up the new commit and runs a full pipeline
+against your **entire** `backend/` and `frontend/` apps (not just staged files). You'll see
+the result as a status check directly on your Pull Request in Bitbucket.
+
+Each app runs through, in order: install dependencies → lint → test *(backend only)* → build.
+If any step fails, that job stops and reports red — everything after it in that job is
+skipped, but the other app's job still runs independently.
+
+| PR status shows | What it means | What to do |
+|------------------|----------------|-------------|
+| 🟡 Pending        | Pipeline is still running        | Wait — usually a few minutes |
+| ✅ Passed          | Lint, tests, and build all succeeded | Ready for review |
+| ❌ Failed          | Something broke — click through to CircleCI's logs | Fix locally, commit, push again — pipeline reruns automatically |
+
+**A green CircleCI check does not mean the PR is ready to merge on its own** — it only proves
+the code lints, existing tests pass, and it builds. It does not check whether your feature
+actually does what it's supposed to. A human review is still required before merging (see
+[Pull Requests](#pull-requests) above).
+
+---
+
 ## What Not To Do
 
 These will be blocked by branch protection rules, but please understand why they matter:
@@ -144,6 +192,7 @@ These will be blocked by branch protection rules, but please understand why they
 | Commit secrets or `.env` files          | Use `.env.example` only, never real keys  |
 | Use vague commit messages like `update` | Use Conventional Commits format           |
 | Work directly on someone else's branch  | Create your own branch for your own work  |
+| Use `git commit --no-verify` to skip checks | Fix the actual lint/spelling issue    |
 
 ---
 
