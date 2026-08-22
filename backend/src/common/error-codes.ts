@@ -15,6 +15,8 @@ export const ErrorCode = {
   ValidationFailed: 'VALIDATION_FAILED',
   /** Rate limit exceeded. */
   RateLimitExceeded: 'RATE_LIMIT_EXCEEDED',
+  /** Request body exceeded the configured size limit. */
+  PayloadTooLarge: 'PAYLOAD_TOO_LARGE',
   /** Anything unhandled. Never carries detail to the client. */
   InternalError: 'INTERNAL_ERROR',
 } as const;
