@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
@@ -18,7 +19,7 @@ async function bootstrap() {
   // guard that rejects every request for no visible reason.
   const env = validateEnv();
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.use(helmet());
 
@@ -34,6 +35,23 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Express does not trust proxy headers by default, and that default is
+  // correct: with it off, a spoofed X-Forwarded-For cannot reset anyone's
+  // rate-limit counter.
+  //
+  // The flip side is that once the app sits behind a load balancer, every
+  // request appears to come from the balancer, so all users share one bucket
+  // and everyone is limited almost immediately.
+  //
+  // The fix is a hop COUNT, never `true`. Setting `true` tells Express to
+  // believe the whole X-Forwarded-For chain, which hands the bypass straight
+  // back to the client. TRUST_PROXY_HOPS is the number of proxies actually in
+  // front of us, and unset means none, which is correct for local development.
+  const proxyHops = Number(process.env.TRUST_PROXY_HOPS ?? 0);
+  if (Number.isInteger(proxyHops) && proxyHops > 0) {
+    app.set('trust proxy', proxyHops);
+  }
 
   // Every error leaves through here, so nothing reaches a client except the
   // four-field error envelope. Stack traces stay server-side.
