@@ -21,7 +21,42 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.use(helmet());
+  // The existing helmet() call, now with the two things its defaults leave open
+  // for us. Everything else it already sets, nosniff, no X-Powered-By and the
+  // referrer policy, is correct and untouched.
+  app.use(
+    helmet({
+      // HDR-02. helmet's default is X-Frame-Options: SAMEORIGIN, but nothing in
+      // this application is meant to be framed, including by itself.
+      frameguard: { action: 'deny' },
+
+      // HDR-03. Only meaningful over https, so it does nothing locally, but it
+      // has to be configured before deployment rather than after.
+      hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: false,
+      },
+
+      // HDR-04. helmet's default policy is already restrictive. Stating the
+      // directives that matter means a future major version cannot loosen them
+      // under us.
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          // The API serves JSON. It has no scripts, styles or frames of its
+          // own, so everything it does not need is denied outright.
+          scriptSrc: ["'none'"],
+          styleSrc: ["'none'"],
+          imgSrc: ["'none'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'none'"],
+          formAction: ["'none'"],
+        },
+      },
+    }),
+  );
 
   app.enableCors({
     origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
