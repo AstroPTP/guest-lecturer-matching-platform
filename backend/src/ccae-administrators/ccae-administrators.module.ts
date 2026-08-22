@@ -4,6 +4,6 @@ import { CcaeAdministratorsService } from './ccae-administrators.service';
 
 @Module({
   controllers: [CcaeAdministratorsController],
-  providers: [CcaeAdministratorsService]
+  providers: [CcaeAdministratorsService],
 })
 export class CcaeAdministratorsModule {}
