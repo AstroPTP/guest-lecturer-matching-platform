@@ -52,25 +52,19 @@ nvm use
 
 ### Step 3 — Set up environment variables
 
-```bash
-cp .env.example .env
-```
-
-Open the `.env` file and fill in the values. Ask your team lead for the correct values — never commit this file.
-
-Your `.env` should look like this:
+There are two environment files, each sitting next to what reads it:
 
 ```bash
-# Database
-DB_USER=postgres
-DB_PASSWORD=yourpassword
-DB_NAME=matchmaking_dev
-DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/matchmaking_dev"
-
-# pgAdmin
-PGADMIN_EMAIL=admin@admin.com
-PGADMIN_PASSWORD=admin
+cp .env.example .env                  # docker-compose.yml reads this
+cp backend/.env.example backend/.env  # the NestJS app reads this
 ```
+
+Open both and fill in the values. Ask your team lead for the correct values — never commit either file; `.gitignore` already excludes them.
+
+The committed `.env.example` files are the authoritative list of what is needed, and each variable is commented with where to obtain it. Two things catch people out:
+
+- **The backend will refuse to start if a variable is missing or malformed.** That is deliberate. The error names every variable that failed, so read it rather than guessing.
+- **`PORT` is `3001`, not `3000`.** The Next.js frontend already owns 3000.
 
 ### Step 4 — Install frontend dependencies
 
