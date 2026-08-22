@@ -1,11 +1,17 @@
-
-// need to connect
-
+/**
+ * The error envelope the NestJS backend actually sends, from SAS §2.5.5
+ * Table 4 — see backend/src/common/error-codes.ts and the
+ * GlobalExceptionFilter that emits it.
+ *
+ * `correlationId` was previously declared here as `requestId`, which no
+ * response ever contained.
+ */
 export interface ApiErrorResponse {
   code: string;
   message: string;
+  correlationId: string;
+  timestamp: string;
   fieldErrors?: Record<string, string[]>;
-  requestId?: string;
 }
 
 export interface PaginationQuery {
