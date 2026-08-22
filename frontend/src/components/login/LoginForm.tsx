@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
 import visibility from "@/assets/visibility.png";
@@ -11,6 +11,12 @@ import { authenticateAccount } from "@/services/auth/authService";
 
 export default function LoginForm() {
   const router = useRouter();
+
+  // Set by the proxy when it turns away an unauthenticated request, so the
+  // user lands where they were originally headed instead of on a dashboard
+  // root. Only ever a same-origin path — see safeRedirect below.
+  const searchParams = useSearchParams();
+  const redirectTo = safeRedirect(searchParams.get("redirectTo"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,9 +30,6 @@ export default function LoginForm() {
     setError("");
     setNeedsVerification(false);
 
-    // Need to connect to backend for login authentication.
-
-
     const result = await authenticateAccount(email, password);
 
     if (!result.success) {
@@ -36,6 +39,11 @@ export default function LoginForm() {
         setNeedsVerification(true);
       }
 
+      return;
+    }
+
+    if (redirectTo) {
+      router.push(redirectTo);
       return;
     }
 
@@ -146,4 +154,21 @@ export default function LoginForm() {
       </div>
     </main>
   );
+}
+
+/**
+ * Only same-origin absolute paths are honoured.
+ *
+ * redirectTo arrives in the query string, so anybody can put anything in it.
+ * Without this check a link to
+ * /login?redirectTo=https://evil.example.com would bounce a user straight off
+ * our origin the moment they signed in, wearing our login page as
+ * credibility — an open redirect. Rejecting "//host" as well as "http://host"
+ * matters: a protocol-relative URL is also off-origin.
+ */
+function safeRedirect(value: string | null): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return null;
+  }
+  return value;
 }
