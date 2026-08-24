@@ -51,7 +51,11 @@ export default function EventPageContent({
   }, [currentUserType]);
 
   useEffect(() => {
-    void loadEvents();
+    async function run() {
+      await loadEvents();
+    }
+
+    void run();
   }, [loadEvents]);
 
   const upcomingEvents = events.filter((event) => event.status !== "completed" && event.status !== "declined" && event.status !== "cancelled");
