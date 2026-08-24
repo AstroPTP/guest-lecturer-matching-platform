@@ -48,7 +48,7 @@ const PORT = Number(process.env.DEV_IDP_PORT ?? 9099);
 const HOST = '127.0.0.1'; // Gate 2. Do not make this configurable.
 
 const ISSUER = `http://${HOST}:${PORT}/`;
-const AUDIENCE = process.env.DEV_IDP_AUDIENCE ?? 'https://api.glma.curtin.edu.au';
+const AUDIENCE = process.env.DEV_IDP_AUDIENCE ?? 'https://glmp-api.curtin.edu.au';
 const ROLES_CLAIM = 'https://glmp.curtin.edu.au/roles'; // SAS 2.5.2 Interface 5
 const KID = 'dev-idp-key-1';
 const TOKEN_TTL_SECONDS = 60 * 60;
