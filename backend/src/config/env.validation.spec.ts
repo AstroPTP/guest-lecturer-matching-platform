@@ -7,7 +7,7 @@ function validEnv(): NodeJS.ProcessEnv {
     PORT: '3001',
     FRONTEND_URL: 'http://localhost:3000',
     AUTH0_DOMAIN: 'glma-dev.au.auth0.com',
-    AUTH0_AUDIENCE: 'https://api.glma.curtin.edu.au',
+    AUTH0_AUDIENCE: 'https://glmp-api.curtin.edu.au',
     DATABASE_URL: 'postgresql://user:pass@host:6543/postgres?pgbouncer=true',
     DIRECT_URL: 'postgresql://user:pass@host:5432/postgres',
   };
@@ -19,7 +19,7 @@ describe('validateEnv', () => {
 
     expect(env.port).toBe(3001);
     expect(env.allowedOrigins).toEqual(['http://localhost:3000']);
-    expect(env.auth0Audience).toBe('https://api.glma.curtin.edu.au');
+    expect(env.auth0Audience).toBe('https://glmp-api.curtin.edu.au');
     expect(env.nodeEnv).toBe('test');
   });
 
