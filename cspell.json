@@ -1,0 +1,17 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "nestjs", "supabase", "pgbouncer", "prisma", "auth0",
+    "curtin", "bitbucket", "commitlint", "husky", "circleci",
+    "postgresql", "pgadmin", "eslint", "dotenv"
+  ],
+  "ignorePaths": [
+    "node_modules/**",
+    "dist/**",
+    ".next/**",
+    "**/*.lock",
+    "**/migrations/**",
+    "package-lock.json"
+  ]
+}
