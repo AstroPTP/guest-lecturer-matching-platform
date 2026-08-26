@@ -1,13 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import googleIcon from "@/assets/google-icon.svg";
 import linkedInIcon from "@/assets/linkedin-icon.svg";
-import { authenticateAccount } from "@/services/auth/authService";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -18,44 +17,28 @@ export default function LoginForm() {
   const [needsVerification, setNeedsVerification] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+
+  // Get the role from the query parameters to determine where to redirect after login (because no backend)
+  const searchParams = useSearchParams();
+  const role = searchParams.get("role");
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
     setNeedsVerification(false);
 
-    // Need to connect to backend for login authentication.
 
 
-    const result = await authenticateAccount(email, password);
-
-    if (!result.success) {
-      setError(result.error);
-
-      if (result.reason === "email_not_verified") {
-        setNeedsVerification(true);
-      }
-
-      return;
-    }
-
-    if (result.account.role === "guest") {
-      router.push("/guest_lecturer/profile");
-      return;
-    }
-
-    if (result.account.role === "coordinator") {
+    if (role === "coordinator") {
       router.push("/unit_coordinator/profile");
-      return;
+    } else {
+      router.push("/guest_lecturer/profile"); 
     }
   }
 
-  // TODO(AUTH): Wire up the backend's OAuth login flow (redirect or popup)
-  // once an endpoint/provider is confirmed. Currently a no-op placeholder.
-  function handleGoogleLogin() {}
 
-  // TODO(AUTH): Wire up the backend's OAuth login flow (redirect or popup)
-  // once an endpoint/provider is confirmed. Currently a no-op placeholder.
+  function handleGoogleLogin() {}
   function handleLinkedInLogin() {}
 
   return (
