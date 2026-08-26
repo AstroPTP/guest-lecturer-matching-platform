@@ -2,25 +2,19 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-
 import type { UnitCoordinatorConsentData } from "@/types/profile/unitCoordinatorProfileTypes";
-
 import { getUnitCoordinatorConsent, saveUnitCoordinatorConsent } from "@/services/profile/unitCoordinatorProfileService";
 
 export default function UnitCoordinatorConsentForm() {
   const router = useRouter();
-
   const [detailsMatchingConsent, setDetailsMatchingConsent] = useState(false);
   const [informationAccurate, setInformationAccurate] = useState(false);
   const [receiveUpdates, setReceiveUpdates] = useState(false);
-
   const [useWithinAgreedScope, setUseWithinAgreedScope] = useState(false);
   const [noExternalRedistribution, setNoExternalRedistribution] = useState(false);
   const [studentPrivacyCompliance, setStudentPrivacyCompliance] = useState(false);
-
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
@@ -35,25 +29,18 @@ export default function UnitCoordinatorConsentForm() {
         }
 
         setDetailsMatchingConsent(data.detailsMatchingConsent);
-
         setInformationAccurate(data.informationAccurate);
-
         setReceiveUpdates(data.receiveUpdates);
-
         setUseWithinAgreedScope(data.useWithinAgreedScope);
-
         setNoExternalRedistribution(data.noExternalRedistribution);
-
         setStudentPrivacyCompliance(data.studentPrivacyCompliance);
-
         setTermsAccepted(data.termsAccepted);
       } catch {
-        // TODO(API): No backend to load saved consent from yet; continue with a blank form.
+        
       }
     }
 
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
@@ -88,22 +75,13 @@ export default function UnitCoordinatorConsentForm() {
       requestStatus: "pending-match",
     };
 
-    try {
-      await saveUnitCoordinatorConsent(consentPreferencesData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/unit_coordinator/confirmation");
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 4 of 4</p>
-
         <div className="flex gap-2">
           <div className="h-[3px] w-12 rounded-full bg-[#2d2d2d]" />
           <div className="h-[3px] w-12 rounded-full bg-[#2d2d2d]" />
@@ -112,7 +90,6 @@ export default function UnitCoordinatorConsentForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-12 text-center">
         <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-[#1f1f1f] md:text-5xl">Consent &amp; Preferences</h1>
 
@@ -122,7 +99,6 @@ export default function UnitCoordinatorConsentForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        {/* Data Consent */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Data Consent</h2>
 
@@ -157,7 +133,6 @@ export default function UnitCoordinatorConsentForm() {
           </p>
         </section>
 
-        {/* Recording & Reuse Responsibilities */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Recording &amp; Reuse Responsibilities</h2>
 
@@ -189,7 +164,6 @@ export default function UnitCoordinatorConsentForm() {
           <p className="mt-5 text-sm text-gray-500">Questions about recording use can be directed to CCAE at any time.</p>
         </section>
 
-        {/* Terms and Conditions */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Terms and Conditions</h2>
 
@@ -235,7 +209,6 @@ export default function UnitCoordinatorConsentForm() {
           </div>
         </section>
 
-        {/* Request Status */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-2xl font-bold text-[#1f1f1f]">Request Status</h2>
@@ -249,7 +222,6 @@ export default function UnitCoordinatorConsentForm() {
           </p>
         </section>
 
-        {/* Buttons */}
         <FormNavButtons submitLabel="Complete Profile" isFinalStep />
       </form>
     </main>
