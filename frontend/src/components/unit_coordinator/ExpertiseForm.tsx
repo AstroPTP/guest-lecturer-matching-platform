@@ -2,22 +2,14 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import FormNavButtons from "@/components/shared/FormNavButtons";
-
 import type { UnitCoordinatorExpertiseData } from "@/types/profile/unitCoordinatorProfileTypes";
-
-import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
-
+import { getUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
-
 export default function ExpertiseForm() {
   const router = useRouter();
-
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-
   const [experienceLevelsRequired, setExperienceLevelsRequired] = useState<string[]>([]);
-
   const [industryRelevance, setIndustryRelevance] = useState("");
   const [learningObjective, setLearningObjective] = useState("");
 
@@ -33,19 +25,14 @@ export default function ExpertiseForm() {
         }
 
         setSelectedTopics(data.selectedTopics);
-
         setExperienceLevelsRequired(data.experienceLevelsRequired);
-
         setIndustryRelevance(data.industryRelevance);
-
         setLearningObjective(data.learningObjective);
       } catch {
-        // If the draft cannot be loaded, we can just ignore it and let the user start fresh.
       }
     }
 
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
@@ -103,20 +90,11 @@ export default function ExpertiseForm() {
       industryRelevance,
       learningObjective,
     };
-
-    try {
-      await saveUnitCoordinatorExpertise(expertiseData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/unit_coordinator/engagement");
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 2 of 4</p>
 
@@ -128,7 +106,6 @@ export default function ExpertiseForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-12 text-center">
         <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-[#1f1f1f] md:text-5xl">Define your Guest Lecturer requirements</h1>
 
@@ -138,16 +115,12 @@ export default function ExpertiseForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-10">
-        {/* Expertise Topics */}
         <section>
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
-
           <p className="mt-2 text-sm text-gray-500">Select up to 5 topics you would like a Guest Lecturer to address.</p>
-
           <div className="mt-5 flex flex-wrap gap-3">
             {expertiseTopics.map((topic) => {
               const isSelected = selectedTopics.includes(topic);
-
               return (
                 <button
                   key={topic}
@@ -166,16 +139,12 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        {/* Experience Level Requirement */}
         <section>
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Experience Level Requirement</h2>
-
           <p className="mt-2 text-sm text-gray-500">Select one or more acceptable professional experience levels for the Guest Lecturer.</p>
-
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {experienceLevels.map((level) => {
               const isSelected = experienceLevelsRequired.includes(level.value);
-
               return (
                 <button
                   key={level.value}
@@ -196,7 +165,6 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        {/* Industry relevance */}
         <section>
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="industryRelevance" className="text-sm font-bold uppercase tracking-widest">
@@ -219,7 +187,6 @@ export default function ExpertiseForm() {
           />
         </section>
 
-        {/* Learning objective */}
         <section>
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="learningObjective" className="text-sm font-bold uppercase tracking-widest">
@@ -242,7 +209,6 @@ export default function ExpertiseForm() {
           />
         </section>
 
-        {/* Navigation */}
         <FormNavButtons submitLabel="Next" />
       </form>
     </main>

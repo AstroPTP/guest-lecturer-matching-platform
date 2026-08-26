@@ -1,4 +1,3 @@
-
 export const expertiseTopics: string[] = [
   "Accounting",
   "Banking & Finance",
@@ -19,7 +18,6 @@ export const expertiseTopics: string[] = [
   "Taxation Law",
   "ESG & Sustainability",
 ];
-
 
 export interface ExperienceLevelOption {
   value: string;
@@ -51,17 +49,12 @@ export const experienceLevels: ExperienceLevelOption[] = [
 ];
 
 
-export const formatOptions: string[] = ["Face-to-Face", "Online", "Pre-recorded"];
-
-
 export const deliveryFocusOptions: string[] = ["Seminar/Lecture", "Case Study", "Interactive Workshop", "Discussion Lead", "AMA Session"];
-
 export interface WeekDayOption {
   value: string;
   shortLabel: string;
   label: string;
 }
-
 
 export const weekDays: WeekDayOption[] = [
   { value: "monday", shortLabel: "M", label: "Monday" },
@@ -76,6 +69,11 @@ export interface SelectOption {
   label: string;
 }
 
+export const formatOptions: SelectOption[] = [
+  { value: "face-to-face", label: "Face-to-Face" },
+  { value: "online", label: "Online" },
+  { value: "pre-recorded", label: "Pre-recorded" },
+];
 
 export const sessionDurationOptions: SelectOption[] = [
   { value: "30-minutes", label: "30 minutes" },
@@ -84,7 +82,6 @@ export const sessionDurationOptions: SelectOption[] = [
   { value: "2-hours", label: "2 hours" },
   { value: "flexible", label: "Flexible" },
 ];
-
 
 export const guestLecturerAudienceSizeOptions: SelectOption[] = [
   { value: "small", label: "Small — up to 30 people" },
@@ -100,7 +97,6 @@ export const unitCoordinatorAudienceSizeOptions: SelectOption[] = [
   { value: "large", label: "Large — more than 100 students" },
   { value: "unknown", label: "Not confirmed yet" },
 ];
-
 
 export const guestLecturerAvailabilityFrequencyOptions: SelectOption[] = [
   { value: "weekly", label: "Every week" },
