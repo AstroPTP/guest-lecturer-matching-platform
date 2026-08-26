@@ -70,3 +70,4 @@ coverage/
 
 # Prisma
 prisma/generated/
+/generated
