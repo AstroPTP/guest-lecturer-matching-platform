@@ -40,6 +40,15 @@ export default function RegisterForm() {
           ? { label: "Medium", color: "#F59E0B" }
           : { label: "Strong", color: "#10B981" };
 
+  const strengthState =
+    password.length === 0
+      ? { label: "", color: "#E5E7EB" }
+      : passwordStrength <= 1
+        ? { label: "Weak", color: "#EF4444" }
+        : passwordStrength <= 3
+          ? { label: "Medium", color: "#F59E0B" }
+          : { label: "Strong", color: "#10B981" };
+
   const router = useRouter();
 
   async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
