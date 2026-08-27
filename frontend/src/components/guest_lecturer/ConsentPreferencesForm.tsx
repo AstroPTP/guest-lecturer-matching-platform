@@ -4,8 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import type { GuestLecturerConsentData } from "@/types/profile/guestLecturerProfileTypes";
-import { getGuestLecturerConsent, saveGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
 export default function ConsentPreferencesForm() {
   const router = useRouter();
   const [profileMatchingConsent, setProfileMatchingConsent] = useState(false);
@@ -59,16 +58,6 @@ export default function ConsentPreferencesForm() {
       alert("Please read and accept the Terms and Conditions.");
       return;
     }
-    const consentPreferencesData: GuestLecturerConsentData = {
-      profileMatchingConsent,
-      informationAccurate,
-      receiveUpdates,
-      futureTeachingReuse,
-      otherUnitsReuse,
-      timeLimitedUse,
-      termsAccepted,
-      verificationStatus: "pending-review",
-    };
     router.push("/guest_lecturer/confirmation");
   }
   return (

@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import type { GuestLecturerBasicInformationData } from "@/types/profile/guestLecturerProfileTypes";
-import { getGuestLecturerBasicInformation, saveGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 
 export default function BasicInformationForm() {
@@ -61,7 +60,6 @@ export default function BasicInformationForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const basicInformationData: GuestLecturerBasicInformationData = { fullName, professionalField, professionalRole, bio, photoPreview };
     router.push("/guest_lecturer/expertise");
   }
 

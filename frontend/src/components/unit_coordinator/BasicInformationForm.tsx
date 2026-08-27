@@ -3,7 +3,6 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import type { UnitCoordinatorBasicInformationData } from "@/types/profile/unitCoordinatorProfileTypes";
 import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import { academicRoleOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
 
@@ -64,13 +63,6 @@ export default function BasicInformationForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const basicInformationData: UnitCoordinatorBasicInformationData = {
-      fullName,
-      schoolDepartment,
-      academicRole,
-      bio,
-      photoPreview,
-    };
     router.push("/unit_coordinator/expertise");
   }
 

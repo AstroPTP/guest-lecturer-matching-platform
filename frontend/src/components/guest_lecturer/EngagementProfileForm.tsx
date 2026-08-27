@@ -3,8 +3,7 @@
 import { FormEvent, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import type { GuestLecturerEngagementData } from "@/types/profile/guestLecturerProfileTypes";
-import { getGuestLecturerEngagement, saveGuestLecturerEngagement } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerEngagement } from "@/services/profile/guestLecturerProfileService";
 import { deliveryFocusOptions, formatOptions, guestLecturerAudienceSizeOptions, guestLecturerAvailabilityFrequencyOptions, sessionDurationOptions, weekDays} from "@/constants/profileOptions/shared";
 
 export default function EngagementProfileForm() {
@@ -108,22 +107,6 @@ export default function EngagementProfileForm() {
       return;
     }
 
-    const engagementProfileData: GuestLecturerEngagementData = {
-      primaryLocation,
-      sessionDuration,
-      audienceSize,
-      format: formats.map((value) => formatOptions.find((option) => option.value === value)?.label ?? value).join(", "),
-      formats,
-      deliveryFocus,
-
-      schedule: {
-        availableDays,
-        availableFrom,
-        availableTo,
-        availabilityFrequency,
-        availabilityNotes,
-      },
-    };
     router.push("/guest_lecturer/consent");
   }
 

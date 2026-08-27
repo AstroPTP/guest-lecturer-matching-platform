@@ -3,8 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import type { GuestLecturerExpertiseData } from "@/types/profile/guestLecturerProfileTypes";
-import { getGuestLecturerExpertise, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
 export default function ExpertiseForm() {
   const router = useRouter();
@@ -63,15 +62,6 @@ export default function ExpertiseForm() {
       return;
     }
 
-    const expertiseData: GuestLecturerExpertiseData = {
-      selectedTopics,
-      experienceLevel,
-      hasSpeakingExperience,
-      speakingDetails: hasSpeakingExperience ? speakingDetails : "",
-      hasInternationalExperience,
-      internationalDetails: hasInternationalExperience ? internationalDetails : "",
-      linkedin,
-    };
     router.push("/guest_lecturer/engagement");
   }
   return (
