@@ -3,40 +3,22 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import DiscoveryCard from "./DiscoveryCard";
 import MatchModal from "./MatchModal";
-
 import infoIcon from "@/assets/info.png";
 import undoIcon from "@/assets/undo.png";
-
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchModalData, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
-
-import {
-  clearGuestLecturerDiscoveryFilters,
-  clearUnitCoordinatorDiscoveryFilters,
-  getGuestLecturerDiscoveryFilters,
-  getUnitCoordinatorDiscoveryFilters,
-} from "@/services/filter/discoveryFilterService";
-
-import {
-  dismissProfile,
-  expressInterest,
-  getBlocks,
-  getDismisses,
-  getInterests,
-  getMatches,
-  removeDismiss,
-  removeInterest,
-} from "@/services/discovery/matchService";
-
+import filterIcon from "@/assets/filter.png.png";
+import { getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters } from "@/services/filter/discoveryFilterService";
+import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import { createNotification } from "@/services/notifications/notificationService";
 
-type DiscoveryAction = "interest" | "dismiss";
+const CURRENT_USER_PLACEHOLDER_ID = "";
 
+type DiscoveryAction = "interest" | "dismiss";
 interface DiscoveryHistoryItem {
   action: DiscoveryAction;
   item: DiscoveryItem;
@@ -44,16 +26,11 @@ interface DiscoveryHistoryItem {
 
 interface DiscoveryPageContentProps {
   initialItems: DiscoveryItem[];
-
   title: string;
   description: string;
-
-  currentUserId: string;
   currentUserType: UserRole;
-
   currentUserName: string;
   currentUserPhoto?: string;
-
   messagesHref: string;
   filterHref: string;
 }
@@ -62,7 +39,6 @@ export default function DiscoveryPageContent({
   initialItems,
   title,
   description,
-  currentUserId,
   currentUserType,
   currentUserName,
   currentUserPhoto,
@@ -75,10 +51,7 @@ export default function DiscoveryPageContent({
   const [actionHistory, setActionHistory] = useState<DiscoveryHistoryItem[]>([]);
   const [matchModalData, setMatchModalData] = useState<MatchModalData | null>(null);
   const [isReviewingDismissed, setIsReviewingDismissed] = useState(false);
-  const [hasActiveFilters, setHasActiveFilters] = useState(false);
   const [dismissedProfilesExist, setDismissedProfilesExist] = useState(false);
-  const [filterRefreshKey, setFilterRefreshKey] = useState(0);
-
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -99,30 +72,21 @@ export default function DiscoveryPageContent({
           getBlocks(),
           currentUserType === "guestLecturer" ? getGuestLecturerDiscoveryFilters() : getUnitCoordinatorDiscoveryFilters(),
         ]);
-
         if (cancelled) {
           return;
         }
-
-        setDismissedProfilesExist(getDismissedDiscoveryItems(initialItems, currentUserId, dismisses, matches, blocks).length > 0);
-
+        setDismissedProfilesExist(getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks).length > 0);
         if (isReviewingDismissed) {
-          setItems(getDismissedDiscoveryItems(initialItems, currentUserId, dismisses, matches, blocks));
-          setHasActiveFilters(false);
+          setItems(getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks));
         } else if (currentUserType === "guestLecturer") {
-          const baseItems = getAvailableDiscoveryItems(initialItems, currentUserId, interests, dismisses, matches, blocks);
+          const baseItems = getAvailableDiscoveryItems(initialItems, interests, dismisses, matches, blocks);
           const guestLecturerFilters = filters as GuestLecturerDiscoveryFilters;
-
           setItems(applyGuestLecturerFilters(baseItems, guestLecturerFilters));
-          setHasActiveFilters(guestLecturerFiltersAreActive(guestLecturerFilters));
         } else {
-          const baseItems = getAvailableDiscoveryItems(initialItems, currentUserId, interests, dismisses, matches, blocks);
+          const baseItems = getAvailableDiscoveryItems(initialItems, interests, dismisses, matches, blocks);
           const unitCoordinatorFilters = filters as UnitCoordinatorDiscoveryFilters;
-
           setItems(applyUnitCoordinatorFilters(baseItems, unitCoordinatorFilters));
-          setHasActiveFilters(unitCoordinatorFiltersAreActive(unitCoordinatorFilters));
         }
-
         setActionHistory([]);
         setMatchModalData(null);
       } catch (error) {
@@ -138,12 +102,10 @@ export default function DiscoveryPageContent({
     }
 
     void loadDataset();
-
     return () => {
       cancelled = true;
     };
-  }, [initialItems, currentUserId, currentUserType, isReviewingDismissed, filterRefreshKey]);
-
+  }, [initialItems, currentUserType, isReviewingDismissed]);
   const currentItem = items[0];
 
   function removeCurrentItem(profileId: string, action: DiscoveryAction) {
@@ -154,7 +116,6 @@ export default function DiscoveryPageContent({
     }
 
     setActionHistory((currentHistory) => [...currentHistory, { action, item: selectedItem }]);
-
     setItems((currentItems) => currentItems.filter((item) => item.profile.id !== profileId));
   }
 
@@ -162,7 +123,7 @@ export default function DiscoveryPageContent({
     setActionError(null);
 
     try {
-      await dismissProfile(currentUserId, profileId);
+      await dismissProfile(profileId);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
@@ -175,7 +136,7 @@ export default function DiscoveryPageContent({
     setActionError(null);
 
     try {
-      await removeDismiss(currentUserId, profileId);
+      await removeDismiss(profileId);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
@@ -195,10 +156,10 @@ export default function DiscoveryPageContent({
 
     try {
       if (isReviewingDismissed) {
-        await removeDismiss(currentUserId, profileId);
+        await removeDismiss(profileId);
       }
 
-      const result = await expressInterest(currentUserId, profileId);
+      const result = await expressInterest(profileId);
 
       removeCurrentItem(profileId, "interest");
 
@@ -210,8 +171,8 @@ export default function DiscoveryPageContent({
         const matchedRoleRoot = selectedItem.profileType === "guestLecturer" ? "/guest_lecturer" : "/unit_coordinator";
 
         await createNotification({
-          id: "match-" + result.match.id + "-" + currentUserId,
-          recipientId: currentUserId,
+          id: "match-" + result.match.id + "-" + CURRENT_USER_PLACEHOLDER_ID,
+          recipientId: CURRENT_USER_PLACEHOLDER_ID,
           type: "match",
           title: "It's a match!",
           description: "You matched with " + matchedProfileName + ".",
@@ -248,12 +209,12 @@ export default function DiscoveryPageContent({
 
     try {
       if (lastAction.action === "interest") {
-        await removeInterest(currentUserId, targetUserId);
+        await removeInterest(targetUserId);
         setMatchModalData(null);
       }
 
       if (lastAction.action === "dismiss") {
-        await removeDismiss(currentUserId, targetUserId);
+        await removeDismiss(targetUserId);
       }
     } catch {
       setActionError("This isn't connected to a backend yet, so undo couldn't be saved.");
@@ -279,23 +240,6 @@ export default function DiscoveryPageContent({
 
   function handleBackToDiscovery() {
     setIsReviewingDismissed(false);
-  }
-
-  async function handleClearFilters() {
-    setActionError(null);
-
-    try {
-      if (currentUserType === "guestLecturer") {
-        await clearGuestLecturerDiscoveryFilters();
-      } else {
-        await clearUnitCoordinatorDiscoveryFilters();
-      }
-    } catch {
-      setActionError("This isn't connected to a backend yet, so filters couldn't be cleared.");
-      return;
-    }
-
-    setFilterRefreshKey((currentKey) => currentKey + 1);
   }
 
   if (isLoading) {
@@ -339,8 +283,9 @@ export default function DiscoveryPageContent({
               <button
                 type="button"
                 onClick={() => router.push(filterHref)}
-                className="flex min-w-36 items-center justify-center rounded-xl border border-gray-300 bg-white px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-100"
+                className="flex min-w-36 items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-100"
               >
+                <Image src={filterIcon} alt="" width={18} height={18} aria-hidden="true" />
                 Filters
               </button>
             )}
@@ -380,12 +325,9 @@ export default function DiscoveryPageContent({
             isReviewingDismissed={isReviewingDismissed}
             hasDismissedProfiles={dismissedProfilesExist}
             hasActionHistory={actionHistory.length > 0}
-            hasActiveFilters={hasActiveFilters}
             onUndo={handleUndo}
             onReviewDismissed={handleReviewDismissed}
             onBackToDiscovery={handleBackToDiscovery}
-            onClearFilters={handleClearFilters}
-            onEditFilters={() => router.push(filterHref)}
           />
         )}
       </div>
@@ -408,23 +350,17 @@ function EmptyDiscoveryState({
   isReviewingDismissed,
   hasDismissedProfiles,
   hasActionHistory,
-  hasActiveFilters,
   onUndo,
   onReviewDismissed,
   onBackToDiscovery,
-  onClearFilters,
-  onEditFilters,
 }: {
   isReviewingDismissed: boolean;
   hasDismissedProfiles: boolean;
   hasActionHistory: boolean;
-  hasActiveFilters: boolean;
 
   onUndo: () => void;
   onReviewDismissed: () => void;
   onBackToDiscovery: () => void;
-  onClearFilters: () => void;
-  onEditFilters: () => void;
 }) {
   if (isReviewingDismissed) {
     return (
@@ -444,30 +380,8 @@ function EmptyDiscoveryState({
     );
   }
 
-  if (hasActiveFilters) {
-    return (
-      <section className="rounded-3xl border border-gray-200 bg-white px-6 py-20 text-center shadow-sm">
-        <h2 className="text-2xl font-bold text-gray-900">No profiles match your filters</h2>
-
-        <p className="mx-auto mt-3 max-w-lg leading-7 text-gray-500">Change your preferences or clear the current filters.</p>
-
-        <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <button type="button" onClick={onEditFilters} className="rounded-xl bg-[#2d2d2d] px-6 py-3 font-semibold text-white hover:bg-black">
-            Edit Filters
-          </button>
-
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="rounded-xl border border-[#2d2d2d] px-6 py-3 font-semibold text-[#2d2d2d] hover:bg-gray-100"
-          >
-            Clear Filters
-          </button>
-        </div>
-      </section>
-    );
-  }
-
+  // Show the same "no more profiles" state whether or not filters are
+  // active, instead of a separate filter-specific empty message.
   return (
     <section className="rounded-3xl border border-gray-200 bg-white px-6 py-20 text-center shadow-sm">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-200">
@@ -558,34 +472,8 @@ function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: UnitCoordi
   });
 }
 
-function guestLecturerFiltersAreActive(filters: GuestLecturerDiscoveryFilters): boolean {
-  return (
-    filters.topics.length > 0 ||
-    filters.formats.length > 0 ||
-    filters.sessionDurations.length > 0 ||
-    filters.audienceSizes.length > 0 ||
-    filters.preferredDays.length > 0 ||
-    filters.location.trim().length > 0
-  );
-}
-
-function unitCoordinatorFiltersAreActive(filters: UnitCoordinatorDiscoveryFilters): boolean {
-  return (
-    filters.topics.length > 0 ||
-    filters.experienceLevels.length > 0 ||
-    filters.professionalFields.length > 0 ||
-    filters.formats.length > 0 ||
-    filters.sessionDurations.length > 0 ||
-    filters.availableDays.length > 0 ||
-    filters.location.trim().length > 0 ||
-    filters.requiresSpeakingExperience ||
-    filters.requiresInternationalExperience
-  );
-}
-
 function getAvailableDiscoveryItems(
   items: DiscoveryItem[],
-  currentUserId: string,
   interests: InterestRecord[],
   dismisses: DismissRecord[],
   matches: MatchRecord[],
@@ -594,17 +482,20 @@ function getAvailableDiscoveryItems(
   return items.filter((item) => {
     const targetUserId = item.profile.id;
 
-    const alreadyInterested = interests.some((interest) => interest.fromUserId === currentUserId && interest.toUserId === targetUserId);
+    const alreadyInterested = interests.some(
+      (interest) => interest.fromUserId === CURRENT_USER_PLACEHOLDER_ID && interest.toUserId === targetUserId,
+    );
 
-    const alreadyDismissed = dismisses.some((dismiss) => dismiss.fromUserId === currentUserId && dismiss.toUserId === targetUserId);
+    const alreadyDismissed = dismisses.some(
+      (dismiss) => dismiss.fromUserId === CURRENT_USER_PLACEHOLDER_ID && dismiss.toUserId === targetUserId,
+    );
 
-    return !alreadyInterested && !alreadyDismissed && !isMatchedOrBlocked(currentUserId, targetUserId, matches, blocks);
+    return !alreadyInterested && !alreadyDismissed && !isMatchedOrBlocked(targetUserId, matches, blocks);
   });
 }
 
 function getDismissedDiscoveryItems(
   items: DiscoveryItem[],
-  currentUserId: string,
   dismisses: DismissRecord[],
   matches: MatchRecord[],
   blocks: BlockRecord[],
@@ -612,21 +503,24 @@ function getDismissedDiscoveryItems(
   return items.filter((item) => {
     const targetUserId = item.profile.id;
 
-    const dismissedByCurrentUser = dismisses.some((dismiss) => dismiss.fromUserId === currentUserId && dismiss.toUserId === targetUserId);
+    const dismissedByCurrentUser = dismisses.some(
+      (dismiss) => dismiss.fromUserId === CURRENT_USER_PLACEHOLDER_ID && dismiss.toUserId === targetUserId,
+    );
 
-    return dismissedByCurrentUser && !isMatchedOrBlocked(currentUserId, targetUserId, matches, blocks);
+    return dismissedByCurrentUser && !isMatchedOrBlocked(targetUserId, matches, blocks);
   });
 }
 
-function isSameUserPair(firstStoredUserId: string, secondStoredUserId: string, currentUserId: string, targetUserId: string): boolean {
+function isSameUserPair(firstStoredUserId: string, secondStoredUserId: string, targetUserId: string): boolean {
   return (
-    (firstStoredUserId === currentUserId && secondStoredUserId === targetUserId) || (firstStoredUserId === targetUserId && secondStoredUserId === currentUserId)
+    (firstStoredUserId === CURRENT_USER_PLACEHOLDER_ID && secondStoredUserId === targetUserId) ||
+    (firstStoredUserId === targetUserId && secondStoredUserId === CURRENT_USER_PLACEHOLDER_ID)
   );
 }
 
-function isMatchedOrBlocked(currentUserId: string, targetUserId: string, matches: MatchRecord[], blocks: BlockRecord[]): boolean {
+function isMatchedOrBlocked(targetUserId: string, matches: MatchRecord[], blocks: BlockRecord[]): boolean {
   return (
-    matches.some((match) => isSameUserPair(match.firstUserId, match.secondUserId, currentUserId, targetUserId)) ||
-    blocks.some((block) => isSameUserPair(block.fromUserId, block.toUserId, currentUserId, targetUserId))
+    matches.some((match) => isSameUserPair(match.firstUserId, match.secondUserId, targetUserId)) ||
+    blocks.some((block) => isSameUserPair(block.fromUserId, block.toUserId, targetUserId))
   );
 }
