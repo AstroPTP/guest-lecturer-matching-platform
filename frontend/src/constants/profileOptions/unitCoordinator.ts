@@ -1,12 +1,6 @@
-/**
- * Option lists shared between the Unit Coordinator onboarding forms
- * ("components/unit_coordinator/*Form.tsx") and the My Profile edit page
- * ("app/unit_coordinator/my_profile/page.tsx"). Verified identical in
- * both places before being centralized here.
- */
+
 
 import type { SelectOption } from "@/constants/profileOptions/shared";
-
 export const schoolDepartmentOptions: SelectOption[] = [
   {
     value: "accounting-economics-finance",
@@ -32,13 +26,6 @@ export const academicRoleOptions: SelectOption[] = [
   { value: "associate-professor", label: "Associate Professor" },
   { value: "professor", label: "Professor" },
   { value: "academic-lead", label: "Academic Lead" },
-];
-
-
-export const formatOptions: SelectOption[] = [
-  { value: "face-to-face", label: "Face-to-Face" },
-  { value: "online", label: "Online" },
-  { value: "pre-recorded", label: "Pre-recorded" },
 ];
 
 export const engagementFrequencyOptions: SelectOption[] = [

@@ -6,15 +6,12 @@ import matchIcon from "@/assets/match.png";
 import messageIcon from "@/assets/message.png";
 import personIcon from "@/assets/person.png";
 import settingsIcon from "@/assets/settings.png";
-
 import type { DashboardMenuItem } from "@/components/dashboard/dashboardTypes";
 import type { UserRole } from "@/types/shared/userRole";
-
 import { getDashboardRoutes } from "@/config/routes";
 
 export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
   const routes = getDashboardRoutes(role);
-
   return [
     {
       label: "My Profile",
