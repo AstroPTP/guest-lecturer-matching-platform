@@ -48,7 +48,6 @@ export const experienceLevels: ExperienceLevelOption[] = [
   },
 ];
 export const deliveryFocusOptions: string[] = ["Seminar/Lecture", "Case Study", "Interactive Workshop", "Discussion Lead", "AMA Session"];
-
 export interface WeekDayOption {
   value: string;
   shortLabel: string;
@@ -81,7 +80,6 @@ export const sessionDurationOptions: SelectOption[] = [
   { value: "flexible", label: "Flexible" },
 ];
 
-
 export const guestLecturerAudienceSizeOptions: SelectOption[] = [
   { value: "small", label: "Small — up to 30 people" },
   { value: "medium", label: "Medium — 31 to 100 people" },
@@ -96,7 +94,6 @@ export const unitCoordinatorAudienceSizeOptions: SelectOption[] = [
   { value: "large", label: "Large — more than 100 students" },
   { value: "unknown", label: "Not confirmed yet" },
 ];
-
 
 export const guestLecturerAvailabilityFrequencyOptions: SelectOption[] = [
   { value: "weekly", label: "Every week" },
