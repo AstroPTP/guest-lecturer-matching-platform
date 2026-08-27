@@ -18,9 +18,9 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
 
 
-  // Get the role from the query parameters to determine where to redirect after login (because no backend)
   const searchParams = useSearchParams();
   const role = searchParams.get("role");
+  const registerHref = role ? `/register?role=${role}` : "/register";
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,16 +29,15 @@ export default function LoginForm() {
     setNeedsVerification(false);
 
 
-
     if (role === "coordinator") {
       router.push("/unit_coordinator/profile");
     } else {
-      router.push("/guest_lecturer/profile"); 
+      router.push("/guest_lecturer/profile");
     }
   }
 
-
   function handleGoogleLogin() {}
+
   function handleLinkedInLogin() {}
 
   return (
@@ -122,7 +121,7 @@ export default function LoginForm() {
 
         <p className="text-center mt-10 text-sm">
           Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-medium text-blue-600 underline hover:text-blue-700">
+          <Link href={registerHref} className="font-medium text-blue-600 underline hover:text-blue-700">
             Register here
           </Link>
         </p>
