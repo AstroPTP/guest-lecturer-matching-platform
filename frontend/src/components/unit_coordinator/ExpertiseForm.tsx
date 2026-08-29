@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import type { UnitCoordinatorExpertiseData } from "@/types/profile/unitCoordinatorProfileTypes";
 import { getUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
 export default function ExpertiseForm() {
@@ -84,12 +83,6 @@ export default function ExpertiseForm() {
       return;
     }
 
-    const expertiseData: UnitCoordinatorExpertiseData = {
-      selectedTopics,
-      experienceLevelsRequired,
-      industryRelevance,
-      learningObjective,
-    };
     router.push("/unit_coordinator/engagement");
   }
 
