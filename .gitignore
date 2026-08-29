@@ -69,4 +69,6 @@ coverage/
 .env.*.local
 
 # Prisma
+prisma/generated/
+/generated
 backend/prisma/generated/
