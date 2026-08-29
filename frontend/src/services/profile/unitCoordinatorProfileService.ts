@@ -1,12 +1,5 @@
-import type {
-  UnitCoordinatorBasicInformationData,
-  UnitCoordinatorConsentData,
-  UnitCoordinatorEngagementData,
-  UnitCoordinatorExpertiseData,
-  UnitCoordinatorProfileData,
+import type { UnitCoordinatorBasicInformationData, UnitCoordinatorConsentData, UnitCoordinatorEngagementData, UnitCoordinatorExpertiseData,UnitCoordinatorProfileData,
 } from "@/types/profile/unitCoordinatorProfileTypes";
-
-// need to connect
 
 
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
@@ -44,5 +37,5 @@ export async function saveUnitCoordinatorConsent(_data: UnitCoordinatorConsentDa
 }
 
 export async function getUnitCoordinatorProfile(): Promise<UnitCoordinatorProfileData | null> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  return null;
 }
