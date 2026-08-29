@@ -754,18 +754,19 @@ a { color: inherit; text-decoration: none; }
 .audit-heading { align-items: flex-end; display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) max-content; }
 .audit-heading h1 { font-size: clamp(30px, 4vw, 39px); letter-spacing: -.055em; margin: 0; }
 .audit-date { display: flex; flex-direction: column; gap: 5px; }
-.audit-date label { color: #737379; font-size: 7px; font-weight: 800; text-transform: uppercase; }
-.audit-date > div {
+.audit-date-label { color: #737379; font-size: 7px; font-weight: 800; text-transform: uppercase; }
+.audit-date-inputs {
   align-items: center;
   background: #f1f1f2;
   border-radius: 4px;
   display: flex;
-  font-size: 9px;
   gap: 8px;
-  padding: 9px 11px;
+  padding: 7px 10px;
   white-space: nowrap;
 }
-.audit-date img { filter: brightness(0); height: 14px !important; max-height: 14px; max-width: 14px; min-height: 14px; min-width: 14px; opacity: .4; width: 14px !important; }
+.audit-date-inputs label { display: flex; }
+.audit-date-inputs input { background: transparent; border: 0; color: #303035; font: inherit; font-size: 9px; outline: none; }
+.audit-date-inputs img { filter: brightness(0); height: 14px !important; max-height: 14px; max-width: 14px; min-height: 14px; min-width: 14px; opacity: .4; width: 14px !important; }
 .audit-tools {
   align-items: end;
   display: grid;

@@ -4,11 +4,7 @@ import analyticsIcon from "@/assets/analytics.png";
 import groupIcon from "@/assets/group.png";
 import historyIcon from "@/assets/history.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
-import {
-  analyticsStats,
-  eventFunnel,
-  monthlyRegistrations,
-} from "@/data/analytics";
+import { analyticsStats, eventFunnel, monthlyRegistrations } from "@/data/analytics";
 import { mostActiveGuestLecturers, topCoordinatorEngagement } from "@/data/engagement_leaders";
 import { eventFormats } from "@/data/event_formats";
 import { topRequestedExpertise } from "@/data/expertise_topics";
@@ -156,7 +152,7 @@ export default function AnalyticsPage() {
                 <span>
                   <b>{lecturer.participationRate}%</b> attended
                 </span>
-                <Link href={`/dashboard/lecturers/${encodeURIComponent(lecturer.id)}`}>View</Link>
+                <Link href={"/dashboard/lecturers/" + encodeURIComponent(lecturer.id)}>View</Link>
               </div>
             ))}
           </div>
@@ -185,7 +181,7 @@ export default function AnalyticsPage() {
                   </p>
                   <span><b>{coordinator.guestLecturers}</b> lecturers</span>
                   <span><b>{coordinator.eventsHosted}</b> events</span>
-                  <Link href={`/dashboard/coordinators/${encodeURIComponent(coordinator.id)}`}>View</Link>
+                  <Link href={"/dashboard/coordinators/" + encodeURIComponent(coordinator.id)}>View</Link>
                 </div>
               );
             })}
