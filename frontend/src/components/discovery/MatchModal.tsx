@@ -3,35 +3,25 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-
 import closeIcon from "@/assets/close.png";
 import matchIcon from "@/assets/match.png";
-
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
-
-import { formatOptions as unitCoordinatorFormatOptions } from "@/constants/profileOptions/unitCoordinator";
+import { formatOptions as unitCoordinatorFormatOptions } from "@/constants/profileOptions/shared";
 
 interface MatchModalProps {
   currentUserName: string;
   currentUserPhoto?: string;
-
   matchedItem: DiscoveryItem;
-
   messagesHref: string;
-
   onClose: () => void;
   onKeepBrowsing: () => void;
 }
 
 export default function MatchModal({ currentUserName, currentUserPhoto, matchedItem, messagesHref, onClose, onKeepBrowsing }: MatchModalProps) {
   const router = useRouter();
-
   const { fullName: otherUserName, photoPreview: otherUserPhoto } = matchedItem.profile.basicInformation;
-
   const currentUserInitials = getInitials(currentUserName);
-
   const otherUserInitials = getInitials(otherUserName);
-
   const details = getMatchDetails(matchedItem);
 
   useEffect(() => {
@@ -42,14 +32,10 @@ export default function MatchModal({ currentUserName, currentUserPhoto, matchedI
     }
 
     document.addEventListener("keydown", handleKeyDown);
-
     const previousOverflow = document.body.style.overflow;
-
     document.body.style.overflow = "hidden";
-
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-
       document.body.style.overflow = previousOverflow;
     };
   }, [onClose]);
@@ -82,11 +68,9 @@ export default function MatchModal({ currentUserName, currentUserPhoto, matchedI
         </button>
 
         <div className="flex flex-col items-center px-7 py-12 text-center sm:px-12 md:px-16">
-          {/* Profile images */}
           <div className="mb-9 flex items-center justify-center">
             <ProfileImage photo={currentUserPhoto} name={currentUserName} initials={currentUserInitials} variant="dark" />
 
-            {/* Match icon */}
             <div className="relative z-20 -mx-3 flex h-16 w-16 items-center justify-center rounded-full bg-white shadow-sm">
               <Image src={matchIcon} alt="" width={44} height={44} aria-hidden="true" className="h-11 w-11 object-contain" />
             </div>
@@ -101,25 +85,19 @@ export default function MatchModal({ currentUserName, currentUserPhoto, matchedI
           <p className="mt-4 max-w-lg text-base leading-7 text-[#4f5555] md:text-lg">
             You and <strong className="font-semibold text-[#2d2d2d]">{otherUserName}</strong> are both interested in connecting.
           </p>
-
-          {/* Match details */}
           <section className="mt-9 w-full rounded-lg bg-[#f3f3f4] p-6 text-left">
             <div>
               <h2 className="text-lg font-bold text-[#2d2d2d]">{details.title}</h2>
-
               {details.subtitle && <p className="mt-1 text-sm text-gray-600">{details.subtitle}</p>}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-3 text-sm font-medium text-[#4f5555]">
               {details.location && <span>{details.location}</span>}
-
               {details.duration && <span>{details.duration}</span>}
-
               {details.format && <span>{details.format}</span>}
             </div>
           </section>
 
-          {/* Buttons */}
           <div className="mt-10 flex w-full flex-col justify-center gap-4 sm:flex-row">
             <button
               type="button"
@@ -168,7 +146,6 @@ function getInitials(fullName: string): string {
   if (nameParts.length === 1) {
     return nameParts[0].slice(0, 2).toUpperCase();
   }
-
   return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase();
 }
 
@@ -182,24 +159,17 @@ function getMatchDetails(item: DiscoveryItem) {
       title: topicTitle,
 
       subtitle: item.profile.basicInformation.schoolDepartment,
-
       location: item.profile.engagementProfile.primaryLocation,
-
       duration: item.profile.engagementProfile.sessionDuration,
-
       format: formatUnitCoordinatorDeliveryFormat(item.profile.engagementProfile.formats[0]),
     };
   }
 
   return {
     title: topicTitle,
-
     subtitle: item.profile.basicInformation.professionalField,
-
     location: item.profile.engagementProfile.primaryLocation,
-
     duration: item.profile.engagementProfile.sessionDuration,
-
     format: item.profile.engagementProfile.format,
   };
 }

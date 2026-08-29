@@ -4,25 +4,17 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import FormNavButtons from "@/components/shared/FormNavButtons";
-
-import type { UnitCoordinatorEngagementData } from "@/types/profile/unitCoordinatorProfileTypes";
-
-import { getUnitCoordinatorEngagement, saveUnitCoordinatorEngagement } from "@/services/profile/unitCoordinatorProfileService";
-
-import { deliveryFocusOptions, sessionDurationOptions, unitCoordinatorAudienceSizeOptions, weekDays } from "@/constants/profileOptions/shared";
-
-import { engagementFrequencyOptions, formatOptions } from "@/constants/profileOptions/unitCoordinator";
+import { getUnitCoordinatorEngagement } from "@/services/profile/unitCoordinatorProfileService";
+import { deliveryFocusOptions, formatOptions, sessionDurationOptions, unitCoordinatorAudienceSizeOptions, weekDays } from "@/constants/profileOptions/shared";
+import { engagementFrequencyOptions } from "@/constants/profileOptions/unitCoordinator";
 
 export default function EngagementProfileForm() {
   const router = useRouter();
-
   const [primaryLocation, setPrimaryLocation] = useState("");
   const [sessionDuration, setSessionDuration] = useState("");
   const [audienceSize, setAudienceSize] = useState("");
-
   const [formats, setFormats] = useState<string[]>([]);
   const [deliveryFocus, setDeliveryFocus] = useState<string[]>([]);
-
   const [preferredDays, setPreferredDays] = useState<string[]>([]);
   const [preferredFrom, setPreferredFrom] = useState("");
   const [preferredTo, setPreferredTo] = useState("");
@@ -31,41 +23,28 @@ export default function EngagementProfileForm() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getUnitCoordinatorEngagement();
-
         if (cancelled || !data) {
           return;
         }
 
         setPrimaryLocation(data.primaryLocation);
-
         setSessionDuration(data.sessionDuration);
-
         setAudienceSize(data.audienceSize);
-
         setFormats(data.formats);
-
         setDeliveryFocus(data.deliveryFocus);
-
         setPreferredDays(data.schedule.preferredDays);
-
         setPreferredFrom(data.schedule.preferredFrom);
-
         setPreferredTo(data.schedule.preferredTo);
-
         setEngagementFrequency(data.schedule.engagementFrequency);
-
         setScheduleNotes(data.schedule.scheduleNotes);
       } catch {
-        // TODO(API): No backend to load a saved draft from yet; continue with a blank form.
       }
     }
 
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
@@ -141,38 +120,13 @@ export default function EngagementProfileForm() {
       return;
     }
 
-    const engagementProfileData: UnitCoordinatorEngagementData = {
-      primaryLocation,
-      sessionDuration,
-      audienceSize,
-      formats,
-      deliveryFocus,
-
-      schedule: {
-        preferredDays,
-        preferredFrom,
-        preferredTo,
-        engagementFrequency,
-        scheduleNotes,
-      },
-    };
-
-    try {
-      await saveUnitCoordinatorEngagement(engagementProfileData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/unit_coordinator/consent");
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 3 of 4</p>
-
         <div className="flex gap-2">
           <div className="h-[3px] w-12 rounded-full bg-[#2d2d2d]" />
           <div className="h-[3px] w-12 rounded-full bg-[#2d2d2d]" />
@@ -181,7 +135,6 @@ export default function EngagementProfileForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-12 text-center">
         <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-[#1f1f1f] md:text-5xl">Engagement Requirements</h1>
 
@@ -191,7 +144,6 @@ export default function EngagementProfileForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        {/* Main preferences */}
         <section>
           <div className="mb-7">
             <label htmlFor="primaryLocation" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
@@ -211,7 +163,6 @@ export default function EngagementProfileForm() {
           </div>
 
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            {/* Session Duration */}
             <div>
               <label htmlFor="sessionDuration" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
                 Expected Session Duration
@@ -233,7 +184,6 @@ export default function EngagementProfileForm() {
               </select>
             </div>
 
-            {/* Audience Size */}
             <div>
               <label htmlFor="audienceSize" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
                 Expected Audience Size
@@ -257,7 +207,6 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        {/* Preferred Format */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Preferred Format</h2>
 
@@ -285,7 +234,6 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        {/* Delivery Focus */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Delivery Focus</h2>
 
@@ -313,7 +261,6 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        {/* Preferred Schedule */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Preferred Schedule</h2>
 
@@ -321,7 +268,6 @@ export default function EngagementProfileForm() {
             Select the days and times that best fit your teaching schedule. The exact date can be confirmed with the Guest Lecturer later.
           </p>
 
-          {/* Days */}
           <div className="mt-7">
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">Preferred Days</p>
 
@@ -349,7 +295,6 @@ export default function EngagementProfileForm() {
             </div>
           </div>
 
-          {/* Time */}
           <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
             <div>
               <label htmlFor="preferredFrom" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
@@ -400,7 +345,6 @@ export default function EngagementProfileForm() {
             </div>
           </div>
 
-          {/* Notes */}
           <div className="mt-7">
             <label htmlFor="scheduleNotes" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
               Schedule Notes
@@ -420,7 +364,6 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        {/* Navigation */}
         <FormNavButtons submitLabel="Next" />
       </form>
     </main>

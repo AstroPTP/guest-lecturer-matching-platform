@@ -33,7 +33,7 @@ export function UserProfileManagement({ initialUser }: { initialUser: DirectoryU
     setNotice(
       action === "request-verification"
         ? "Additional verification request prepared."
-        : `${actionLabels[action]} completed.`,
+        : actionLabels[action] + " completed.",
     );
   }
 
