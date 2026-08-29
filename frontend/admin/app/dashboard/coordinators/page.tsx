@@ -11,7 +11,7 @@ export default function CoordinatorDirectoryPage() {
         id: coordinator.id,
         name: coordinator.name,
         detail: coordinator.unit,
-        href: `/dashboard/coordinators/${encodeURIComponent(coordinator.id)}`,
+        href: "/dashboard/coordinators/" + encodeURIComponent(coordinator.id),
         primaryMetric: coordinator.guestLecturers.toString(),
         secondaryMetric: coordinator.eventsHosted.toString(),
       }))}

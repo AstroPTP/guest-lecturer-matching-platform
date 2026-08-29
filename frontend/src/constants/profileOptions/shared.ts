@@ -47,15 +47,12 @@ export const experienceLevels: ExperienceLevelOption[] = [
     description: "15+ years of experience, or a senior leadership role.",
   },
 ];
-
-
 export const deliveryFocusOptions: string[] = ["Seminar/Lecture", "Case Study", "Interactive Workshop", "Discussion Lead", "AMA Session"];
 export interface WeekDayOption {
   value: string;
   shortLabel: string;
   label: string;
 }
-
 export const weekDays: WeekDayOption[] = [
   { value: "monday", shortLabel: "M", label: "Monday" },
   { value: "tuesday", shortLabel: "T", label: "Tuesday" },
