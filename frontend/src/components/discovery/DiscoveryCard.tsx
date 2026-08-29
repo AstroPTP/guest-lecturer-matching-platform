@@ -1,15 +1,10 @@
 "use client";
 
 import type { PublicGuestLecturerProfile } from "@/types/discovery/publicGuestLecturerProfileTypes";
-
 import type { PublicUnitCoordinatorProfile } from "@/types/discovery/publicUnitCoordinatorProfileTypes";
-
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
-
 import Image from "next/image";
-
-import { formatOptions as unitCoordinatorFormatOptions } from "@/constants/profileOptions/unitCoordinator";
-
+import { formatOptions as unitCoordinatorFormatOptions } from "@/constants/profileOptions/shared";
 import DiscoverySection from "./DiscoverySection";
 import DiscoveryTagGroup from "./DiscoveryTagGroup";
 import DiscoveryValue from "./DiscoveryValue";
@@ -22,23 +17,16 @@ export default function DiscoveryCard({
   onRestore,
 }: {
   item: DiscoveryItem;
-
   onExpressInterest: (profileId: string) => void;
-
   onDismiss: (profileId: string) => void;
-
   isReviewingDismissed?: boolean;
-
   onRestore?: (profileId: string) => void;
 }) {
   const { fullName, bio, photoPreview } = item.profile.basicInformation;
-
   let role = "";
-  let organisation = "";
-
+ let organisation = "";
   if (item.profileType === "guestLecturer") {
     role = item.profile.basicInformation.professionalRole;
-
     organisation = item.profile.basicInformation.professionalField;
   } else {
     role = item.profile.basicInformation.academicRole;
@@ -47,9 +35,7 @@ export default function DiscoveryCard({
 
   return (
     <article className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-[0_12px_40px_rgba(0,0,0,0.08)]">
-      {/* Hàng trên */}
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px]">
-        {/* Ảnh + tên + role + bio */}
         <section className="flex flex-col gap-5 p-6 sm:flex-row md:p-8">
           <div className="h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-200">
             {photoPreview ? (
@@ -72,7 +58,6 @@ export default function DiscoveryCard({
           </div>
         </section>
 
-        {/* Express Interest + Dismiss hoặc Restore */}
         <section className="flex flex-col justify-center gap-3 border-t border-gray-200 p-6 md:p-8 lg:border-l lg:border-t-0">
           <button
             type="button"
@@ -102,7 +87,6 @@ export default function DiscoveryCard({
         </section>
       </div>
 
-      {/* Nội dung riêng của từng role */}
       {item.profileType === "guestLecturer" ? <GuestLecturerDetails profile={item.profile} /> : <UnitCoordinatorDetails profile={item.profile} />}
     </article>
   );
@@ -117,7 +101,6 @@ function GuestLecturerDetails({ profile }: { profile: PublicGuestLecturerProfile
 
   return (
     <>
-      {/* Hàng dưới */}
       <div className="grid grid-cols-1 border-t border-gray-200 md:grid-cols-2">
         <DiscoverySection title="Engagement Requirements">
           <DiscoveryValue label="Primary location" value={engagementProfile.primaryLocation} />
@@ -142,7 +125,6 @@ function GuestLecturerDetails({ profile }: { profile: PublicGuestLecturerProfile
         </DiscoverySection>
       </div>
 
-      {/* Hàng cuối */}
       <DiscoverySection title="Guest Lecturer Experience" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
@@ -169,7 +151,6 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
 
   return (
     <>
-      {/* Hàng dưới */}
       <div className="grid grid-cols-1 border-t border-gray-200 md:grid-cols-2">
         <DiscoverySection title="Engagement Requirements">
           <DiscoveryValue label="Primary location" value={engagementProfile.primaryLocation} />
@@ -194,7 +175,6 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
         </DiscoverySection>
       </div>
 
-      {/* Hàng cuối */}
       <DiscoverySection title="Guest Lecturer Requirements" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />

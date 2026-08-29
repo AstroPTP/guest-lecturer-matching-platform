@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import type { UnitCoordinatorEngagementData } from "@/types/profile/unitCoordinatorProfileTypes";
 import { getUnitCoordinatorEngagement } from "@/services/profile/unitCoordinatorProfileService";
 import { deliveryFocusOptions, formatOptions, sessionDurationOptions, unitCoordinatorAudienceSizeOptions, weekDays } from "@/constants/profileOptions/shared";
 import { engagementFrequencyOptions } from "@/constants/profileOptions/unitCoordinator";
@@ -120,21 +119,6 @@ export default function EngagementProfileForm() {
       alert("The end time must be later than the start time.");
       return;
     }
-
-    const engagementProfileData: UnitCoordinatorEngagementData = {
-      primaryLocation,
-      sessionDuration,
-      audienceSize,
-      formats,
-      deliveryFocus,
-      schedule: {
-        preferredDays,
-        preferredFrom,
-        preferredTo,
-        engagementFrequency,
-        scheduleNotes,
-      },
-    };
 
     router.push("/unit_coordinator/consent");
   }
