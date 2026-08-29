@@ -16,7 +16,7 @@ export default function Navbar() {
           </a>
         </nav>
 
-        <a href="#role-cards" className="rounded-xl bg-black px-6 py-3 text-white transition-colors hover:bg-gray-800">
+        <a href="/auth/login" className="rounded-xl bg-black px-6 py-3 text-white transition-colors hover:bg-gray-800">
           Sign In
         </a>
       </div>

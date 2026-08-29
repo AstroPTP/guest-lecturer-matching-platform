@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
+import { GuestSpeakersController } from './guest-speakers.controller';
+import { GuestSpeakersService } from './guest-speakers.service';
 
-@Module({})
+@Module({
+  controllers: [GuestSpeakersController],
+  providers: [GuestSpeakersService],
+})
 export class GuestSpeakersModule {}
