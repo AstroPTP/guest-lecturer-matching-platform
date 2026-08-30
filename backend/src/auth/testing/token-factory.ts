@@ -137,7 +137,7 @@ export function tamperPayload(
   const tampered = `${header}.${base64url(JSON.stringify(decoded))}.${signature}`;
 
   // A tamper helper that quietly produced the original token again would make
-  // every test built on it pass for the wrong reason — the request would be
+  // every test built on it pass for the wrong reason: the request would be
   // accepted because the token was genuinely valid, not because the guard
   // failed. Fail loudly here instead.
   if (tampered === token) {

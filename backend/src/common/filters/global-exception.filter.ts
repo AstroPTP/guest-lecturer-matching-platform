@@ -91,7 +91,7 @@ function resolveStatus(exception: unknown): HttpStatus {
   }
 
   // Express middleware throws plain errors carrying a status rather than a
-  // Nest HttpException — body-parser's PayloadTooLargeError is the one we hit
+  // Nest HttpException. body-parser's PayloadTooLargeError is the one we hit
   // in practice. Without this, an oversized body reports 500 INTERNAL_ERROR,
   // which reads as a server fault when it was the caller's request that was
   // rejected, and hides a control that is in fact working (DOS-10).
@@ -149,7 +149,7 @@ function resolveCodeAndMessage(
     return { code: defaultCodeFor(status), message: defaultMessageFor(status) };
   }
 
-  // Not an HttpException, but resolveStatus recognised a 4xx on it — an
+  // Not an HttpException, but resolveStatus recognised a 4xx on it: an
   // Express middleware error such as body-parser's PayloadTooLargeError. The
   // caller gets the code matching that status, but never the library's own
   // message, which names internals.
