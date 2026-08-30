@@ -9,7 +9,7 @@ node tools/dev-idp/server.js
 
 Then set `AUTH0_DOMAIN=127.0.0.1:9099` in `backend/.env` (already the default in
 `backend/.env.example`) and start the backend. **Moving to the real tenant is
-that one variable** — no code changes.
+that one variable**, with no code changes.
 
 ## Accounts
 
@@ -21,7 +21,7 @@ that one variable** — no code changes.
 | `both@test.local` | `guest_speaker`, `unit_coordinator` |
 | `norole@test.local` | none |
 
-Any password. `norole@test.local` is not padding — checklist item **EOP-04**
+Any password. `norole@test.local` is not padding. Checklist item **EOP-04**
 requires proving a token carrying no roles is denied rather than defaulted, and
 that needs an account that genuinely has none.
 
@@ -30,15 +30,15 @@ that needs an account that genuinely has none.
 | Path | Purpose |
 |---|---|
 | `/.well-known/openid-configuration` | OIDC discovery |
-| `/.well-known/jwks.json` | Public signing key — what the backend verifies against |
+| `/.well-known/jwks.json` | Public signing key, what the backend verifies against |
 | `/oauth/token` | `POST {"username": "..."}` → `{ access_token, token_type, expires_in }` |
 | `/dev/users` | The table above, as JSON. Drives the demo login's picker. |
 
 Tokens are real RS256, signed with a key pair generated at startup, carrying
-the namespaced claim `https://glmp.curtin.edu.au/roles` exactly as Auth0 does
-(SAS §2.5.2 Interface 5). **The backend guard cannot tell this apart from a
-real tenant** — that is the whole point. A token from here fails and succeeds
-for the same reasons a real one does.
+the namespaced claim `https://glmp.curtin.edu.au/roles` exactly as Auth0 does.
+**The backend guard cannot tell this apart from a real tenant**, which is the
+whole point. A token from here fails and succeeds for the same reasons a real
+one does.
 
 The key pair is regenerated on every start, so restarting the IdP invalidates
 every token it issued. Log in again.
@@ -50,13 +50,13 @@ production that is a complete authentication bypass. Three gates, none of them
 decoration:
 
 1. **Refuses to start when `NODE_ENV=production`.**
-2. **Binds `127.0.0.1` only**, never `0.0.0.0` — unreachable off-host even if it
+2. **Binds `127.0.0.1` only**, never `0.0.0.0`, so it is unreachable off-host even if it
    somehow runs.
 3. **Lives outside `backend/` and `frontend/`**, so neither build can import it
    and it cannot be bundled into a deployed artefact by accident.
 
 If you are tempted to relax one of these to make something work, the thing you
-actually want is the real Auth0 tenant. Ask Naveen or Liz for access.
+actually want is the real Auth0 tenant.
 
 ## Quick check
 

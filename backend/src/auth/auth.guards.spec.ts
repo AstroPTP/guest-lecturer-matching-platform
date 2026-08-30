@@ -34,7 +34,7 @@ import {
  *
  * A local HTTP server stands in for the Auth0 tenant's JWKS endpoint. That
  * keeps the suite offline and credential-free while still exercising the real
- * jwks-rsa fetch, cache and key-matching path — mocking the library out would
+ * jwks-rsa fetch, cache and key-matching path. Mocking the library out would
  * test the mock instead of the thing that has to be right.
  */
 
@@ -101,7 +101,7 @@ describe('Auth guards', () => {
 
     // A loopback domain, so auth0JwksUri()/auth0Issuer() resolve to the local
     // stand-in over http. The strategy is exercised exactly as it runs in
-    // production — same derivation, same library, different host.
+    // production: same derivation, same library, different host.
     const testEnv = {
       nodeEnv: 'test',
       port: 0,
@@ -142,7 +142,7 @@ describe('Auth guards', () => {
   const withToken = (path: string, token: string) =>
     get(path).set('Authorization', `Bearer ${token}`);
 
-  describe('spoofing — forged tokens', () => {
+  describe('spoofing, forged tokens', () => {
     it('SPF-01 rejects a request with no Authorization header', async () => {
       const res = await get('/test/protected').expect(401);
 
@@ -376,7 +376,7 @@ describe('Auth guards', () => {
     });
   });
 
-  describe('error envelope (SAS §2.5.5)', () => {
+  describe('error envelope', () => {
     it('INF-01 returns exactly the four envelope fields and no internals', async () => {
       const res = await get('/test/protected').expect(401);
 

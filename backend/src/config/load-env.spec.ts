@@ -64,10 +64,10 @@ describe('loadEnvFile', () => {
 /**
  * The defect this guards against is an absence, not a wrong value: the boot
  * path simply never loaded the file. No unit test of a function can catch
- * that, because there is no function to call — so this asserts the wiring in
+ * that, because there is no function to call, so this asserts the wiring in
  * main.ts directly. If the call is removed or moved after validateEnv(), the
  * application goes back to refusing to start with a correctly filled-in .env,
- * which is exactly what was reported against pull request #34.
+ * which is exactly what was reported in review.
  */
 describe('the boot path', () => {
   const main = readFileSync(resolve(__dirname, '..', 'main.ts'), 'utf8');

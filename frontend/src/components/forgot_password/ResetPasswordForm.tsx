@@ -43,19 +43,14 @@ export default function ResetPasswordForm() {
     passwordStrength++;
   }
 
-  let strengthLabel = "";
-
-  if (newPassword.length > 0) {
-    if (passwordStrength === 1) {
-      strengthLabel = "Weak";
-    } else if (passwordStrength === 2) {
-      strengthLabel = "Fair";
-    } else if (passwordStrength === 3) {
-      strengthLabel = "Good";
-    } else if (passwordStrength === 4) {
-      strengthLabel = "Strong";
-    }
-  }
+  const strengthState =
+    newPassword.length === 0
+      ? { label: "", color: "#E5E7EB" }
+      : passwordStrength <= 1
+        ? { label: "Weak", color: "#EF4444" }
+        : passwordStrength <= 3
+          ? { label: "Medium", color: "#F59E0B" }
+          : { label: "Strong", color: "#10B981" };
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -143,11 +138,17 @@ export default function ResetPasswordForm() {
         <div className="space-y-4 pt-2">
           <div className="flex items-center gap-2">
             {[1, 2, 3, 4].map((level) => (
-              <div key={level} className={"h-1 flex-1 rounded-full " + (passwordStrength >= level ? "bg-teal-500" : "bg-gray-300")} />
+              <div
+                key={level}
+                className="h-1 flex-1 rounded-full transition-colors"
+                style={{ backgroundColor: passwordStrength >= level ? strengthState.color : "#E5E7EB" }}
+              />
             ))}
           </div>
 
-          <p className="min-h-5 text-sm text-right font-medium text-gray-700">{strengthLabel}</p>
+          <p className="min-h-5 text-sm text-right font-medium transition-colors" style={{ color: strengthState.color }}>
+            {strengthState.label}
+          </p>
 
           <div className="space-y-3 pt-2">
             <p className="text-sm font-bold text-[#2d2d2d] uppercase tracking-wider">Password Requirements</p>
@@ -184,7 +185,7 @@ export default function ResetPasswordForm() {
           </div>
 
           {confirmPassword !== "" && (
-            <p className={"text-sm " + (passwordsMatch ? "text-gray-600" : "text-red-600")}>
+            <p className={"text-sm font-medium " + (passwordsMatch ? "text-[#10B981]" : "text-[#EF4444]")}>
               {passwordsMatch ? "Passwords match." : "Passwords do not match."}
             </p>
           )}

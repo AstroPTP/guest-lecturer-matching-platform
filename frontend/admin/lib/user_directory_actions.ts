@@ -35,7 +35,7 @@ export function getUserDirectoryAction(
 ): UserDirectoryAction {
   return {
     label: directoryActionLabels[verificationStatus][accountStatus],
-    href: `/dashboard/users/${encodeURIComponent(userId)}`,
+    href: "/dashboard/users/" + encodeURIComponent(userId),
   };
 }
 

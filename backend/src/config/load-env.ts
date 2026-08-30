@@ -1,7 +1,7 @@
 /**
  * Loads backend/.env into process.env before anything reads it.
  *
- * This exists because of a defect found reviewing pull request #34: the
+ * This exists because of a defect found in review: the
  * validation in env.validation.ts assumed something had already populated
  * process.env, and nothing had. `nest start` does not read a .env file, and
  * neither does `node dist/main`. Only prisma.config.ts did, through its own
@@ -15,7 +15,7 @@
  * 1. Node's own parser rather than dotenv. `util.parseEnv` is the same parser
  *    that backs `--env-file`, built in from Node 20.12, and .nvmrc pins 22.13.
  *    dotenv is currently in the lockfile only as a transitive dependency of
- *    @prisma/config — using it here would mean declaring a new runtime
+ *    @prisma/config. Using it here would mean declaring a new runtime
  *    dependency to do something the runtime already does.
  *
  * 2. Parse and assign here rather than calling `process.loadEnvFile`. That
@@ -33,7 +33,7 @@
  * 4. A missing file is not an error. CI has no .env and the deployed
  *    environment will not have one either; both set real environment
  *    variables. If the values genuinely are not set anywhere, validateEnv()
- *    still stops the process a moment later and names every one of them —
+ *    still stops the process a moment later and names every one of them,
  *    that behaviour is the point and it is unchanged.
  */
 

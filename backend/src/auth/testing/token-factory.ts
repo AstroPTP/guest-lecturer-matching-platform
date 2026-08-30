@@ -95,7 +95,7 @@ export function signToken(options: TokenOptions): string {
 }
 
 /**
- * A token claiming `{"alg":"none"}` with an empty signature — the classic
+ * A token claiming `{"alg":"none"}` with an empty signature. The classic
  * algorithm-confusion attack (checklist SPF-03).
  */
 export function signAlgNoneToken(
@@ -120,7 +120,7 @@ export function signAlgNoneToken(
 
 /**
  * Takes a valid token, rewrites its payload, and reattaches the original
- * signature — what an attacker editing their own roles claim in devtools
+ * signature. This is what an attacker editing their own roles claim in devtools
  * produces (checklist TAM-04, EOP-03).
  */
 export function tamperPayload(

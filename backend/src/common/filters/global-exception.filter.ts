@@ -11,12 +11,12 @@ import type { Request, Response } from 'express';
 import { ErrorCode, ErrorEnvelope } from '../error-codes';
 
 /**
- * Turns every error into the SAS §2.5.5 envelope.
+ * Turns every error into the four-field envelope.
  *
  * Two obligations, pulling in opposite directions, and both have to be met:
  *
- *   - the client gets exactly four fields and nothing else — no stack, no file
- *     path, no SQL, no dependency name (checklist INF-01);
+ *   - the client gets exactly four fields and nothing else: no stack, no file
+ *     path, no SQL, no dependency name (INF-01);
  *   - the server log keeps the full detail, or nothing is diagnosable
  *     (checklist INF-02).
  *
@@ -36,8 +36,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const status = resolveStatus(exception);
     const { code, message } = resolveCodeAndMessage(exception, status);
 
-    // Method and path only. Never the body, the query string or the headers —
-    // SRS §6.2 forbids logging request payloads and credentials, and an
+    // Method and path only. Never the body, the query string or the headers.
+    // Request payloads and credentials must not be logged, and an
     // Authorization header in a log file is a credential at rest (INF-06).
     const context = `${request.method} ${request.path} -> ${status} ${code} [${correlationId}]`;
 

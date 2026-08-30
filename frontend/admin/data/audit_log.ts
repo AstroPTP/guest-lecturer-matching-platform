@@ -33,9 +33,9 @@ export const auditActorRoles: AuditActorRole[] = [
 ];
 
 export const auditDateRange = {
-  start: "May 01, 2026",
-  end: "May 31, 2026",
-};
+  start: "2026-05-01T00:00",
+  end: "2026-05-31T23:59",
+} as const;
 
 export const auditMetrics = [
   { label: "Total actions", value: "2,841" },

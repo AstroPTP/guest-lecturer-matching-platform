@@ -8,7 +8,7 @@ import type { AppEnv } from '../config/env.validation';
 import type { AuthenticatedUser } from './authenticated-user';
 import { AppRole, isAppRole } from './roles';
 
-/** SAS §2.5.2 Interface 4 — the JWKS response is cached for ten minutes. */
+/** The JWKS response is cached for ten minutes. */
 const JWKS_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
 
 /**
@@ -27,7 +27,7 @@ interface Auth0JwtPayload {
  * published signing keys, then reduces it to an AuthenticatedUser.
  *
  * The security of the whole authorisation model rests on this class. A role is
- * not trusted because the token says so — it is trusted because the token
+ * not trusted because the token says so. It is trusted because the token
  * carrying it was signed by a private key we never hold, the matching public
  * key is published at a URL we control the address of, and the only thing that
  * can put that claim into an Auth0-signed token is the Post-Login Action,
@@ -55,7 +55,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // Checked, not merely configured. A token for another audience, or from
       // another tenant, is a valid signature over the wrong claims.
       //
-      // Auth0's issuer carries a trailing slash and it is not optional — it is
+      // Auth0's issuer carries a trailing slash and it is not optional. It is
       // compared against `iss` as an exact string.
       issuer: auth0Issuer(env.auth0Domain),
       audience: env.auth0Audience,
@@ -63,7 +63,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       // The single most important line in this file. Without an explicit
       // allowlist, a token whose header says {"alg":"none"} or one signed
       // HS256 using the RSA public key as the shared secret can be made to
-      // verify — the algorithm-confusion attack. Checklist SPF-03 and SPF-05.
+      // verify. This is the algorithm-confusion attack, SPF-03 and SPF-05.
       algorithms: ['RS256'],
 
       // Expiry is enforced by passport-jwt. Stated explicitly so that turning
@@ -97,15 +97,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   /**
    * Pulls the role list out of the namespaced claim.
    *
-   * The namespace — https://glmp.curtin.edu.au/roles, fixed by SAS §2.5.2
-   * Interface 5 — is not decoration. Auth0 silently discards custom claims
-   * whose name is not a URI, so a claim called plain `roles` never appears in
-   * the token at all, with no error anywhere to say why.
+   * The namespace, https://glmp.curtin.edu.au/roles, is not decoration. Auth0
+   * silently discards custom claims whose name is not a URI, so a claim called
+   * plain `roles` never appears in the token at all, with no error anywhere to
+   * say why.
    *
    * The Action that sets it reads `app_metadata`, never `user_metadata`.
    * user_metadata is writable by the end user through Auth0's own endpoints,
-   * so a role stored there would be self-assignable — precisely the
-   * elevation-of-privilege threat SAS §2.5.6 Table 5 claims is mitigated.
+   * so a role stored there would be self-assignable. That is the
+   * elevation-of-privilege path this closes.
    *
    * A missing or malformed claim yields an empty array, never a default role.
    * That is the fail-closed behaviour checklist item EOP-04 tests for: if the

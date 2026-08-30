@@ -1,5 +1,5 @@
 /**
- * Error codes from SAS §2.5.5 Table 4.
+ * Error codes returned by the API.
  *
  * The frontend branches on these, so they are part of the API contract and
  * must not be reworded. The human-readable message beside them may change.
@@ -22,8 +22,8 @@ export const ErrorCode = {
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /**
- * The response envelope from SAS §2.5.5. Exactly these four fields reach the
- * client — no stack, no path, no SQL, no dependency name (checklist INF-01).
+ * The response envelope. Exactly these four fields reach the client: no stack,
+ * no path, no SQL, no dependency name (INF-01).
  */
 export interface ErrorEnvelope {
   code: ErrorCode;

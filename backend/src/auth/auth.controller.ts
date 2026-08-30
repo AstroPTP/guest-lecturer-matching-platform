@@ -8,23 +8,22 @@ import { Roles } from './roles.decorator';
 /**
  * Auth routes.
  *
- * The throttle sits on the controller rather than on individual routes, which
- * is what KAN-226 asked for: SRS §6.2 puts the tighter 10/min limit on
- * /auth/*, and a route-level decorator has to be remembered every time a route
- * is added. At controller level a new auth route inherits it.
+ * The throttle sits on the controller rather than on individual routes. A
+ * route-level decorator has to be remembered every time a route is added; at
+ * controller level a new auth route inherits the tighter 10/min limit
+ * automatically.
  *
- * This does not touch Elizabeth's configuration from PR #15 — her 60/min
- * global default and her 10/min on the demo POST /login both stand. This adds
- * the tier for the real auth routes as they arrive.
+ * This does not change the existing throttler configuration. The 60/min global
+ * default and the 10/min on the demo POST /login both stand as they are.
  */
 @Controller('auth')
 @Throttle({ default: { limit: 10, ttl: 60000 } })
 export class AuthController {
   /**
    * Echoes back what the backend concluded about the caller after verifying
-   * their token. It is what the threat-model checklist items are run against,
-   * and what the frontend can hit to confirm a session is wired up correctly
-   * without waiting on GET /users/me.
+   * their token. It is what the guard tests are run against, and what the
+   * frontend can hit to confirm a session is wired up correctly without
+   * waiting on GET /users/me.
    *
    * Returns nothing that is not already in the caller's own token, so it
    * discloses nothing they could not read themselves.
@@ -47,7 +46,7 @@ export class AuthController {
    * a role their own token already told them they hold, and a caller who is
    * refused learns only that they do not.
    *
-   * Delete this once a real ccae_admin endpoint exists — it is scaffolding for
+   * Delete this once a real ccae_admin endpoint exists. It is scaffolding for
    * verification, not a feature.
    */
   @Get('admin_only')

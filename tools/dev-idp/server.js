@@ -1,11 +1,11 @@
 /*
- * Development identity provider — a stand-in for our Auth0 tenant.
+ * Development identity provider, a stand-in for the Auth0 tenant.
  *
  * WHY THIS EXISTS
  * ---------------
  * The backend guards verify an RS256 signature against a published JWKS. That
  * needs an identity provider, and until the real Auth0 tenant is configured
- * there isn't one — which would mean shipping auth code nobody had ever run.
+ * there isn't one, which would mean shipping auth code nobody had ever run.
  * This serves a JWKS and mints tokens of exactly the shape Auth0 issues, so
  * the whole flow is exercisable today with no account and no network.
  *
@@ -26,8 +26,6 @@
  *
  * If you are tempted to relax any of those to make something work, the thing
  * you actually want is the real tenant.
- *
- * Author: Naveen Fernando (security). Jira KAN-223.
  */
 
 'use strict';
@@ -49,7 +47,7 @@ const HOST = '127.0.0.1'; // Gate 2. Do not make this configurable.
 
 const ISSUER = `http://${HOST}:${PORT}/`;
 const AUDIENCE = process.env.DEV_IDP_AUDIENCE ?? 'https://glmp-api.curtin.edu.au';
-const ROLES_CLAIM = 'https://glmp.curtin.edu.au/roles'; // SAS 2.5.2 Interface 5
+const ROLES_CLAIM = 'https://glmp.curtin.edu.au/roles';
 const KID = 'dev-idp-key-1';
 const TOKEN_TTL_SECONDS = 60 * 60;
 
@@ -57,7 +55,7 @@ const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 20
 const jwk = { ...publicKey.export({ format: 'jwk' }), kid: KID, alg: 'RS256', use: 'sig' };
 
 /*
- * Test users. The three SRS roles, plus one holding none — that last account
+ * Test users. The three application roles, plus one holding none. That last
  * is not padding: EOP-04 requires proving a token with no roles claim is
  * denied rather than defaulted, and you cannot test that without one.
  */
@@ -105,7 +103,7 @@ function mintAccessToken(user) {
     email: user.email,
     name: user.name,
     // Namespaced, because Auth0 silently drops custom claims that are not
-    // URIs. Modelling that faithfully is the point — a token from here has to
+    // URIs. Modelling that faithfully is the point: a token from here has to
     // fail and succeed for the same reasons a real one does.
     [ROLES_CLAIM]: user.roles,
   };

@@ -7,13 +7,10 @@ export interface GuestLecturerBasicInformationData extends CommonBasicInformatio
 
 export interface GuestLecturerExpertiseData extends CommonExpertiseData {
   experienceLevel: string;
-
   hasSpeakingExperience: boolean;
   speakingDetails: string;
-
   hasInternationalExperience: boolean;
   internationalDetails: string;
-
   linkedin: string;
 }
 
@@ -36,11 +33,9 @@ export interface GuestLecturerConsentData {
   profileMatchingConsent: boolean;
   informationAccurate: boolean;
   receiveUpdates: boolean;
-
   futureTeachingReuse: boolean;
   otherUnitsReuse: boolean;
   timeLimitedUse: boolean;
-
   termsAccepted: boolean;
   verificationStatus: string;
 }
