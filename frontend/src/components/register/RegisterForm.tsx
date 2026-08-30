@@ -26,9 +26,17 @@ export default function RegisterForm() {
     hasSpecialCharacter,
     hasNumber,
     strength: passwordStrength,
-    strengthLabel,
     isValid: isPasswordValid,
   } = getPasswordRequirements(password);
+
+  const strengthState =
+    password.length === 0
+      ? { label: "", color: "#E5E7EB" }
+      : passwordStrength <= 1
+        ? { label: "Weak", color: "#EF4444" }
+        : passwordStrength <= 3
+          ? { label: "Medium", color: "#F59E0B" }
+          : { label: "Strong", color: "#10B981" };
 
   const router = useRouter();
 
@@ -170,11 +178,17 @@ export default function RegisterForm() {
             <div className="mt-4 space-y-4">
               <div className="flex items-center gap-2">
                 {[1, 2, 3, 4].map((level) => (
-                  <div key={level} className={"h-1 flex-1 rounded-full " + (passwordStrength >= level ? "bg-teal-500" : "bg-gray-300")} />
+                  <div
+                    key={level}
+                    className="h-1 flex-1 rounded-full transition-colors"
+                    style={{ backgroundColor: passwordStrength >= level ? strengthState.color : "#E5E7EB" }}
+                  />
                 ))}
               </div>
 
-              <p className="min-h-5 text-right text-sm font-medium text-gray-700">{strengthLabel}</p>
+              <p className="min-h-5 text-right text-sm font-medium transition-colors" style={{ color: strengthState.color }}>
+                {strengthState.label}
+              </p>
 
               <div className="space-y-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-gray-800">Password Requirements</p>

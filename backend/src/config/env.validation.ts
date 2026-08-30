@@ -24,8 +24,9 @@ export interface AppEnv {
   /** The Auth0 API identifier. Compared against the token's `aud`. */
   auth0Audience: string;
   /**
-   * Namespaced roles claim, fixed by SAS §2.5.2 Interface 5. Configurable only
-   * so the tests and the dev IdP can drive it — do not change it in .env.
+   * Namespaced roles claim. Auth0 silently drops custom claims whose names
+   * are not URIs, so the namespace is not decoration. Configurable only so the
+   * tests and the dev IdP can drive it. Do not change it in .env.
    */
   auth0RolesClaim: string;
   databaseUrl: string;
@@ -116,8 +117,8 @@ function readPort(source: NodeJS.ProcessEnv, errors: EnvErrors): number {
  * Comma-separated list of exact origins. Deliberately strict: an origin is
  * scheme + host + optional port and nothing else. A wildcard is rejected
  * outright because CORS is configured with credentials enabled, and
- * `origin: '*'` with credentials is the misconfiguration that item CRS-02 of
- * the threat-model checklist exists to catch.
+ * `origin: '*'` with credentials is the misconfiguration this is meant to
+ * catch: the browser would send cookies to any site that asked.
  */
 function readAllowedOrigins(
   source: NodeJS.ProcessEnv,

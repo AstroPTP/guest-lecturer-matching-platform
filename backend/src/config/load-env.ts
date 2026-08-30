@@ -1,7 +1,7 @@
 /**
  * Loads backend/.env into process.env before anything reads it.
  *
- * This exists because of a defect found reviewing pull request #34: the
+ * This exists because of a defect found in review: the
  * validation in env.validation.ts assumed something had already populated
  * process.env, and nothing had. `nest start` does not read a .env file, and
  * neither does `node dist/main`. Only prisma.config.ts did, through its own

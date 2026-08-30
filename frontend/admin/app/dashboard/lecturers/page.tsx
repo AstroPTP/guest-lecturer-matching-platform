@@ -11,9 +11,9 @@ export default function LecturerDirectoryPage() {
         id: lecturer.id,
         name: lecturer.name,
         detail: lecturer.expertise,
-        href: `/dashboard/lecturers/${encodeURIComponent(lecturer.id)}`,
+        href: "/dashboard/lecturers/" + encodeURIComponent(lecturer.id),
         primaryMetric: lecturer.eventsAttended.toString(),
-        secondaryMetric: `${lecturer.participationRate}%`,
+        secondaryMetric: lecturer.participationRate + "%",
       }))}
       secondaryMetricLabel="Participation Rate"
       title="Guest Lecturer Directory"

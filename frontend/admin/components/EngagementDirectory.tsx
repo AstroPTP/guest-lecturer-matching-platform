@@ -46,7 +46,7 @@ export function EngagementDirectory({
 
       <section className="engagement-directory-card">
         <div className="engagement-directory-scroll">
-          <table className={`engagement-directory-table${hasActions ? " has-actions" : ""}`}>
+          <table className={"engagement-directory-table" + (hasActions ? " has-actions" : "")}>
             <thead>
               <tr>
                 <th>User</th>

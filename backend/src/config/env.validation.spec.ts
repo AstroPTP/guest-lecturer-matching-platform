@@ -138,7 +138,7 @@ describe('validateEnv', () => {
   });
 
   describe('roles claim', () => {
-    it('defaults to the namespace fixed by SAS 2.5.2', () => {
+    it('defaults to the namespaced roles claim', () => {
       expect(validateEnv(validEnv()).auth0RolesClaim).toBe(
         'https://glmp.curtin.edu.au/roles',
       );
@@ -165,8 +165,8 @@ describe('validateEnv', () => {
       ]);
     });
 
-    // CRS-02: a wildcard origin with credentials enabled is the exact
-    // misconfiguration the threat-model checklist tests for.
+    // CRS-02: a wildcard origin with credentials enabled would let any site
+    // read authenticated responses.
     it('rejects a wildcard origin', () => {
       const source = validEnv();
       source.FRONTEND_URL = '*';

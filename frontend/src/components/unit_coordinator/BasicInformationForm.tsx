@@ -3,51 +3,38 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-
-import type { UnitCoordinatorBasicInformationData } from "@/types/profile/unitCoordinatorProfileTypes";
-
-import { getUnitCoordinatorBasicInformation, saveUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
-
+import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import { academicRoleOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
 
 export default function BasicInformationForm() {
   const router = useRouter();
-
   const [fullName, setFullName] = useState("");
   const [schoolDepartment, setSchoolDepartment] = useState("");
   const [academicRole, setAcademicRole] = useState("");
   const [bio, setBio] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
-
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getUnitCoordinatorBasicInformation();
-
         if (cancelled || !data) {
           return;
         }
 
         setFullName(data.fullName);
-
         setSchoolDepartment(data.schoolDepartment);
-
         setAcademicRole(data.academicRole);
-
         setBio(data.bio);
-
         setPhotoPreview(data.photoPreview);
       } catch {
-        // TODO(API): No backend to load a saved draft from yet; continue with a blank form.
+    
       }
     }
 
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
@@ -67,39 +54,20 @@ export default function BasicInformationForm() {
     }
 
     const reader = new FileReader();
-
     reader.onload = () => {
       const imageData = reader.result as string;
       setPhotoPreview(imageData);
     };
-
     reader.readAsDataURL(file);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    const basicInformationData: UnitCoordinatorBasicInformationData = {
-      fullName,
-      schoolDepartment,
-      academicRole,
-      bio,
-      photoPreview,
-    };
-
-    try {
-      await saveUnitCoordinatorBasicInformation(basicInformationData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/unit_coordinator/expertise");
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold tracking-[0.2em] text-gray-500">STEP 1 OF 4</p>
 
@@ -111,7 +79,6 @@ export default function BasicInformationForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-14 text-center">
         <h1 className="mb-5 text-5xl font-extrabold">Basic Information</h1>
 
@@ -122,7 +89,6 @@ export default function BasicInformationForm() {
       </div>
 
       <form onSubmit={handleSubmit}>
-        {/* Upload Photo */}
         <div className="mb-12 flex flex-col items-start gap-6 sm:flex-row sm:items-center">
           <button
             type="button"
@@ -154,12 +120,10 @@ export default function BasicInformationForm() {
           </div>
         </div>
 
-        {/* Full Name */}
         <div className="mb-8">
           <label htmlFor="fullName" className="mb-2 block text-sm font-bold uppercase tracking-widest">
             Full Name
           </label>
-
           <input
             id="fullName"
             name="fullName"
@@ -172,7 +136,6 @@ export default function BasicInformationForm() {
           />
         </div>
 
-        {/* Department and Role */}
         <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
             <label htmlFor="schoolDepartment" className="mb-2 block text-sm font-bold uppercase tracking-widest">
@@ -219,7 +182,6 @@ export default function BasicInformationForm() {
           </div>
         </div>
 
-        {/* Bio */}
         <div>
           <div className="mb-2 flex justify-between">
             <label htmlFor="bio" className="text-sm font-bold uppercase tracking-widest">
@@ -241,7 +203,6 @@ export default function BasicInformationForm() {
           />
         </div>
 
-        {/* Next */}
         <div className="mt-14 flex justify-end">
           <button
             type="submit"

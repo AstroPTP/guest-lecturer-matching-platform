@@ -6,12 +6,12 @@ import { guestLecturerDirectory } from "@/data/engagement_leaders";
 import { lecturerEventHistory, type LecturerEventParticipation } from "@/data/lecturer_event_history";
 
 interface LecturerActivityPageProps {
-  params: Promise<{ lecturerId: string }>;
+  params: Promise<{ lectureId: string }>;
 }
 
 export default async function LecturerActivityPage({ params }: LecturerActivityPageProps) {
-  const { lecturerId } = await params;
-  const decodedId = decodeURIComponent(lecturerId);
+  const { lectureId } = await params;
+  const decodedId = decodeURIComponent(lectureId);
   const lecturer = guestLecturerDirectory.find((candidate) => candidate.id === decodedId);
 
   if (!lecturer) notFound();
@@ -61,7 +61,7 @@ function EventHistorySection({
               <div><strong>{event.title}</strong><small>{event.id} · {event.date}</small></div>
               <span>{event.format}</span>
               <p><small>Unit Coordinator</small><strong>{event.coordinator}</strong></p>
-              <b className={`event-participation-status ${event.status.toLowerCase()}`}>{event.status}</b>
+              <b className={"event-participation-status " + event.status.toLowerCase()}>{event.status}</b>
             </article>
           ))}
         </div>
