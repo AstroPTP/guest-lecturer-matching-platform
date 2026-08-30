@@ -13,6 +13,7 @@ This document is the single source of truth for how we work together.
 - [Workflow](#workflow)
 - [Pull Requests](#pull-requests)
 - [Automated Checks (Pre-commit & CI)](#automated-checks-pre-commit--ci)
+- [Where Things Live](#where-things-live)
 - [What Not To Do](#what-not-to-do)
 
 ---
@@ -178,6 +179,22 @@ skipped, but the other app's job still runs independently.
 the code lints, existing tests pass, and it builds. It does not check whether your feature
 actually does what it's supposed to. A human review is still required before merging (see
 [Pull Requests](#pull-requests) above).
+
+---
+
+## Where Things Live
+
+One row per area of the codebase, so anyone picking up work knows where to look
+without reading every directory first.
+
+Add your row in the same pull request that adds the area. Describe what the code
+does and where it is. Not who wrote it, not which ticket it came from: that is
+what the commit history and the pull request are for.
+
+| Area | Path |
+|---|---|
+| Rate limiting and HTTP security headers | `backend/src/main.ts`, `backend/src/app.module.ts` |
+| Boot-time environment validation | `backend/src/config/` |
 
 ---
 
