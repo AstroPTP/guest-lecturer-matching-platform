@@ -1,13 +1,4 @@
-import type {
-  GuestLecturerBasicInformationData,
-  GuestLecturerConsentData,
-  GuestLecturerEngagementData,
-  GuestLecturerExpertiseData,
-  GuestLecturerProfileData,
-} from "@/types/profile/guestLecturerProfileTypes";
-
-//need to connect
-
+import type { GuestLecturerBasicInformationData, GuestLecturerConsentData, GuestLecturerEngagementData, GuestLecturerExpertiseData,  GuestLecturerProfileData } from "@/types/profile/guestLecturerProfileTypes";
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
 
 export async function getGuestLecturerBasicInformation(): Promise<GuestLecturerBasicInformationData | null> {
@@ -43,5 +34,5 @@ export async function saveGuestLecturerConsent(_data: GuestLecturerConsentData):
 }
 
 export async function getGuestLecturerProfile(): Promise<GuestLecturerProfileData | null> {
-  throw new Error(NOT_INTEGRATED_MESSAGE);
+  return null;
 }

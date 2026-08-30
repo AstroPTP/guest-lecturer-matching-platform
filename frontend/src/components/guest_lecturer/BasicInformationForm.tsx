@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import type { GuestLecturerBasicInformationData } from "@/types/profile/guestLecturerProfileTypes";
-import { getGuestLecturerBasicInformation, saveGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 
 export default function BasicInformationForm() {
@@ -32,31 +31,26 @@ export default function BasicInformationForm() {
         setBio(data.bio);
         setPhotoPreview(data.photoPreview);
       } catch {
-        // TODO(API): No backend to load a saved draft from yet; continue with a blank form.
       }
     }
 
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-
-    if (!file) return;
+    if (!file) 
+      return;
     if (file.size > 1024 * 1024) {
       alert("Please select an image smaller than 1 MB.");
       event.target.value = "";
       return;
     }
-
     const reader = new FileReader();
-
     reader.onload = () => {
       const imageData = reader.result as string;
       setPhotoPreview(imageData);
@@ -67,21 +61,11 @@ export default function BasicInformationForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const basicInformationData: GuestLecturerBasicInformationData = { fullName, professionalField, professionalRole, bio, photoPreview };
-
-    try {
-      await saveGuestLecturerBasicInformation(basicInformationData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/guest_lecturer/expertise");
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
 
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold tracking-[0.2em] text-gray-500">STEP 1 OF 4</p>
@@ -93,9 +77,6 @@ export default function BasicInformationForm() {
           <div className="h-[3px] w-10 rounded-full bg-gray-300"></div>
         </div>
       </div>
-
-      {/* Heading */}
-
       <div className="mb-14 text-center">
         <h1 className="mb-5 text-5xl font-extrabold">Basic Information</h1>
 
@@ -104,10 +85,7 @@ export default function BasicInformationForm() {
           expertise and invite you to suitable guest lecture opportunities.
         </p>
       </div>
-
       <form onSubmit={handleSubmit}>
-        {/* Upload */}
-
         <div className="mb-12 flex items-center gap-6">
           <button
             type="button"
@@ -116,20 +94,14 @@ export default function BasicInformationForm() {
           >
             {photoPreview ? <Image src={photoPreview} className="h-full w-full rounded-full object-cover" alt="" width={96} height={96} unoptimized /> : "+"}
           </button>
-
           <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
-
           <div>
             <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold">
               Upload Photo
             </button>
-
             <p className="mt-2 text-sm text-gray-500">Helps Unit Coordinators recognise you. Optional but recommended.</p>
           </div>
         </div>
-
-        {/* Full Name */}
-
         <div className="mb-8">
           <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Full Name</label>
 
@@ -142,10 +114,8 @@ export default function BasicInformationForm() {
           />
         </div>
 
-        {/* Row */}
 
         <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
-          {/* Professional Field */}
 
           <div>
             <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Professional Field</label>
@@ -164,7 +134,6 @@ export default function BasicInformationForm() {
             </select>
           </div>
 
-          {/* Role */}
 
           <div>
             <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Current Professional Role</label>
@@ -184,7 +153,6 @@ export default function BasicInformationForm() {
           </div>
         </div>
 
-        {/* Bio */}
 
         <div>
           <div className="mb-2 flex justify-between">
@@ -203,7 +171,6 @@ export default function BasicInformationForm() {
           />
         </div>
 
-        {/* Button */}
 
         <div className="mt-14 flex justify-end">
           <button

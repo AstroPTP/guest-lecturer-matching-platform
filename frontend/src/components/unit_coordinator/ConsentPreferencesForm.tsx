@@ -4,8 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import type { UnitCoordinatorConsentData } from "@/types/profile/unitCoordinatorProfileTypes";
-import { getUnitCoordinatorConsent, saveUnitCoordinatorConsent } from "@/services/profile/unitCoordinatorProfileService";
+import { getUnitCoordinatorConsent } from "@/services/profile/unitCoordinatorProfileService";
 
 export default function UnitCoordinatorConsentForm() {
   const router = useRouter();
@@ -63,17 +62,6 @@ export default function UnitCoordinatorConsentForm() {
       alert("Please read and accept the Terms and Conditions.");
       return;
     }
-
-    const consentPreferencesData: UnitCoordinatorConsentData = {
-      detailsMatchingConsent,
-      informationAccurate,
-      receiveUpdates,
-      useWithinAgreedScope,
-      noExternalRedistribution,
-      studentPrivacyCompliance,
-      termsAccepted,
-      requestStatus: "pending-match",
-    };
 
     router.push("/unit_coordinator/confirmation");
   }

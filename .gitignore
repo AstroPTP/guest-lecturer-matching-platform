@@ -70,3 +70,5 @@ coverage/
 
 # Prisma
 prisma/generated/
+/generated
+backend/prisma/generated/
