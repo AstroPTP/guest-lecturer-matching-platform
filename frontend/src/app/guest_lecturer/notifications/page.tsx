@@ -7,7 +7,6 @@ export default function GuestLecturerNotificationsPage() {
   return (
     <DashboardShell
       role="guestLecturer"
-      currentUserId={DEMO_GUEST_LECTURER_ID}
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
       messagesHref="/guest_lecturer/messages"

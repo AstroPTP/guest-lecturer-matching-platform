@@ -7,7 +7,6 @@ import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
-import { DEMO_GUEST_LECTURER_ID } from "@/config/demoUsers";
 
 import type {
   GuestLecturerBasicInformationData,
@@ -370,7 +369,6 @@ export default function GuestLecturerMyProfilePage() {
     return (
       <DashboardShell
         role="guestLecturer"
-        currentUserId={DEMO_GUEST_LECTURER_ID}
         menuItems={guestLecturerMenu}
         notificationHref="/guest_lecturer/notifications"
         messagesHref="/guest_lecturer/messages"
@@ -387,7 +385,6 @@ export default function GuestLecturerMyProfilePage() {
     return (
       <DashboardShell
         role="guestLecturer"
-        currentUserId={DEMO_GUEST_LECTURER_ID}
         menuItems={guestLecturerMenu}
         notificationHref="/guest_lecturer/notifications"
         messagesHref="/guest_lecturer/messages"
@@ -405,7 +402,6 @@ export default function GuestLecturerMyProfilePage() {
   return (
     <DashboardShell
       role="guestLecturer"
-      currentUserId={DEMO_GUEST_LECTURER_ID}
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
       messagesHref="/guest_lecturer/messages"
@@ -834,16 +830,16 @@ function EngagementEditor({
 
           <div className="flex flex-wrap gap-2">
             {formatOptions.map((option) => {
-              const selected = getSelectedFormats(draft).includes(option);
+              const selected = getSelectedFormats(draft).includes(option.value);
 
               return (
                 <button
-                  key={option}
+                  key={option.value}
                   type="button"
-                  onClick={() => onToggleFormat(option)}
+                  onClick={() => onToggleFormat(option.value)}
                   className={"rounded-full px-4 py-2 text-sm font-semibold " + (selected ? "bg-[#2d2d2d] text-white" : "bg-gray-200 text-gray-700")}
                 >
-                  {option}
+                  {option.label}
                 </button>
               );
             })}

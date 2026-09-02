@@ -11,8 +11,6 @@ import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import check from "@/assets/check.png";
 
-import type { AccountRole } from "@/types/auth/authTypes";
-
 import { getPasswordRequirements } from "@/lib/validation";
 
 export default function RegisterForm() {

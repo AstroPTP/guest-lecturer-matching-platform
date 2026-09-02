@@ -38,7 +38,7 @@ export default function NotificationsPageContent({ currentUserId }: Notification
       setErrorMessage(null);
 
       try {
-        const data = await getNotifications(currentUserId);
+        const data = await getNotifications();
 
         if (!cancelled) {
           setNotifications(data);
@@ -66,7 +66,7 @@ export default function NotificationsPageContent({ currentUserId }: Notification
     setActionError(null);
 
     try {
-      await markAllNotificationsAsRead(currentUserId);
+      await markAllNotificationsAsRead();
 
       setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
     } catch {
