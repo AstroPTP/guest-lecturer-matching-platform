@@ -6,7 +6,7 @@ import DashboardShell from "@/components/dashboard/DashboardShell";
 import DiscoveryPageContent from "@/components/discovery/DiscoveryPageContent";
 
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-import { DEMO_UNIT_COORDINATOR_ID } from "@/config/demoUsers";
+
 
 import { getPublicGuestLecturerProfiles } from "@/services/discovery/unitCoordinatorDiscoveryService";
 
@@ -60,7 +60,6 @@ export default function UnitCoordinatorDiscoveryPage() {
   return (
     <DashboardShell
       role="unitCoordinator"
-      currentUserId={DEMO_UNIT_COORDINATOR_ID}
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
       messagesHref="/unit_coordinator/messages"
@@ -79,7 +78,6 @@ export default function UnitCoordinatorDiscoveryPage() {
           initialItems={items}
           title="Discover Guest Lecturers"
           description="Review guest lecturers who may match your unit requirements."
-          currentUserId={DEMO_UNIT_COORDINATOR_ID}
           currentUserType="unitCoordinator"
           currentUserName={currentUserName}
           currentUserPhoto={currentUserPhoto}

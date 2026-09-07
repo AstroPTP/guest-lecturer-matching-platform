@@ -13,11 +13,10 @@ import SettingsNav, { type SettingsTab } from "@/components/settings/SettingsNav
 
 interface SettingsPageContentProps {
   userType: UserRole;
-  currentUserId: string;
   seedEmail: string;
 }
 
-export default function SettingsPageContent({ currentUserId, seedEmail }: SettingsPageContentProps) {
+export default function SettingsPageContent({  seedEmail }: SettingsPageContentProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
   const [email, setEmail] = useState(seedEmail);
   const [loadError, setLoadError] = useState("");
@@ -27,7 +26,7 @@ export default function SettingsPageContent({ currentUserId, seedEmail }: Settin
 
     async function loadSettings() {
       try {
-        const settings = await getAccountSettings(currentUserId, seedEmail);
+        const settings = await getAccountSettings(seedEmail);
 
         if (!cancelled) {
           setEmail(settings.email);
@@ -44,7 +43,7 @@ export default function SettingsPageContent({ currentUserId, seedEmail }: Settin
     return () => {
       cancelled = true;
     };
-  }, [currentUserId, seedEmail]);
+  }, [seedEmail]);
 
   return (
     <div className="-m-8 flex h-[calc(100vh-5rem)] overflow-hidden bg-white">
@@ -57,14 +56,14 @@ export default function SettingsPageContent({ currentUserId, seedEmail }: Settin
           {activeTab === "account" && (
             <AccountSection
               currentEmail={email}
-              onRequestEmailChange={({ newEmail, currentPassword }) => requestEmailChange(currentUserId, newEmail, currentPassword)}
+              onRequestEmailChange={({ newEmail, currentPassword }) => requestEmailChange(newEmail, currentPassword)}
               onConfirmEmailChange={async ({ code }) => {
-                const result = await confirmEmailChange(currentUserId, code);
+                const result = await confirmEmailChange(code);
 
                 if (result.success) {
                   // re-read the confirmed email so the view reflects it immediately
                   try {
-                    const settings = await getAccountSettings(currentUserId, seedEmail);
+                    const settings = await getAccountSettings( seedEmail);
                     setEmail(settings.email);
                   } catch {
                     // Nothing to fall back to beyond the currently displayed email.
@@ -73,15 +72,15 @@ export default function SettingsPageContent({ currentUserId, seedEmail }: Settin
 
                 return result;
               }}
-              onCancelEmailChange={() => cancelEmailChange(currentUserId)}
+              onCancelEmailChange={() => cancelEmailChange()}
             />
           )}
 
           {activeTab === "password" && (
-            <PasswordSection onChangePassword={({ currentPassword, newPassword }) => changePassword(currentUserId, currentPassword, newPassword)} />
+            <PasswordSection onChangePassword={({ currentPassword, newPassword }) => changePassword( currentPassword, newPassword)} />
           )}
 
-          {activeTab === "delete" && <DeleteAccountSection onDeleteAccount={() => deleteAccount(currentUserId)} />}
+          {activeTab === "delete" && <DeleteAccountSection onDeleteAccount={() => deleteAccount()} />}
         </div>
       </div>
     </div>

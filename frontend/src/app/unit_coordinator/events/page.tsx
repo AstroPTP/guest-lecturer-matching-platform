@@ -6,7 +6,6 @@ import DashboardShell from "@/components/dashboard/DashboardShell";
 import EventPageContent from "@/components/events/EventPageContent";
 
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-import { DEMO_UNIT_COORDINATOR_ID } from "@/config/demoUsers";
 
 import { getUnitCoordinatorProfile } from "@/services/profile/unitCoordinatorProfileService";
 
@@ -40,7 +39,7 @@ export default function UnitCoordinatorEventsPage() {
           setCurrentUserOrganisation(formatStoredValue(profile.basicInformation.schoolDepartment));
         }
 
-        const matches = await getMatchedProfiles(DEMO_UNIT_COORDINATOR_ID, "unitCoordinator");
+        const matches = await getMatchedProfiles( "unitCoordinator");
         setMatchedGuestLecturers(matches.filter((item) => item.profileType === "guestLecturer"));
       } catch (error) {
         console.error("Unable to load events page:", error);
@@ -56,7 +55,6 @@ export default function UnitCoordinatorEventsPage() {
   return (
     <DashboardShell
       role="unitCoordinator"
-      currentUserId={DEMO_UNIT_COORDINATOR_ID}
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
       messagesHref="/unit_coordinator/messages"
@@ -72,7 +70,6 @@ export default function UnitCoordinatorEventsPage() {
         </div>
       ) : (
         <EventPageContent
-          currentUserId={DEMO_UNIT_COORDINATOR_ID}
           currentUserType="unitCoordinator"
           currentUserName={currentUserName}
           currentUserRole={currentUserRole}

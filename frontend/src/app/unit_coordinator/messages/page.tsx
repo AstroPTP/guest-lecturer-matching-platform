@@ -6,8 +6,6 @@ import DashboardShell from "@/components/dashboard/DashboardShell";
 import MessagesPageContent from "@/components/messages/MessagesPageContent";
 
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-import { DEMO_UNIT_COORDINATOR_ID } from "@/config/demoUsers";
-
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
 
 import type { ConversationSeed } from "@/types/messages/messageTypes";
@@ -23,7 +21,7 @@ export default function UnitCoordinatorMessagesPage() {
       setErrorMessage(null);
 
       try {
-        const matches = await getMatchedProfiles(DEMO_UNIT_COORDINATOR_ID, "unitCoordinator");
+        const matches = await getMatchedProfiles( "unitCoordinator");
 
         const nextSeeds: ConversationSeed[] = [];
 
@@ -68,7 +66,6 @@ export default function UnitCoordinatorMessagesPage() {
   return (
     <DashboardShell
       role="unitCoordinator"
-      currentUserId={DEMO_UNIT_COORDINATOR_ID}
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
       messagesHref="/unit_coordinator/messages"
@@ -85,7 +82,6 @@ export default function UnitCoordinatorMessagesPage() {
       ) : (
         <MessagesPageContent
           userType="unitCoordinator"
-          currentUserId={DEMO_UNIT_COORDINATOR_ID}
           conversationSeeds={conversationSeeds}
           participantProfileHref="/unit_coordinator/matches"
         />

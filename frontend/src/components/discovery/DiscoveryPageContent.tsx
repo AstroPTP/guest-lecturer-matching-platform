@@ -11,7 +11,7 @@ import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchModalData, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
-import filterIcon from "@/assets/filter.png.png";
+import filterIcon from "@/assets/filter.png";
 import { getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters } from "@/services/filter/discoveryFilterService";
 import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import { createNotification } from "@/services/notifications/notificationService";
