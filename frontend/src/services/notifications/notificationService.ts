@@ -1,5 +1,4 @@
 import type { AppNotification, CreateNotificationData } from "@/types/notifications/notificationTypes";
-
 const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
 
 export async function getNotifications(): Promise<AppNotification[]> {
