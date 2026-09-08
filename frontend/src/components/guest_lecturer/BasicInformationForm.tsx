@@ -43,7 +43,8 @@ export default function BasicInformationForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) 
+      return;
     if (file.size > 1024 * 1024) {
       alert("Please select an image smaller than 1 MB.");
       event.target.value = "";

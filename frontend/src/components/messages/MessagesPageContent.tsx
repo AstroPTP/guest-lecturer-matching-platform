@@ -199,7 +199,7 @@ export default function MessagesPageContent({ userType, currentUserId, conversat
     setActionError(null);
 
     try {
-      await unmatchUsers(currentUserId, conversation.participant.id);
+      await unmatchUsers( conversation.participant.id);
       await deleteConversation(conversation.id);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");

@@ -20,11 +20,12 @@ import {
 } from "@/services/filter/discoveryFilterService";
 
 import { professionalFields } from "@/constants/profileOptions/guestLecturer";
-import { formatOptions } from "@/constants/profileOptions/unitCoordinator";
+
 import {
   experienceLevels,
   expertiseTopics,
   sessionDurationOptions,
+  formatOptions,
   unitCoordinatorAudienceSizeOptions,
   weekDays,
 } from "@/constants/profileOptions/shared";
@@ -90,8 +91,7 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
         await saveUnitCoordinatorDiscoveryFilters(unitCoordinatorFilters);
       }
     } catch {
-      alert("This isn't connected to a backend yet, so your filters couldn't be saved.");
-      return;
+      
     }
 
     router.push(discoveryHref);

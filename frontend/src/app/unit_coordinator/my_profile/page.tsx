@@ -7,7 +7,7 @@ import type { ChangeEvent, Dispatch, ReactNode, RefObject, SetStateAction } from
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-import { DEMO_UNIT_COORDINATOR_ID } from "@/config/demoUsers";
+
 
 import type {
   UnitCoordinatorBasicInformationData,
@@ -26,7 +26,6 @@ import {
 import {
   academicRoleOptions,
   engagementFrequencyOptions,
-  formatOptions,
   schoolDepartmentOptions,
 } from "@/constants/profileOptions/unitCoordinator";
 
@@ -34,6 +33,7 @@ import {
   deliveryFocusOptions,
   experienceLevels,
   expertiseTopics,
+  formatOptions,
   sessionDurationOptions,
   unitCoordinatorAudienceSizeOptions as audienceSizeOptions,
   weekDays,
@@ -599,7 +599,6 @@ function CoordinatorDashboardShell({ children }: { children: ReactNode }) {
   return (
     <DashboardShell
       role="unitCoordinator"
-      currentUserId={DEMO_UNIT_COORDINATOR_ID}
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
       messagesHref="/unit_coordinator/messages"

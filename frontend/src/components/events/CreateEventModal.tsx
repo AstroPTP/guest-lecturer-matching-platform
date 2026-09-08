@@ -5,7 +5,7 @@ import { FormEvent, useState } from "react";
 
 import closeIcon from "@/assets/close.png";
 
-import { formatOptions } from "@/constants/profileOptions/unitCoordinator";
+import { formatOptions } from "@/constants/profileOptions/shared";
 
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 
