@@ -5,8 +5,26 @@ import Image from "next/image";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
+<<<<<<< HEAD
 import type { GuestLecturerBasicInformationData, GuestLecturerEngagementData, GuestLecturerExpertiseData, GuestLecturerProfileData} from "@/types/profile/guestLecturerProfileTypes";
 import { getGuestLecturerProfile, saveGuestLecturerBasicInformation, saveGuestLecturerEngagement, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
+=======
+
+import type {
+  GuestLecturerBasicInformationData,
+  GuestLecturerEngagementData,
+  GuestLecturerExpertiseData,
+  GuestLecturerProfileData,
+} from "@/types/profile/guestLecturerProfileTypes";
+
+import {
+  getGuestLecturerProfile,
+  saveGuestLecturerBasicInformation,
+  saveGuestLecturerEngagement,
+  saveGuestLecturerExpertise,
+} from "@/services/profile/guestLecturerProfileService";
+
+>>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 import { formatStoredValue } from "@/utils/displayFormatters";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";

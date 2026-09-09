@@ -6,7 +6,10 @@ import DashboardShell from "@/components/dashboard/DashboardShell";
 import DiscoveryPageContent from "@/components/discovery/DiscoveryPageContent";
 
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
+<<<<<<< HEAD
 
+=======
+>>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
 
 import { getPublicGuestLecturerProfiles } from "@/services/discovery/unitCoordinatorDiscoveryService";
 

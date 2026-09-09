@@ -46,6 +46,10 @@ export default function GuestLecturerEventsPage() {
   return (
     <DashboardShell
       role="guestLecturer"
+<<<<<<< HEAD
+=======
+      
+>>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
       messagesHref="/guest_lecturer/messages"

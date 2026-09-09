@@ -23,8 +23,7 @@ import { unmatchUsers } from "@/services/discovery/matchService";
 import { reportUser } from "@/services/reports/reportService";
 import { getInitials } from "@/utils/displayFormatters";
 
-// TODO(AUTH): No client-side identity exists yet, so a message's sender can't
-// be compared against "me". Replace with the signed-in user's id once auth exists.
+
 const CURRENT_USER_PLACEHOLDER_ID = "";
 
 interface MessagesPageContentProps {

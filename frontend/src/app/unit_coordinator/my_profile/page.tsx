@@ -7,6 +7,10 @@ import type { ChangeEvent, Dispatch, ReactNode, RefObject, SetStateAction } from
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
+<<<<<<< HEAD
+=======
+
+>>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
 
 import type {
   UnitCoordinatorBasicInformationData,
@@ -32,6 +36,7 @@ import {
   deliveryFocusOptions,
   experienceLevels,
   expertiseTopics,
+  formatOptions,
   sessionDurationOptions,
   unitCoordinatorAudienceSizeOptions as audienceSizeOptions,
   weekDays,
