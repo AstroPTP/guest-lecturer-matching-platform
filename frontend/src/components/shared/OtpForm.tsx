@@ -1,7 +1,6 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, ReactNode, useRef, useState } from "react";
-
 import Image from "next/image";
 import email from "@/assets/email.png";
 import info from "@/assets/info.png";
@@ -22,18 +21,15 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
   function handleChange(event: ChangeEvent<HTMLInputElement>, index: number) {
     const value = event.target.value.replace(/\D/g, "");
     setError("");
-
     if (!value) {
       const newCode = [...code];
       newCode[index] = "";
       setCode(newCode);
       return;
     }
-
     const newCode = [...code];
     newCode[index] = value.slice(-1);
     setCode(newCode);
-
     if (index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
@@ -51,13 +47,8 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
       inputRefs.current[0]?.focus();
     }, 0);
   }
-
   async function handleSubmit() {
     const verificationCode = code.join("");
-
-
-
-
     try {
       setError("");
       await onVerify(verificationCode);
@@ -76,11 +67,9 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
       <div className="h-12 flex items-center justify-center">
         <h1 className="text-4xl font-bold text-[#2d2d2d]">{title}</h1>
       </div>
-
       <div className="h-20 flex items-start justify-center mt-3 mb-7">
         <p className="text-gray-600 leading-relaxed max-w-[300px]">{description}</p>
       </div>
-
       <form
         className="w-full"
         onSubmit={(event) => {
@@ -107,10 +96,8 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
               />
             ))}
           </div>
-
           {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
         </div>
-
         <button
           type="submit"
           className="w-full bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors"
@@ -125,7 +112,6 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
           Resend code
         </button>
       </p>
-
       <div className="mt-4 flex items-center gap-2 text-sm text-gray-600">
         <Image src={info} alt="" width={18} height={18} className="object-contain" />
 

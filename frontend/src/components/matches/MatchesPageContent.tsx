@@ -28,14 +28,12 @@ export default function MatchesPageContent({ currentUserType, title, description
   useEffect(() => {
     async function loadMatches() {
       setErrorMessage(null);
-
       try {
         const profiles = await getMatchedProfiles(currentUserType);
 
         setMatchedProfiles(profiles);
       } catch (error) {
         console.error("Unable to load matched profiles:", error);
-
         setErrorMessage("Unable to load data. Please try again.");
       } finally {
         setIsLoading(false);
@@ -44,10 +42,8 @@ export default function MatchesPageContent({ currentUserType, title, description
 
     loadMatches();
   }, [currentUserType]);
-
   const filteredProfiles = matchedProfiles.filter((item) => {
     const searchableText = [item.profile.basicInformation.fullName, ...item.profile.expertise.selectedTopics].join(" ").toLowerCase();
-
     return searchableText.includes(search.trim().toLowerCase());
   });
 
@@ -98,12 +94,9 @@ export default function MatchesPageContent({ currentUserType, title, description
           <>
             <div className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_260px] gap-6 border-b-2 border-gray-200 px-6 pb-4 text-xs font-bold uppercase tracking-[0.12em] text-gray-600 lg:grid">
               <p>Matched Profile</p>
-
               <p>Expertise Topics</p>
-
               <p className="text-right">Actions</p>
             </div>
-
             <div className="mt-5 space-y-5">
               {filteredProfiles.map((item) => (
                 <MatchCard key={item.match.id} item={item} onViewProfile={() => setSelectedProfile(item)} onChat={() => handleChat(item)} />
@@ -124,9 +117,7 @@ function EmptyMatches({ hasSearch }: { hasSearch: boolean }) {
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-200">
         <Image src={infoIcon} alt="" width={28} height={28} />
       </div>
-
       <h2 className="mt-6 text-2xl font-bold text-[#2d2d2d]">{hasSearch ? "No matching results" : "No matches yet"}</h2>
-
       <p className="mx-auto mt-3 max-w-lg leading-7 text-gray-500">
         {hasSearch ? "No matched profiles correspond to your search." : "When both users express interest, the matched profile will appear here."}
       </p>

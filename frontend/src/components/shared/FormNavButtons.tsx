@@ -9,7 +9,6 @@ interface FormNavButtonsProps {
 
 export default function FormNavButtons({ submitLabel, isFinalStep = false }: FormNavButtonsProps) {
   const router = useRouter();
-
   return (
     <div className={"flex items-center justify-between pt-4 " + (isFinalStep ? "pb-10" : "pb-8")}>
       <button
@@ -19,7 +18,6 @@ export default function FormNavButtons({ submitLabel, isFinalStep = false }: For
       >
         Back
       </button>
-
       <button
         type="submit"
         className={

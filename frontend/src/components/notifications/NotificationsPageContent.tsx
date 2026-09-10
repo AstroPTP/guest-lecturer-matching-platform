@@ -113,9 +113,7 @@ export default function NotificationsPageContent() {
           </button>
         )}
       </div>
-
       {actionError && <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-700">{actionError}</div>}
-
       {notifications.length === 0 ? (
         <div className="rounded-2xl bg-white px-6 py-20 text-center shadow-sm">
           <Image src={infoIcon} alt="" width={40} height={40} className="mx-auto opacity-60" />
@@ -178,10 +176,8 @@ function groupNotifications(notifications: AppNotification[]): {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-
   for (const notification of notifications) {
     const createdAt = new Date(notification.createdAt).getTime();
-
     if (createdAt >= startOfToday) {
       today.push(notification);
     } else if (createdAt >= startOfYesterday) {
@@ -190,7 +186,6 @@ function groupNotifications(notifications: AppNotification[]): {
       earlier.push(notification);
     }
   }
-
   return [
     { label: "Today", items: today },
     { label: "Yesterday", items: yesterday },
@@ -202,17 +197,13 @@ function formatNotificationTime(createdAt: string): string {
   const date = new Date(createdAt);
   const elapsedMilliseconds = Date.now() - date.getTime();
   const elapsedMinutes = Math.max(1, Math.floor(elapsedMilliseconds / (60 * 1000)));
-
   if (elapsedMinutes < 60) {
     return elapsedMinutes + " min ago";
   }
-
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-
   if (elapsedHours < 24) {
     return elapsedHours + " " + (elapsedHours === 1 ? "hour" : "hours") + " ago";
   }
-
   return new Intl.DateTimeFormat("en-AU", {
     day: "numeric",
     month: "short",

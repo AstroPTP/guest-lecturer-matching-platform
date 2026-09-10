@@ -2,11 +2,9 @@
 
 import Image from "next/image";
 import { useState } from "react";
-
 import checkIcon from "@/assets/check.png";
 import visibilityIcon from "@/assets/visibility.png";
 import visibilityOffIcon from "@/assets/visibility_off.png";
-
 export { isValidEmail } from "@/lib/validation";
 
 export function SectionHeader({ title, description }: { title: string; description: string }) {
@@ -29,7 +27,6 @@ export function Field({ label, children }: { label: string; children: React.Reac
 
 export function PasswordInput({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
   const [visible, setVisible] = useState(false);
-
   return (
     <div className="relative">
       <input

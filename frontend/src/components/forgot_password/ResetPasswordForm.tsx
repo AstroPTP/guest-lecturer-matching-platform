@@ -10,15 +10,11 @@ import arrow_back from "@/assets/arrow_back.png";
 
 export default function ResetPasswordForm() {
   const router = useRouter();
-
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
-
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  // Password requirements
   const hasMinLength = newPassword.length >= 8;
   const hasSpecialCharacter = /[^A-Za-z0-9]/.test(newPassword);
   const hasNumber = /\d/.test(newPassword);
@@ -66,11 +62,8 @@ export default function ResetPasswordForm() {
     }
 
     setError("");
-
-
     router.push("/success");
   }
-
   return (
     <main className="w-full max-w-md bg-white rounded-xl p-8 md:p-12">
       <div className="mb-8">
@@ -82,9 +75,7 @@ export default function ResetPasswordForm() {
         >
           <Image src={arrow_back} alt="Back" width={24} height={24} />
         </button>
-
         <h1 className="text-4xl font-bold text-[#2d2d2d] mb-2">New password</h1>
-
         <p className="text-gray-600 leading-relaxed">Your new password must be different from previous used passwords.</p>
       </div>
 

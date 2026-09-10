@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 import { formatStoredValue } from "@/utils/displayFormatters";
 
@@ -13,28 +12,21 @@ interface MatchCardProps {
 
 export default function MatchCard({ item, onViewProfile, onChat }: MatchCardProps) {
   const { fullName, photoPreview } = item.profile.basicInformation;
-
   const topics = item.profile.expertise.selectedTopics;
-
   return (
     <article className="grid grid-cols-1 items-center gap-6 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-50 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_260px]">
       <div className="flex min-w-0 items-center gap-4">
         <ProfilePhoto fullName={fullName} photoPreview={photoPreview} />
-
         <div className="min-w-0">
           <h2 className="break-words text-lg font-bold text-[#2d2d2d]">{fullName}</h2>
-
           <p className="mt-1 text-sm leading-6 text-gray-600">{getProfileDescription(item)}</p>
-
           <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
             {item.profileType === "guestLecturer" ? "Guest Lecturer" : "Unit Coordinator"}
           </p>
         </div>
       </div>
-
       <div>
         <p className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500 lg:hidden">Expertise Topics</p>
-
         <div className="flex flex-wrap gap-2">
           {topics.length > 0 ? (
             topics.map((topic) => (
@@ -78,7 +70,6 @@ function ProfilePhoto({ fullName, photoPreview }: { fullName: string; photoPrevi
       />
     );
   }
-
   return (
     <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xl font-bold text-gray-600">{getInitials(fullName)}</div>
   );
@@ -87,25 +78,19 @@ function ProfilePhoto({ fullName, photoPreview }: { fullName: string; photoPrevi
 function getProfileDescription(item: MatchedProfile): string {
   if (item.profileType === "guestLecturer") {
     const { professionalRole, professionalField } = item.profile.basicInformation;
-
     return [professionalRole, professionalField].filter(Boolean).join(", ");
   }
-
   const { academicRole, schoolDepartment } = item.profile.basicInformation;
-
   return [formatStoredValue(academicRole), formatStoredValue(schoolDepartment)].filter(Boolean).join(", ");
 }
 
 function getInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/).filter(Boolean);
-
   if (parts.length === 0) {
     return "?";
   }
-
   if (parts.length === 1) {
     return parts[0].slice(0, 2).toUpperCase();
   }
-
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }

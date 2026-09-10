@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import type { UserRole } from "@/types/shared/userRole";
-
 import { cancelEmailChange, changePassword, confirmEmailChange, deleteAccount, getAccountSettings, requestEmailChange} from "@/services/settings/settingsService";
-
 import AccountSection from "@/components/settings/AccountSection";
 import PasswordSection from "@/components/settings/PasswordSection";
 import DeleteAccountSection from "@/components/settings/DeleteAccountSection";
@@ -52,21 +49,17 @@ export default function SettingsPageContent({  seedEmail }: SettingsPageContentP
       <div className="min-w-0 flex-1 overflow-y-auto bg-[#fafafa] px-10 py-10">
         <div className="mx-auto max-w-2xl rounded-2xl bg-white p-8 shadow-sm">
           {loadError && <p className="mb-6 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">{loadError}</p>}
-
           {activeTab === "account" && (
             <AccountSection
               currentEmail={email}
               onRequestEmailChange={({ newEmail, currentPassword }) => requestEmailChange(newEmail, currentPassword)}
               onConfirmEmailChange={async ({ code }) => {
                 const result = await confirmEmailChange(code);
-
                 if (result.success) {
-                  // re-read the confirmed email so the view reflects it immediately
                   try {
                     const settings = await getAccountSettings( seedEmail);
                     setEmail(settings.email);
                   } catch {
-                    // Nothing to fall back to beyond the currently displayed email.
                   }
                 }
 
@@ -75,11 +68,9 @@ export default function SettingsPageContent({  seedEmail }: SettingsPageContentP
               onCancelEmailChange={() => cancelEmailChange()}
             />
           )}
-
           {activeTab === "password" && (
             <PasswordSection onChangePassword={({ currentPassword, newPassword }) => changePassword( currentPassword, newPassword)} />
           )}
-
           {activeTab === "delete" && <DeleteAccountSection onDeleteAccount={() => deleteAccount()} />}
         </div>
       </div>

@@ -1,11 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-
 import type { ActionResult } from "@/types/settings/settingsTypes";
-
 import { Field, FeedbackBanner, PasswordInput, RequirementRow, SectionHeader } from "@/components/settings/settingsShared";
-
 import { getPasswordRequirements } from "@/lib/validation";
 
 export default function PasswordSection({
@@ -22,21 +19,11 @@ export default function PasswordSection({
     message: string;
   } | null>(null);
 
-  const {
-    hasMinLength: meetsLength,
-    hasUppercase,
-    hasNumber,
-    hasSpecialCharacter,
-    strength: passwordStrength,
-    strengthLabel,
-    isValid: isPasswordValid,
-  } = getPasswordRequirements(newPassword);
+  const {hasMinLength: meetsLength, hasUppercase,hasNumber, hasSpecialCharacter,  strength: passwordStrength,   strengthLabel, isValid: isPasswordValid } = getPasswordRequirements(newPassword);
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
-
     if (!currentPassword) {
       setFeedback({ type: "error", message: "Enter your current password." });
       return;
@@ -49,7 +36,6 @@ export default function PasswordSection({
       });
       return;
     }
-
     if (!passwordsMatch) {
       setFeedback({ type: "error", message: "New passwords don't match." });
       return;
@@ -86,7 +72,6 @@ export default function PasswordSection({
   return (
     <section>
       <SectionHeader title="Password & Security" description="Choose a strong password you don't use elsewhere." />
-
       <form onSubmit={handleSubmit} className="mt-6 max-w-md space-y-5">
         <Field label="Current password">
           <PasswordInput value={currentPassword} onChange={setCurrentPassword} />

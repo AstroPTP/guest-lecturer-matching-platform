@@ -12,7 +12,6 @@ interface DashboardSidebarProps {
   items: DashboardMenuItem[];
   theme: "guest" | "coordinator";
 }
-
 export default function DashboardSidebar({ items, theme }: DashboardSidebarProps) {
   const router = useRouter();
   const handleLogout = () => {

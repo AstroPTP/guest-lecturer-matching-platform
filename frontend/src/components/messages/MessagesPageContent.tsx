@@ -11,73 +11,49 @@ import reportIcon from "@/assets/report.png";
 import searchIcon from "@/assets/search.png";
 import sendIcon from "@/assets/send.png";
 import videoIcon from "@/assets/video.png";
-
 import type { ChatMessage, Conversation, ConversationParticipant, ConversationSeed } from "@/types/messages/messageTypes";
-
 import type { UserRole } from "@/types/shared/userRole";
-
 import { deleteConversation, ensureConversations, getConversations, getMessages, sendMessage } from "@/services/messages/messageService";
-
 import { unmatchUsers } from "@/services/discovery/matchService";
-
 import { reportUser } from "@/services/reports/reportService";
 import { getInitials } from "@/utils/displayFormatters";
-
-
 const CURRENT_USER_PLACEHOLDER_ID = "";
 
 interface MessagesPageContentProps {
   userType: UserRole;
-
   conversationSeeds: ConversationSeed[];
-
   participantProfileHref: string;
 }
 
 export default function MessagesPageContent({ userType, conversationSeeds, participantProfileHref }: MessagesPageContentProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
-
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
-
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-
   const [messageText, setMessageText] = useState("");
-
   const [search, setSearch] = useState("");
-
   const [showInfoPanel, setShowInfoPanel] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-
   useEffect(() => {
     let cancelled = false;
 
     async function loadConversations() {
       setErrorMessage(null);
-
       try {
         const nextConversations = await ensureConversations(userType, conversationSeeds);
-
         if (cancelled) {
           return;
         }
-
         setConversations(nextConversations);
-
         setSelectedConversation((currentConversation) => {
-          const retainedConversation = currentConversation
-            ? nextConversations.find((conversation) => conversation.id === currentConversation.id)
-            : undefined;
+          const retainedConversation = currentConversation ? nextConversations.find((conversation) => conversation.id === currentConversation.id) : undefined;
           const nextSelectedConversation = retainedConversation ?? nextConversations[0] ?? null;
-
           void loadMessages(nextSelectedConversation);
-
           return nextSelectedConversation;
         });
       } catch (error) {
         console.error("Unable to load messages:", error);
-
         if (!cancelled) {
           setErrorMessage("Unable to load data. Please try again.");
         }
@@ -87,11 +63,9 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         }
       }
     }
-
     async function loadMessages(conversation: Conversation | null) {
       try {
         const nextMessages = conversation ? await getMessages(conversation.id) : [];
-
         if (!cancelled) {
           setMessages(nextMessages);
         }
@@ -103,9 +77,7 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         }
       }
     }
-
     void loadConversations();
-
     return () => {
       cancelled = true;
     };
@@ -118,7 +90,6 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       </div>
     );
   }
-
   if (errorMessage) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -129,48 +100,35 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
 
   const filteredConversations = conversations.filter((conversation) => {
     const searchText = search.trim().toLowerCase();
-
     if (!searchText) {
       return true;
     }
-
     return conversation.participant.fullName.toLowerCase().includes(searchText);
   });
 
   async function selectConversation(conversation: Conversation) {
     setActionError(null);
     setSelectedConversation(conversation);
-
     try {
       setMessages(await getMessages(conversation.id));
     } catch {
       setActionError("This isn't connected to a backend yet, so messages couldn't be loaded.");
       return;
     }
-
     setShowInfoPanel(false);
   }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (!selectedConversation || !messageText.trim()) {
       return;
     }
-
     setActionError(null);
-
     try {
       const newMessage = await sendMessage(userType, selectedConversation.id, messageText);
-
       setMessages((currentMessages) => [...currentMessages, newMessage]);
-
       setMessageText("");
-
       const updatedConversations = await getConversations(userType);
-
       setConversations(updatedConversations);
-
       setSelectedConversation(updatedConversations.find((conversation) => conversation.id === selectedConversation.id) ?? selectedConversation);
     } catch {
       setActionError("This isn't connected to a backend yet, so your message couldn't be sent.");
@@ -179,7 +137,6 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
 
   async function handleReport(conversation: Conversation, reason: string) {
     setActionError(null);
-
     try {
       await reportUser({
         reportedUserId: conversation.participant.id,
@@ -196,7 +153,6 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
 
   async function handleUnmatch(conversation: Conversation) {
     setActionError(null);
-
     try {
       await unmatchUsers(conversation.participant.id);
       await deleteConversation(conversation.id);
@@ -204,20 +160,15 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
     }
-
     const remainingConversations = conversations.filter((item) => item.id !== conversation.id);
-
     const nextConversation = remainingConversations[0] ?? null;
-
     setConversations(remainingConversations);
     setSelectedConversation(nextConversation);
-
     try {
       setMessages(nextConversation ? await getMessages(nextConversation.id) : []);
     } catch {
       setMessages([]);
     }
-
     setShowInfoPanel(false);
   }
 
@@ -265,31 +216,19 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
   );
 }
 
-function ConversationList({
-  conversations,
-  selectedConversationId,
-  search,
-  setSearch,
-  onSelect,
-}: {
+function ConversationList({conversations,selectedConversationId, search,setSearch,onSelect}: {
   conversations: Conversation[];
-
   selectedConversationId?: string;
-
   search: string;
-
   setSearch: (value: string) => void;
-
   onSelect: (conversation: Conversation) => void;
 }) {
   return (
     <aside className="flex w-[300px] shrink-0 flex-col border-r border-gray-100 bg-white">
       <div className="border-b border-gray-100 p-5">
         <h2 className="text-xl font-bold text-[#2d2d2d]">Recent</h2>
-
         <div className="mt-4 flex items-center gap-3 rounded-lg bg-gray-100 px-3 py-3">
           <Image src={searchIcon} alt="" width={17} height={17} />
-
           <input
             type="search"
             value={search}
@@ -306,7 +245,6 @@ function ConversationList({
         ) : (
           conversations.map((conversation) => {
             const selected = conversation.id === selectedConversationId;
-
             return (
               <button
                 key={conversation.id}
@@ -318,11 +256,9 @@ function ConversationList({
                 }
               >
                 <ProfilePhoto participant={conversation.participant} size="medium" />
-
                 <div className="min-w-0 flex-1">
                   <div className="flex items-baseline justify-between gap-3">
                     <h3 className="truncate font-bold text-[#2d2d2d]">{conversation.participant.fullName}</h3>
-
                     <span className="shrink-0 text-xs text-gray-500">{conversation.lastMessageTime}</span>
                   </div>
 
@@ -337,22 +273,12 @@ function ConversationList({
   );
 }
 
-function ChatThread({
-  conversation,
-  messages,
-  messageText,
-  setMessageText,
-  onSubmit,
-  onShowInfo,
-}: {
+function ChatThread({ conversation, messages, messageText, setMessageText,onSubmit,onShowInfo}: {
   conversation: Conversation;
   messages: ChatMessage[];
   messageText: string;
-
   setMessageText: (value: string) => void;
-
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-
   onShowInfo: () => void;
 }) {
   return (
@@ -434,22 +360,14 @@ function ChatThread({
   );
 }
 
-// TODO(AUTH): "Mine vs theirs" bubble alignment needs the signed-in user's id
-// once auth exists. Until then every message renders on the "their" side.
-function MessageBubble({
-  message,
-  participant,
-}: {
+function MessageBubble({ message, participant,}: {
   message: ChatMessage;
-
   participant: ConversationParticipant;
 }) {
   const isCurrentUser = message.senderId === CURRENT_USER_PLACEHOLDER_ID;
-
   return (
     <div className={"flex max-w-3xl items-start gap-4 " + (isCurrentUser ? "ml-auto justify-end" : "")}>
       {!isCurrentUser && <ProfilePhoto participant={participant} size="small" />}
-
       <div className={isCurrentUser ? "text-right" : ""}>
         <div
           className={
@@ -459,20 +377,13 @@ function MessageBubble({
         >
           {message.text}
         </div>
-
         <span className="mt-1 block px-1 text-xs text-gray-500">{formatMessageTime(message.sentAt)}</span>
       </div>
     </div>
   );
 }
 
-function ChatInfoPanel({
-  conversation,
-  participantProfileHref,
-  onClose,
-  onReport,
-  onUnmatch,
-}: {
+function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, onUnmatch}: {
   conversation: Conversation;
   participantProfileHref: string;
   onClose: () => void;
@@ -500,15 +411,11 @@ function ChatInfoPanel({
       <div className="px-8 pb-8">
         <div className="flex flex-col items-center text-center">
           <ProfilePhoto participant={participant} size="profile" />
-
           <h2 className="mt-6 text-3xl font-bold text-[#2d2d2d]">{participant.fullName}</h2>
-
           <p className="mt-2 text-gray-600">
             {participant.roleLabel}
-
             {participant.organisation ? " - " + participant.organisation : ""}
           </p>
-
           <a href={participantProfileHref} className="mt-6 rounded-xl bg-gray-200 px-6 py-3 text-sm font-semibold text-[#2d2d2d] hover:bg-gray-300">
             View full profile
           </a>
@@ -517,12 +424,10 @@ function ChatInfoPanel({
         <section className="mt-10">
           <div className="flex items-center justify-between">
             <SectionLabel>Shared Files</SectionLabel>
-
             <button type="button" className="text-xl text-gray-600 hover:text-black">
               +
             </button>
           </div>
-
           {sharedFiles.length === 0 ? (
             <p className="mt-4 text-sm text-gray-500">No files have been shared yet.</p>
           ) : (
@@ -548,7 +453,6 @@ function ChatInfoPanel({
 
         <section className="mt-10 border-t border-gray-100 pt-8">
           <SectionLabel>Safety &amp; Privacy</SectionLabel>
-
           <div className="mt-4 space-y-2">
             <button
               type="button"
@@ -594,7 +498,6 @@ function ChatInfoPanel({
               Do you want to unmatch with <span className="font-semibold text-[#2d2d2d]">{participant.fullName}</span> and permanently delete this conversation?
               This action cannot be undone.
             </p>
-
             <div className="mt-6 flex justify-end gap-3">
               <button
                 type="button"
@@ -603,7 +506,6 @@ function ChatInfoPanel({
               >
                 Cancel
               </button>
-
               <button type="button" onClick={onUnmatch} className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-red-700">
                 Delete
               </button>
@@ -675,12 +577,8 @@ function ChatInfoPanel({
   );
 }
 
-function ProfilePhoto({
-  participant,
-  size,
-}: {
+function ProfilePhoto({ participant, size}: {
   participant: ConversationParticipant;
-
   size: "small" | "medium" | "large" | "profile";
 }) {
   const sizeClass = {
@@ -697,7 +595,6 @@ function ProfilePhoto({
       </div>
     );
   }
-
   return (
     <div className="relative shrink-0">
       <div className={"flex " + sizeClass + " items-center justify-center rounded-full bg-gray-200 font-bold text-gray-600 ring-1 ring-orange-300"}>
@@ -730,9 +627,7 @@ function EmptyChatState() {
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-200">
           <Image src={infoIcon} alt="" width={28} height={28} />
         </div>
-
         <h2 className="mt-5 text-2xl font-bold text-[#2d2d2d]">Select a conversation</h2>
-
         <p className="mt-2 text-gray-500">Choose a matched profile to start messaging.</p>
       </div>
     </div>

@@ -20,12 +20,10 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
   return (
     <article className="group relative min-h-[350px] overflow-hidden rounded-[2rem] bg-white p-8 shadow-sm transition hover:-translate-y-1 hover:shadow-md">
       <div className="absolute -right-8 -top-8 h-32 w-32 rounded-bl-[4rem] bg-gray-200 transition-transform duration-500 group-hover:scale-110" />
-
       <div className="relative z-10 flex h-full flex-col">
         <div className="mb-6 flex items-start justify-end gap-4">
           <div className="text-right">
             <p className="text-xl font-bold text-[#2d2d2d]">{formatShortDate(event.date)}</p>
-
             <p className="mt-1 text-sm text-gray-600">
               {formatTime(event.startTime)} – {formatTime(event.endTime)}
             </p>
@@ -112,23 +110,19 @@ function EventStatusBadge({ status }: { status: AcademicEvent["status"] }) {
 
   return <span className={"rounded-full px-4 py-2 text-sm font-bold " + styles[status]}>{formatStoredValue(status)}</span>;
 }
-
 function formatShortDate(value: string): string {
   if (!value) {
     return "";
   }
-
   return new Intl.DateTimeFormat("en-AU", {
     month: "short",
     day: "numeric",
   }).format(new Date(value + "T00:00:00"));
 }
-
 function formatTime(value: string): string {
   if (!value) {
     return "";
   }
-
   const [hours, minutes] = value.split(":");
   const date = new Date();
   date.setHours(Number(hours), Number(minutes), 0, 0);

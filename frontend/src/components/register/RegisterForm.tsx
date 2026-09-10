@@ -4,13 +4,11 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-
 import person from "@/assets/person.png";
 import email from "@/assets/email.png";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import check from "@/assets/check.png";
-
 import { getPasswordRequirements } from "@/lib/validation";
 
 export default function RegisterForm() {
@@ -18,45 +16,21 @@ export default function RegisterForm() {
   const [password, setPassword] = useState("");
   const searchParams = useSearchParams();
   const role = searchParams.get("role") === "coordinator" ? "coordinator" : "guest";
-
-  const {
-    hasMinLength,
-    hasUppercase,
-    hasSpecialCharacter,
-    hasNumber,
-    strength: passwordStrength,
-    isValid: isPasswordValid,
-  } = getPasswordRequirements(password);
-  
-
-  const strengthState =
-    password.length === 0
-      ? { label: "", color: "#E5E7EB" }
-      : passwordStrength <= 1
-        ? { label: "Weak", color: "#EF4444" }
-        : passwordStrength <= 3
-          ? { label: "Medium", color: "#F59E0B" }
-          : { label: "Strong", color: "#10B981" };
-
-  
+  const { hasMinLength, hasUppercase, hasSpecialCharacter, hasNumber,  strength: passwordStrength, isValid: isPasswordValid } = getPasswordRequirements(password);
+  const strengthState = password.length === 0 ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1 ? { label: "Weak", color: "#EF4444" } : passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" } : { label: "Strong", color: "#10B981" };
   const router = useRouter();
-
   async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (!isPasswordValid) {
       alert("Please make sure your password meets all requirements.");
       return;
     }
-
     router.push("/verify");
   }
-
   return (
     <main className="w-full max-w-md">
       <div className="mb-12 text-center">
         <h1 className="mb-4 text-4xl font-bold">Guest Lecturer Matching</h1>
-
         <p className="text-base text-gray-600">Join the industrial network of academic professionals.</p>
       </div>
 
@@ -65,12 +39,9 @@ export default function RegisterForm() {
           <div className="mb-8 flex justify-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-black bg-gray-100 px-4 py-2 text-[12px] leading-none uppercase">
               <div className="font-medium tracking-[0.03em] text-gray-700">Registering as</div>
-
               <div className="font-semibold tracking-normal text-blue-600">{role === "coordinator" ? "Unit Coordinator" : "Guest Lecturer"}</div>
             </div>
           </div>
-
-          {/* Full Name */}
           <div>
             <label htmlFor="fullName" className="mb-2 block text-sm font-bold uppercase tracking-widest">
               Full Name
@@ -219,7 +190,7 @@ export default function RegisterForm() {
             </label>
           </div>
 
-          {/* Create account button */}
+
           <button
             type="submit"
             className="w-full rounded-xl bg-blue-600 py-4 font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"

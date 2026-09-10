@@ -9,11 +9,8 @@ import type { CreateAcademicEventData, EventFormat } from "@/types/events/eventT
 
 interface CreateEventModalProps {
   coordinatorName: string;
-
   matchedGuestLecturers: MatchedProfile[];
-
   onClose: () => void;
-
   onCreate: (data: CreateAcademicEventData) => Promise<boolean>;
 }
 
@@ -31,51 +28,33 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
       value: item.profile.id,
       label: item.profile.basicInformation.fullName,
     }));
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     setSubmitError("");
-
     const selectedMatch = matchedGuestLecturers.find((item) => item.profile.id === selectedGuestId && item.profileType === "guestLecturer");
-
     if (!selectedMatch || selectedMatch.profileType !== "guestLecturer") {
       alert("Please select a matched Guest Lecturer.");
-
       return;
     }
-
     if (!title.trim() || !description.trim() || !date || !startTime || !endTime || !location.trim()) {
       alert("Please complete all event details.");
-
       return;
     }
-
     if (startTime >= endTime) {
       alert("The end time must be later than the start time.");
-
       return;
     }
-
     const succeeded = await onCreate({
       matchId: selectedMatch.match.id,
-
       coordinatorName,
-
       guestLecturerId: selectedMatch.profile.id,
-
       guestLecturerName: selectedMatch.profile.basicInformation.fullName,
-
       title: title.trim(),
-
       description: description.trim(),
-
       date,
       startTime,
       endTime,
-
       location: location.trim(),
-
       format,
     });
 
@@ -144,20 +123,16 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
             />
 
             <FormInput label="Event Title" value={title} placeholder="e.g. Consumer Behaviour Symposium" onChange={setTitle} />
-
             <FormTextarea label="Description" value={description} placeholder="Describe the session and its learning purpose." onChange={setDescription} />
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
               <FormInput label="Date" type="date" value={date} onChange={setDate} />
-
               <FormInput label="Start Time" type="time" value={startTime} onChange={setStartTime} />
-
               <FormInput label="End Time" type="time" value={endTime} onChange={setEndTime} />
             </div>
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <FormInput label="Location" value={location} placeholder="e.g. Building 402, Room 201" onChange={setLocation} />
-
               <FormSelect
                 label="Format"
                 value={format}
@@ -184,13 +159,7 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
   );
 }
 
-function FormInput({
-  label,
-  value,
-  type = "text",
-  placeholder,
-  onChange,
-}: {
+function FormInput({label,value, type = "text", placeholder, onChange}: {
   label: string;
   value: string;
   type?: string;
@@ -213,12 +182,7 @@ function FormInput({
   );
 }
 
-function FormTextarea({
-  label,
-  value,
-  placeholder,
-  onChange,
-}: {
+function FormTextarea({ label, value, placeholder, onChange }: {
   label: string;
   value: string;
   placeholder?: string;
@@ -240,15 +204,9 @@ function FormTextarea({
   );
 }
 
-function FormSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
+function FormSelect({ label, value, options, onChange}: {
   label: string;
   value: string;
-
   options: {
     value: string;
     label: string;
