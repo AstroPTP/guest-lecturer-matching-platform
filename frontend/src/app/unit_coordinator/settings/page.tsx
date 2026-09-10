@@ -2,7 +2,6 @@
 
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import SettingsPageContent from "@/components/settings/SettingsPageContent";
-
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
 
 export default function UnitCoordinatorSettingsPage() {

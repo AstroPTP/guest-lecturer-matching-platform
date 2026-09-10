@@ -1,38 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EventPageContent from "@/components/events/EventPageContent";
-
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-
 import { getUnitCoordinatorProfile } from "@/services/profile/unitCoordinatorProfileService";
-
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
-
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 import { formatStoredValue } from "@/utils/displayFormatters";
 
 export default function UnitCoordinatorEventsPage() {
   const [currentUserName, setCurrentUserName] = useState("Unit Coordinator");
-
   const [currentUserRole, setCurrentUserRole] = useState("Unit Coordinator");
-
   const [currentUserOrganisation, setCurrentUserOrganisation] = useState("");
-
   const [matchedGuestLecturers, setMatchedGuestLecturers] = useState<MatchedProfile[]>([]);
-
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPage() {
       setErrorMessage(null);
-
       try {
         const profile = await getUnitCoordinatorProfile();
-
         if (profile) {
           setCurrentUserName(profile.basicInformation.fullName);
           setCurrentUserRole(formatStoredValue(profile.basicInformation.academicRole));
@@ -48,10 +37,8 @@ export default function UnitCoordinatorEventsPage() {
         setIsLoading(false);
       }
     }
-
     loadPage();
   }, []);
-
   return (
     <DashboardShell
       role="unitCoordinator"

@@ -4,53 +4,34 @@ import { useEffect, useState } from "react";
 
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import DiscoveryPageContent from "@/components/discovery/DiscoveryPageContent";
-
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-<<<<<<< HEAD
-
-=======
->>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
-
 import { getPublicGuestLecturerProfiles } from "@/services/discovery/unitCoordinatorDiscoveryService";
-
 import { getUnitCoordinatorProfile } from "@/services/profile/unitCoordinatorProfileService";
-
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 
 export default function UnitCoordinatorDiscoveryPage() {
   const [items, setItems] = useState<DiscoveryItem[]>([]);
-
   const [currentUserName, setCurrentUserName] = useState("Unit Coordinator");
-
   const [currentUserPhoto, setCurrentUserPhoto] = useState("");
-
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   useEffect(() => {
     async function loadDiscovery() {
       setErrorMessage(null);
-
       try {
         const currentProfile = await getUnitCoordinatorProfile();
-
         if (currentProfile) {
           setCurrentUserName(currentProfile.basicInformation.fullName);
-
           setCurrentUserPhoto(currentProfile.basicInformation.photoPreview);
         }
-
         const profiles = await getPublicGuestLecturerProfiles();
-
         const discoveryItems: DiscoveryItem[] = profiles.map((profile) => ({
           profileType: "guestLecturer",
           profile,
         }));
-
         setItems(discoveryItems);
       } catch (error) {
         console.error("Unable to load guest lecturer profiles:", error);
-
         setErrorMessage("Unable to load data. Please try again.");
       } finally {
         setIsLoading(false);
@@ -59,7 +40,6 @@ export default function UnitCoordinatorDiscoveryPage() {
 
     loadDiscovery();
   }, []);
-
   return (
     <DashboardShell
       role="unitCoordinator"

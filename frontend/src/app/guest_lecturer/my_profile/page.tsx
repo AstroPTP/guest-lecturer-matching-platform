@@ -5,32 +5,13 @@ import Image from "next/image";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
-<<<<<<< HEAD
-import type { GuestLecturerBasicInformationData, GuestLecturerEngagementData, GuestLecturerExpertiseData, GuestLecturerProfileData} from "@/types/profile/guestLecturerProfileTypes";
-import { getGuestLecturerProfile, saveGuestLecturerBasicInformation, saveGuestLecturerEngagement, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
-=======
-
-import type {
-  GuestLecturerBasicInformationData,
-  GuestLecturerEngagementData,
-  GuestLecturerExpertiseData,
-  GuestLecturerProfileData,
-} from "@/types/profile/guestLecturerProfileTypes";
-
-import {
-  getGuestLecturerProfile,
-  saveGuestLecturerBasicInformation,
-  saveGuestLecturerEngagement,
-  saveGuestLecturerExpertise,
-} from "@/services/profile/guestLecturerProfileService";
-
->>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
+import type {GuestLecturerBasicInformationData, GuestLecturerEngagementData, GuestLecturerExpertiseData, GuestLecturerProfileData} from "@/types/profile/guestLecturerProfileTypes";
+import { getGuestLecturerProfile, saveGuestLecturerBasicInformation,saveGuestLecturerEngagement, saveGuestLecturerExpertise} from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 import { formatStoredValue } from "@/utils/displayFormatters";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
-
 export default function GuestLecturerMyProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<GuestLecturerProfileData | null>(null);
@@ -44,11 +25,9 @@ export default function GuestLecturerMyProfilePage() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadProfile() {
       try {
         const savedProfile = await getGuestLecturerProfile();
-
         if (cancelled) {
           return;
         }
@@ -70,80 +49,73 @@ export default function GuestLecturerMyProfilePage() {
     }
 
     void loadProfile();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
   function startEditing(section: EditingSection) {
-    if (!profile) return;
-
+    if (!profile){
+      return;
+    }     
     setBasicDraft(cloneData(profile.basicInformation));
     setExpertiseDraft(cloneData(profile.expertise));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(section);
     setSavedMessage("");
   }
-
   function cancelEditing() {
-    if (!profile) return;
-
+    if (!profile){
+      return;
+    }
     setBasicDraft(cloneData(profile.basicInformation));
-
     setExpertiseDraft(cloneData(profile.expertise));
-
     setEngagementDraft(cloneData(profile.engagementProfile));
-
     setEditingSection(null);
   }
 
   function showSavedMessage(message: string) {
     setSavedMessage(message);
-
     setTimeout(() => {
       setSavedMessage("");
     }, 2500);
   }
 
   async function saveBasicInformation() {
-    if (!profile || !basicDraft) return;
-
+    if (!profile || !basicDraft){
+      return;
+    }
     if (!basicDraft.fullName.trim()) {
       alert("Please enter your full name.");
       return;
     }
-
     if (!basicDraft.professionalField) {
       alert("Please select your professional field.");
       return;
     }
-
     if (!basicDraft.professionalRole) {
       alert("Please select your professional role.");
       return;
     }
-
     try {
       await saveGuestLecturerBasicInformation(basicDraft);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
-
     setProfile({
       ...profile,
       basicInformation: cloneData(basicDraft),
     });
 
     setEditingSection(null);
-
     showSavedMessage("Basic information saved successfully.");
   }
 
   async function saveExpertise() {
-    if (!profile || !expertiseDraft) return;
-
+    if (!profile || !expertiseDraft){
+      return;
+    }
     if (expertiseDraft.selectedTopics.length === 0) {
       alert("Please select at least one expertise topic.");
       return;
@@ -156,33 +128,28 @@ export default function GuestLecturerMyProfilePage() {
 
     const updatedExpertise = {
       ...expertiseDraft,
-
       speakingDetails: expertiseDraft.hasSpeakingExperience ? expertiseDraft.speakingDetails : "",
-
       internationalDetails: expertiseDraft.hasInternationalExperience ? expertiseDraft.internationalDetails : "",
     };
-
     try {
       await saveGuestLecturerExpertise(updatedExpertise);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
-
     setProfile({
       ...profile,
       expertise: cloneData(updatedExpertise),
     });
-
     setExpertiseDraft(updatedExpertise);
     setEditingSection(null);
-
     showSavedMessage("Expertise saved successfully.");
   }
 
   async function saveEngagement() {
-    if (!profile || !engagementDraft) return;
-
+    if (!profile || !engagementDraft){
+      return;
+    }
     if (!engagementDraft.primaryLocation.trim()) {
       alert("Please enter your primary location.");
       return;
@@ -197,50 +164,42 @@ export default function GuestLecturerMyProfilePage() {
       alert("Please select your audience size.");
       return;
     }
-
     const selectedFormats = getSelectedFormats(engagementDraft);
-
     if (selectedFormats.length === 0) {
       alert("Please select at least one delivery format.");
       return;
     }
-
     if (engagementDraft.deliveryFocus.length === 0) {
       alert("Please select at least one delivery focus.");
       return;
     }
-
     const updatedEngagement = {
       ...engagementDraft,
       format: formatLabelsFor(selectedFormats),
       formats: selectedFormats,
     };
-
     try {
       await saveGuestLecturerEngagement(updatedEngagement);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
-
     setProfile({
       ...profile,
       engagementProfile: cloneData(updatedEngagement),
     });
-
     setEditingSection(null);
-
     showSavedMessage("Engagement profile saved successfully.");
   }
-
   async function saveAvailability() {
-    if (!profile || !engagementDraft) return;
+    if (!profile || !engagementDraft){
+      return;
+    }
 
     if (engagementDraft.schedule.availableDays.length === 0) {
       alert("Please select at least one available day.");
       return;
     }
-
     if (!engagementDraft.schedule.availableFrom || !engagementDraft.schedule.availableTo) {
       alert("Please select your available start and end time.");
       return;
@@ -252,36 +211,27 @@ export default function GuestLecturerMyProfilePage() {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
-
     setProfile({
       ...profile,
       engagementProfile: cloneData(engagementDraft),
     });
-
     setEditingSection(null);
-
     showSavedMessage("Availability saved successfully.");
   }
 
   function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-
-    if (!file || !basicDraft) return;
-
+    if (!file || !basicDraft){
+      return;
+    }
     if (file.size > 1024 * 1024) {
       alert("Please select an image smaller than 1 MB.");
-
       event.target.value = "";
       return;
     }
-
     const reader = new FileReader();
-
     reader.onload = () => {
-      setBasicDraft({
-        ...basicDraft,
-        photoPreview: reader.result as string,
-      });
+      setBasicDraft({...basicDraft,photoPreview: reader.result as string});
     };
 
     reader.readAsDataURL(file);
@@ -289,47 +239,28 @@ export default function GuestLecturerMyProfilePage() {
 
   function toggleExpertiseTopic(topic: string) {
     if (!expertiseDraft) return;
-
     const isSelected = expertiseDraft.selectedTopics.includes(topic);
-
     if (!isSelected && expertiseDraft.selectedTopics.length >= 5) {
       alert("You can select up to 5 topics.");
       return;
     }
-
-    setExpertiseDraft({
-      ...expertiseDraft,
-
-      selectedTopics: isSelected ? expertiseDraft.selectedTopics.filter((selectedTopic) => selectedTopic !== topic) : [...expertiseDraft.selectedTopics, topic],
-    });
+    setExpertiseDraft({...expertiseDraft, selectedTopics: isSelected ? expertiseDraft.selectedTopics.filter((selectedTopic) => selectedTopic !== topic) : [...expertiseDraft.selectedTopics, topic]});
   }
-
   function toggleFormat(option: string) {
-    if (!engagementDraft) return;
-
+    if (!engagementDraft){
+      return;
+    }    
     const selectedFormats = getSelectedFormats(engagementDraft);
     const isSelected = selectedFormats.includes(option);
     const nextFormats = isSelected ? selectedFormats.filter((selectedOption) => selectedOption !== option) : [...selectedFormats, option];
-
-    setEngagementDraft({
-      ...engagementDraft,
-      format: formatLabelsFor(nextFormats),
-      formats: nextFormats,
-    });
+    setEngagementDraft({ ...engagementDraft, format: formatLabelsFor(nextFormats), formats: nextFormats});
   }
-
   function toggleDeliveryFocus(option: string) {
-    if (!engagementDraft) return;
-
+    if (!engagementDraft){
+      return;
+    }
     const isSelected = engagementDraft.deliveryFocus.includes(option);
-
-    setEngagementDraft({
-      ...engagementDraft,
-
-      deliveryFocus: isSelected
-        ? engagementDraft.deliveryFocus.filter((selectedOption) => selectedOption !== option)
-        : [...engagementDraft.deliveryFocus, option],
-    });
+    setEngagementDraft({ ...engagementDraft,deliveryFocus: isSelected ? engagementDraft.deliveryFocus.filter((selectedOption) => selectedOption !== option): [...engagementDraft.deliveryFocus, option]});
   }
 
   function toggleAvailableDay(day: string) {
@@ -377,7 +308,6 @@ export default function GuestLecturerMyProfilePage() {
       >
         <div className="rounded-2xl bg-white p-8 shadow-sm">
           <h1 className="text-2xl font-bold">{loadError ? "Profile unavailable" : "Profile not found"}</h1>
-
           <p className="mt-2 text-gray-600">{loadError || "Please complete your profile first."}</p>
         </div>
       </DashboardShell>
@@ -395,14 +325,10 @@ export default function GuestLecturerMyProfilePage() {
       <div className="mx-auto w-full max-w-6xl">
         <div className="mb-8">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Guest Lecturer</p>
-
           <h1 className="mt-2 text-4xl font-extrabold text-[#2d2d2d]">My Profile</h1>
-
           <p className="mt-2 text-gray-600">Review and update your profile information.</p>
         </div>
-
         {savedMessage && <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 font-medium text-green-700">{savedMessage}</div>}
-
         <section className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
             {profile.basicInformation.photoPreview ? (
@@ -419,14 +345,10 @@ export default function GuestLecturerMyProfilePage() {
                 {profile.basicInformation.fullName.charAt(0).toUpperCase() || "?"}
               </div>
             )}
-
             <div>
               <h2 className="text-3xl font-bold text-[#2d2d2d]">{profile.basicInformation.fullName}</h2>
-
               <p className="mt-2 text-lg text-gray-700">{profile.basicInformation.professionalRole}</p>
-
               <p className="mt-1 text-gray-500">{profile.basicInformation.professionalField}</p>
-
               <p className="mt-5 max-w-3xl leading-7 text-gray-600">{profile.basicInformation.bio}</p>
             </div>
           </div>
@@ -434,7 +356,6 @@ export default function GuestLecturerMyProfilePage() {
 
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="space-y-6 xl:col-span-2">
-
             <EditableProfileSection
               title="Basic Information"
               isEditing={editingSection === "basic"}
@@ -445,17 +366,13 @@ export default function GuestLecturerMyProfilePage() {
             >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <ProfileField label="Full Name" value={profile.basicInformation.fullName} />
-
                 <ProfileField label="Professional Field" value={profile.basicInformation.professionalField} />
-
                 <ProfileField label="Professional Role" value={profile.basicInformation.professionalRole} />
-
                 <div className="md:col-span-2">
                   <ProfileField label="Short Bio" value={profile.basicInformation.bio} />
                 </div>
               </div>
             </EditableProfileSection>
-
 
             <EditableProfileSection
               title="Expertise"
@@ -467,16 +384,11 @@ export default function GuestLecturerMyProfilePage() {
             >
               <div className="space-y-7">
                 <TagList label="Expertise Topics" items={profile.expertise.selectedTopics} />
-
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <ProfileField label="Experience Level" value={formatStoredValue(profile.expertise.experienceLevel)} />
-
                   <ProfileField label="Speaking Experience" value={profile.expertise.hasSpeakingExperience ? "Yes" : "No"} />
-
                   {profile.expertise.hasSpeakingExperience && <ProfileField label="Speaking Details" value={profile.expertise.speakingDetails} />}
-
                   <ProfileField label="International Experience" value={profile.expertise.hasInternationalExperience ? "Yes" : "No"} />
-
                   {profile.expertise.hasInternationalExperience && (
                     <ProfileField label="International Details" value={profile.expertise.internationalDetails} />
                   )}
@@ -569,7 +481,6 @@ function BasicInformationEditor({
         )}
 
         <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onPhotoChange} />
-
         <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300">
           Change Photo
         </button>
@@ -614,7 +525,6 @@ function BasicInformationEditor({
 
       <div>
         <label className="mb-2 block text-xs font-bold uppercase tracking-wider">Short Bio</label>
-
         <textarea
           rows={4}
           maxLength={250}
@@ -627,7 +537,6 @@ function BasicInformationEditor({
           }
           className="w-full resize-none border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none focus:bg-white"
         />
-
         <p className="mt-1 text-right text-xs text-gray-500">{draft.bio.length}/250</p>
       </div>
     </div>
@@ -647,7 +556,6 @@ function ExpertiseEditor({
     <div className="space-y-7">
       <div>
         <ProfileLabel>Expertise Topics</ProfileLabel>
-
         <div className="flex flex-wrap gap-2">
           {expertiseTopics.map((topic) => {
             const selected = draft.selectedTopics.includes(topic);
@@ -776,10 +684,7 @@ function EngagementEditor({
           value={draft.sessionDuration}
           options={sessionDurationOptions}
           onChange={(value) =>
-            setDraft({
-              ...draft,
-              sessionDuration: value,
-            })
+            setDraft({...draft,sessionDuration: value})
           }
         />
 
@@ -788,10 +693,7 @@ function EngagementEditor({
           value={draft.audienceSize}
           options={guestLecturerAudienceSizeOptions}
           onChange={(value) =>
-            setDraft({
-              ...draft,
-              audienceSize: value,
-            })
+            setDraft({...draft,audienceSize: value})
           }
         />
 
@@ -854,11 +756,9 @@ function AvailabilityEditor({
     <div className="space-y-6">
       <div>
         <ProfileLabel>Available Days</ProfileLabel>
-
         <div className="flex flex-wrap gap-2">
           {weekDays.map((day) => {
             const selected = draft.schedule.availableDays.includes(day.value);
-
             return (
               <button
                 key={day.value}
@@ -878,13 +778,7 @@ function AvailabilityEditor({
         type="time"
         value={draft.schedule.availableFrom}
         onChange={(value) =>
-          setDraft({
-            ...draft,
-
-            schedule: {
-              ...draft.schedule,
-              availableFrom: value,
-            },
+          setDraft({...draft, schedule: {...draft.schedule,availableFrom: value},
           })
         }
       />
@@ -894,13 +788,7 @@ function AvailabilityEditor({
         type="time"
         value={draft.schedule.availableTo}
         onChange={(value) =>
-          setDraft({
-            ...draft,
-
-            schedule: {
-              ...draft.schedule,
-              availableTo: value,
-            },
+          setDraft({...draft,schedule: {...draft.schedule, availableTo: value},
           })
         }
       />
@@ -910,34 +798,17 @@ function AvailabilityEditor({
         value={draft.schedule.availabilityFrequency}
         options={guestLecturerAvailabilityFrequencyOptions}
         onChange={(value) =>
-          setDraft({
-            ...draft,
-
-            schedule: {
-              ...draft.schedule,
-
-              availabilityFrequency: value,
-            },
-          })
+          setDraft({...draft, schedule: {...draft.schedule, availabilityFrequency: value}})
         }
       />
-
       <div>
         <ProfileLabel>Availability Notes</ProfileLabel>
-
         <textarea
           rows={4}
           maxLength={250}
           value={draft.schedule.availabilityNotes}
           onChange={(event) =>
-            setDraft({
-              ...draft,
-
-              schedule: {
-                ...draft.schedule,
-
-                availabilityNotes: event.target.value,
-              },
+            setDraft({...draft,schedule: {...draft.schedule,availabilityNotes: event.target.value},
             })
           }
           className="w-full resize-none border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none focus:bg-white"
@@ -947,15 +818,10 @@ function AvailabilityEditor({
   );
 }
 
-/* ------------------------------------------------------------------
-   Shared small UI components
------------------------------------------------------------------- */
-
 function ProfileField({ label, value }: { label: string; value?: string }) {
   return (
     <div>
       <ProfileLabel>{label}</ProfileLabel>
-
       <p className="whitespace-pre-wrap leading-7 text-[#333333]">{value || "Not provided"}</p>
     </div>
   );
@@ -969,7 +835,6 @@ function TagList({ label, items }: { label: string; items: string[] }) {
   return (
     <div>
       <ProfileLabel>{label}</ProfileLabel>
-
       {items.length === 0 ? (
         <p className="text-gray-400">Not provided</p>
       ) : (
@@ -1011,19 +876,15 @@ function ProfileSelect({ label, value, options, onChange }: { label: string; val
   return (
     <div>
       <label className="mb-2 block text-xs font-bold uppercase tracking-wider">{label}</label>
-
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="w-full border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none"
       >
         <option value="">Select an option</option>
-
         {options.map((option) => {
           const optionValue = typeof option === "string" ? option : option.value;
-
           const optionLabel = typeof option === "string" ? option : option.label;
-
           return (
             <option key={optionValue} value={optionValue}>
               {optionLabel}

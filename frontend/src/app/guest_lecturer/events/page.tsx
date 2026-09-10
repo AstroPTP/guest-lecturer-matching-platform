@@ -5,6 +5,7 @@ import DashboardShell from "@/components/dashboard/DashboardShell";
 import EventPageContent from "@/components/events/EventPageContent";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
 import { getGuestLecturerProfile } from "@/services/profile/guestLecturerProfileService";
+
 export default function GuestLecturerEventsPage() {
   const [currentUserName, setCurrentUserName] = useState("Guest Lecturer");
   const [currentUserRole, setCurrentUserRole] = useState("Guest Lecturer");
@@ -13,23 +14,17 @@ export default function GuestLecturerEventsPage() {
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadProfile() {
       try {
         const profile = await getGuestLecturerProfile();
-
         if (cancelled) {
           return;
         }
-
         if (profile) {
           setCurrentUserName(profile.basicInformation.fullName);
-
           setCurrentUserRole(profile.basicInformation.professionalRole);
           setCurrentUserOrganisation(profile.basicInformation.professionalField);
         }
-      } catch {
-
       } finally {
         if (!cancelled) {
           setIsLoading(false);
@@ -46,10 +41,6 @@ export default function GuestLecturerEventsPage() {
   return (
     <DashboardShell
       role="guestLecturer"
-<<<<<<< HEAD
-=======
-      
->>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
       messagesHref="/guest_lecturer/messages"

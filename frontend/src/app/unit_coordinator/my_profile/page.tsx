@@ -3,45 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { ChangeEvent, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
-
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-<<<<<<< HEAD
-=======
 
->>>>>>> 48dc92e78865366a1f9471ff8364cd565766ec5e
+import type { UnitCoordinatorBasicInformationData, UnitCoordinatorEngagementData, UnitCoordinatorExpertiseData, UnitCoordinatorProfileData} from "@/types/profile/unitCoordinatorProfileTypes";
 
-import type {
-  UnitCoordinatorBasicInformationData,
-  UnitCoordinatorEngagementData,
-  UnitCoordinatorExpertiseData,
-  UnitCoordinatorProfileData,
-} from "@/types/profile/unitCoordinatorProfileTypes";
-
-import {
-  getUnitCoordinatorProfile,
-  saveUnitCoordinatorBasicInformation,
-  saveUnitCoordinatorEngagement,
-  saveUnitCoordinatorExpertise,
-} from "@/services/profile/unitCoordinatorProfileService";
-
-import {
-  academicRoleOptions,
-  engagementFrequencyOptions,
-  schoolDepartmentOptions,
-} from "@/constants/profileOptions/unitCoordinator";
-
-import {
-  deliveryFocusOptions,
-  experienceLevels,
-  expertiseTopics,
-  formatOptions,
-  sessionDurationOptions,
-  unitCoordinatorAudienceSizeOptions as audienceSizeOptions,
-  weekDays,
-  formatOptions,
-} from "@/constants/profileOptions/shared";
+import { getUnitCoordinatorProfile, saveUnitCoordinatorBasicInformation, saveUnitCoordinatorEngagement, saveUnitCoordinatorExpertise} from "@/services/profile/unitCoordinatorProfileService";
+import { academicRoleOptions,engagementFrequencyOptions, schoolDepartmentOptions} from "@/constants/profileOptions/unitCoordinator";
+import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, sessionDurationOptions, unitCoordinatorAudienceSizeOptions as audienceSizeOptions,  weekDays} from "@/constants/profileOptions/shared";
 import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFormatters";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
@@ -50,9 +20,7 @@ const experienceLevelOptions = experienceLevels.map((level) => ({
 }));
 
 type EditingSection = "basic" | "expertise" | "engagement" | "schedule" | null;
-
 type NullableStateSetter<T> = Dispatch<SetStateAction<T | null>>;
-
 export default function UnitCoordinatorMyProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<UnitCoordinatorProfileData | null>(null);
@@ -63,14 +31,11 @@ export default function UnitCoordinatorMyProfilePage() {
   const [engagementDraft, setEngagementDraft] = useState<UnitCoordinatorEngagementData | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
-
   useEffect(() => {
     let cancelled = false;
-
     async function loadProfile() {
       try {
         const savedProfile = await getUnitCoordinatorProfile();
-
         if (cancelled) {
           return;
         }
@@ -92,17 +57,15 @@ export default function UnitCoordinatorMyProfilePage() {
         }
       }
     }
-
     void loadProfile();
-
     return () => {
       cancelled = true;
     };
   }, []);
-
   function startEditing(section: EditingSection) {
-    if (!profile) return;
-
+    if (!profile) {
+      return;
+    }
     setBasicDraft(cloneData(profile.basicInformation));
     setExpertiseDraft(cloneData(profile.expertise));
     setEngagementDraft(cloneData(profile.engagementProfile));
@@ -111,8 +74,9 @@ export default function UnitCoordinatorMyProfilePage() {
   }
 
   function cancelEditing() {
-    if (!profile) return;
-
+    if (!profile) {
+      return;
+    }
     setBasicDraft(cloneData(profile.basicInformation));
     setExpertiseDraft(cloneData(profile.expertise));
     setEngagementDraft(cloneData(profile.engagementProfile));
@@ -129,7 +93,6 @@ export default function UnitCoordinatorMyProfilePage() {
     if (!basicDraft.fullName.trim()) return alert("Please enter your full name.");
     if (!basicDraft.schoolDepartment) return alert("Please select your school or department.");
     if (!basicDraft.academicRole) return alert("Please select your academic role.");
-
     try {
       await saveUnitCoordinatorBasicInformation(basicDraft);
     } catch {
@@ -162,14 +125,24 @@ export default function UnitCoordinatorMyProfilePage() {
   }
 
   async function saveEngagement() {
-    if (!profile || !engagementDraft) return;
-    if (!engagementDraft.primaryLocation.trim()) return alert("Please enter the engagement location.");
-    if (!engagementDraft.sessionDuration) return alert("Please select the session duration.");
-    if (!engagementDraft.audienceSize) return alert("Please select the audience size.");
-    if (engagementDraft.formats.length === 0) return alert("Please select at least one preferred format.");
-    if (engagementDraft.deliveryFocus.length === 0) return alert("Please select at least one delivery focus.");
-
-    try {
+    if (!profile || !engagementDraft) {
+      return;
+    }
+    if (!engagementDraft.primaryLocation.trim()){
+      return alert("Please enter the engagement location.");
+    }
+    if (!engagementDraft.sessionDuration){
+      return alert("Please select the session duration.");
+    }
+    if (!engagementDraft.audienceSize) {
+      return alert("Please select the audience size.");
+    }
+    if (engagementDraft.formats.length === 0) {
+      return alert("Please select at least one preferred format.");
+    }
+    if (engagementDraft.deliveryFocus.length === 0) {
+      return alert("Please select at least one delivery focus.");
+    }    try {
       await saveUnitCoordinatorEngagement(engagementDraft);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
@@ -182,20 +155,24 @@ export default function UnitCoordinatorMyProfilePage() {
   }
 
   async function saveSchedule() {
-    if (!profile || !engagementDraft) return;
+    if (!profile || !engagementDraft){
+      return;
+    }
     const { preferredDays, preferredFrom, preferredTo } = engagementDraft.schedule;
-
-    if (preferredDays.length === 0) return alert("Please select at least one preferred day.");
-    if (!preferredFrom || !preferredTo) return alert("Please select the preferred start and end time.");
-    if (preferredFrom >= preferredTo) return alert("The end time must be later than the start time.");
-
-    try {
+    if (preferredDays.length === 0){
+      return alert("Please select at least one preferred day.");
+    }
+    if (!preferredFrom || !preferredTo){
+      return alert("Please select the preferred start and end time.");
+    }
+    if (preferredFrom >= preferredTo){
+      return alert("The end time must be later than the start time.");
+    }    try {
       await saveUnitCoordinatorEngagement(engagementDraft);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
-
     setProfile({ ...profile, engagementProfile: cloneData(engagementDraft) });
     setEditingSection(null);
     showSavedMessage("Preferred schedule saved successfully.");
@@ -203,7 +180,9 @@ export default function UnitCoordinatorMyProfilePage() {
 
   function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file || !basicDraft) return;
+    if (!file || !basicDraft){
+      return;
+    }
 
     if (file.size > 1024 * 1024) {
       alert("Please select an image smaller than 1 MB.");
@@ -225,54 +204,33 @@ export default function UnitCoordinatorMyProfilePage() {
       return;
     }
 
-    setExpertiseDraft({
-      ...expertiseDraft,
-      selectedTopics: selected ? expertiseDraft.selectedTopics.filter((item) => item !== topic) : [...expertiseDraft.selectedTopics, topic],
-    });
+    setExpertiseDraft({...expertiseDraft, selectedTopics: selected ? expertiseDraft.selectedTopics.filter((item) => item !== topic) : [...expertiseDraft.selectedTopics, topic]});
   }
 
   function toggleExperienceLevel(level: string) {
     if (!expertiseDraft) return;
     const selected = expertiseDraft.experienceLevelsRequired.includes(level);
 
-    setExpertiseDraft({
-      ...expertiseDraft,
-      experienceLevelsRequired: selected
-        ? expertiseDraft.experienceLevelsRequired.filter((item) => item !== level)
-        : [...expertiseDraft.experienceLevelsRequired, level],
-    });
+    setExpertiseDraft({...expertiseDraft, experienceLevelsRequired: selected ? expertiseDraft.experienceLevelsRequired.filter((item) => item !== level) : [...expertiseDraft.experienceLevelsRequired, level] });
   }
 
   function toggleFormat(format: string) {
     if (!engagementDraft) return;
     const selected = engagementDraft.formats.includes(format);
-
-    setEngagementDraft({
-      ...engagementDraft,
-      formats: selected ? engagementDraft.formats.filter((item) => item !== format) : [...engagementDraft.formats, format],
-    });
+    setEngagementDraft({...engagementDraft,formats: selected ? engagementDraft.formats.filter((item) => item !== format) : [...engagementDraft.formats, format] });
   }
 
   function toggleDeliveryFocus(option: string) {
     if (!engagementDraft) return;
     const selected = engagementDraft.deliveryFocus.includes(option);
-
-    setEngagementDraft({
-      ...engagementDraft,
-      deliveryFocus: selected ? engagementDraft.deliveryFocus.filter((item) => item !== option) : [...engagementDraft.deliveryFocus, option],
-    });
+    setEngagementDraft({...engagementDraft, deliveryFocus: selected ? engagementDraft.deliveryFocus.filter((item) => item !== option) : [...engagementDraft.deliveryFocus, option] });
   }
 
   function togglePreferredDay(day: string) {
     if (!engagementDraft) return;
     const selected = engagementDraft.schedule.preferredDays.includes(day);
 
-    setEngagementDraft({
-      ...engagementDraft,
-      schedule: {
-        ...engagementDraft.schedule,
-        preferredDays: selected ? engagementDraft.schedule.preferredDays.filter((item) => item !== day) : [...engagementDraft.schedule.preferredDays, day],
-      },
+    setEngagementDraft({...engagementDraft,schedule: { ...engagementDraft.schedule, preferredDays: selected ? engagementDraft.schedule.preferredDays.filter((item) => item !== day) : [...engagementDraft.schedule.preferredDays, day]},
     });
   }
 
@@ -305,9 +263,7 @@ export default function UnitCoordinatorMyProfilePage() {
           <h1 className="mt-2 text-4xl font-extrabold text-[#2d2d2d]">My Profile</h1>
           <p className="mt-2 text-gray-600">Review and update your profile and guest lecturer requirements.</p>
         </div>
-
         {savedMessage && <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 font-medium text-green-700">{savedMessage}</div>}
-
         <section className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
             {profile.basicInformation.photoPreview ? (
@@ -678,7 +634,6 @@ function ProfileTextarea({ label, value, onChange, maxLength = 500 }: { label: s
 }
 
 type SelectOption = string | { value: string; label: string };
-
 function ProfileSelect({ label, value, options, onChange }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void }) {
   return (
     <div>

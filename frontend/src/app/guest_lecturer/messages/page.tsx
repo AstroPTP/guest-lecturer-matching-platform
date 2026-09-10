@@ -16,10 +16,8 @@ export default function GuestLecturerMessagesPage() {
   useEffect(() => {
     async function loadConversations() {
       setErrorMessage(null);
-
       try {
         const matches = await getMatchedProfiles("guestLecturer");
-
         const nextSeeds: ConversationSeed[] = [];
 
         for (const item of matches) {

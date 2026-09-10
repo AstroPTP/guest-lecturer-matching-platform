@@ -20,7 +20,6 @@ export default function GuestLecturerDiscoveryPage() {
       setErrorMessage(null);
       try {
         const currentProfile = await getGuestLecturerProfile();
-
         if (currentProfile) {
           setCurrentUserName(currentProfile.basicInformation.fullName);
           setCurrentUserPhoto(currentProfile.basicInformation.photoPreview);
@@ -35,7 +34,6 @@ export default function GuestLecturerDiscoveryPage() {
         setIsLoading(false);
       }
     }
-
     loadDiscovery();
   }, []);
 
