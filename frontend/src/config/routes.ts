@@ -21,6 +21,3 @@ export function getDashboardRoutes(role: UserRole) {
   } as const;
 }
 
-export const GUEST_LECTURER_ROUTES = getDashboardRoutes("guestLecturer");
-export const UNIT_COORDINATOR_ROUTES = getDashboardRoutes("unitCoordinator");
-

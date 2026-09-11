@@ -1,4 +1,7 @@
+export const NOT_INTEGRATED_MESSAGE = "This action isn't connected to a backend yet.";
+
 export type ServiceErrorCode = "API_NOT_INTEGRATED";
+
 export class ServiceError extends Error {
   readonly code: ServiceErrorCode;
 
@@ -9,6 +12,6 @@ export class ServiceError extends Error {
   }
 }
 
-export function notIntegrated(operation: string): never {
-  throw new ServiceError("API_NOT_INTEGRATED", operation + " is not connected to a backend API yet.");
+export function notIntegrated(): never {
+  throw new ServiceError("API_NOT_INTEGRATED", NOT_INTEGRATED_MESSAGE);
 }

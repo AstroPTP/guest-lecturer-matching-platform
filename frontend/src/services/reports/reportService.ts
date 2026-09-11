@@ -1,3 +1,4 @@
+import { notIntegrated } from "@/lib/serviceErrors";
 import type { UserReport } from "@/types/reports/reportTypes";
 
 export async function reportUser(_params: {
@@ -5,5 +6,5 @@ export async function reportUser(_params: {
   conversationId: string;
   reason: string;
 }): Promise<UserReport> {
-  throw new Error("This action isn't connected to a backend yet.");
+  return notIntegrated();
 }

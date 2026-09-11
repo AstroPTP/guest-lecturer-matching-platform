@@ -36,9 +36,6 @@ export async function saveGuestLecturerDiscoveryFilters(filters: GuestLecturerDi
   currentGuestLecturerFilters = filters;
 }
 
-export async function clearGuestLecturerDiscoveryFilters(): Promise<void> {
-  currentGuestLecturerFilters = { ...emptyGuestLecturerFilters };
-}
 
 export async function getUnitCoordinatorDiscoveryFilters(): Promise<UnitCoordinatorDiscoveryFilters> {
   return currentUnitCoordinatorFilters;
@@ -46,8 +43,4 @@ export async function getUnitCoordinatorDiscoveryFilters(): Promise<UnitCoordina
 
 export async function saveUnitCoordinatorDiscoveryFilters(filters: UnitCoordinatorDiscoveryFilters): Promise<void> {
   currentUnitCoordinatorFilters = filters;
-}
-
-export async function clearUnitCoordinatorDiscoveryFilters(): Promise<void> {
-  currentUnitCoordinatorFilters = { ...emptyUnitCoordinatorFilters };
 }

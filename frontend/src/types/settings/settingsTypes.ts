@@ -4,12 +4,6 @@ export interface AccountSettings {
   password: string; 
 }
 
-export interface PendingEmailChange {
-  newEmail: string;
-  code: string;
-  expiresAt: number; 
-}
-
 export type ActionResult = {
   success: boolean;
   error?: string;
