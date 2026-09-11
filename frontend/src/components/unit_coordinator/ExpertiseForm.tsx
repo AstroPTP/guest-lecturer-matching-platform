@@ -18,7 +18,6 @@ export default function ExpertiseForm() {
     async function loadDraft() {
       try {
         const data = await getUnitCoordinatorExpertise();
-
         if (cancelled || !data) {
           return;
         }

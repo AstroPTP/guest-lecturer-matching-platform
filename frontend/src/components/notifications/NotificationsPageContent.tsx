@@ -3,20 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
 import arrowIcon from "@/assets/arrow.png";
 import emailIcon from "@/assets/email.png";
 import infoIcon from "@/assets/info.png";
 import matchIcon from "@/assets/match.png";
 import messageIcon from "@/assets/message.png";
-
 import { getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "@/services/notifications/notificationService";
-
 import type { AppNotification, NotificationType } from "@/types/notifications/notificationTypes";
-
-interface NotificationsPageContentProps {
-  currentUserId: string;
-}
 
 const NOTIFICATION_ICONS = {
   match: matchIcon,
@@ -25,7 +18,7 @@ const NOTIFICATION_ICONS = {
   profile: infoIcon,
 } satisfies Record<NotificationType, typeof matchIcon>;
 
-export default function NotificationsPageContent({ currentUserId }: NotificationsPageContentProps) {
+export default function NotificationsPageContent() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -60,7 +53,7 @@ export default function NotificationsPageContent({ currentUserId }: Notification
     return () => {
       cancelled = true;
     };
-  }, [currentUserId]);
+  }, []);
 
   async function handleMarkAllAsRead() {
     setActionError(null);
@@ -106,7 +99,9 @@ export default function NotificationsPageContent({ currentUserId }: Notification
     <div className="mx-auto w-full max-w-5xl px-8 py-12">
       <div className="mb-12 flex items-center justify-between">
         <div>
-          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-gray-500">Activity centre</p>
+          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-gray-500">
+            Activity centre
+          </p>
           <h2 className="text-4xl font-bold tracking-tight text-[#242424]">Notifications</h2>
         </div>
 
@@ -120,9 +115,7 @@ export default function NotificationsPageContent({ currentUserId }: Notification
           </button>
         )}
       </div>
-
       {actionError && <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-700">{actionError}</div>}
-
       {notifications.length === 0 ? (
         <div className="rounded-2xl bg-white px-6 py-20 text-center shadow-sm">
           <Image src={infoIcon} alt="" width={40} height={40} className="mx-auto opacity-60" />
@@ -185,10 +178,8 @@ function groupNotifications(notifications: AppNotification[]): {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
-
   for (const notification of notifications) {
     const createdAt = new Date(notification.createdAt).getTime();
-
     if (createdAt >= startOfToday) {
       today.push(notification);
     } else if (createdAt >= startOfYesterday) {
@@ -197,7 +188,6 @@ function groupNotifications(notifications: AppNotification[]): {
       earlier.push(notification);
     }
   }
-
   return [
     { label: "Today", items: today },
     { label: "Yesterday", items: yesterday },
@@ -209,17 +199,13 @@ function formatNotificationTime(createdAt: string): string {
   const date = new Date(createdAt);
   const elapsedMilliseconds = Date.now() - date.getTime();
   const elapsedMinutes = Math.max(1, Math.floor(elapsedMilliseconds / (60 * 1000)));
-
   if (elapsedMinutes < 60) {
     return elapsedMinutes + " min ago";
   }
-
   const elapsedHours = Math.floor(elapsedMinutes / 60);
-
   if (elapsedHours < 24) {
     return elapsedHours + " " + (elapsedHours === 1 ? "hour" : "hours") + " ago";
   }
-
   return new Intl.DateTimeFormat("en-AU", {
     day: "numeric",
     month: "short",

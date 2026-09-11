@@ -31,10 +31,8 @@ export default function FeatureCard({ title, description, items, buttonText, rol
           </li>
         ))}
       </ul>
-
       <button type="button" onClick={handleJoin} className="flex items-center gap-2 font-semibold transition-all hover:gap-3">
         <span>{buttonText}</span>
-
         <Image src={arrow} alt="Arrow" width={18} height={18} />
       </button>
     </div>

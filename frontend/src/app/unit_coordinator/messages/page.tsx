@@ -1,15 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import MessagesPageContent from "@/components/messages/MessagesPageContent";
-
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
-import { DEMO_UNIT_COORDINATOR_ID } from "@/config/demoUsers";
-
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
-
 import type { ConversationSeed } from "@/types/messages/messageTypes";
 import { formatStoredValue } from "@/utils/displayFormatters";
 
@@ -21,12 +16,9 @@ export default function UnitCoordinatorMessagesPage() {
   useEffect(() => {
     async function loadConversations() {
       setErrorMessage(null);
-
       try {
-        const matches = await getMatchedProfiles(DEMO_UNIT_COORDINATOR_ID, "unitCoordinator");
-
+        const matches = await getMatchedProfiles( "unitCoordinator");
         const nextSeeds: ConversationSeed[] = [];
-
         for (const item of matches) {
           if (item.profileType !== "guestLecturer") {
             continue;
@@ -45,10 +37,10 @@ export default function UnitCoordinatorMessagesPage() {
             },
 
             matchedUnit: {
-              location: engagementProfile.primaryLocation,
+            location: engagementProfile.primaryLocation,
             format: formatStoredValue(engagementProfile.format) || "Not specified",
             duration: formatStoredValue(engagementProfile.sessionDuration) || "Not specified",
-              semester: "Sem 2",
+            semester: "Sem 2",
             },
           });
         }
@@ -61,17 +53,13 @@ export default function UnitCoordinatorMessagesPage() {
         setIsLoading(false);
       }
     }
-
     void loadConversations();
   }, []);
-
   return (
     <DashboardShell
       role="unitCoordinator"
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
-      messagesHref="/unit_coordinator/messages"
-      profileHref="/unit_coordinator/my_profile"
     >
       {isLoading ? (
         <div className="flex min-h-[400px] items-center justify-center">
@@ -84,7 +72,6 @@ export default function UnitCoordinatorMessagesPage() {
       ) : (
         <MessagesPageContent
           userType="unitCoordinator"
-          currentUserId={DEMO_UNIT_COORDINATOR_ID}
           conversationSeeds={conversationSeeds}
           participantProfileHref="/unit_coordinator/matches"
         />

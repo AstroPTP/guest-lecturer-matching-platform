@@ -2,7 +2,6 @@
 
 import { ReactNode } from "react";
 import Image from "next/image";
-
 import editIcon from "@/assets/edit.png";
 
 interface EditableProfileSectionProps {
@@ -32,15 +31,12 @@ export default function EditableProfileSection({ title, isEditing, onEdit, onCan
           </button>
         )}
       </div>
-
       {isEditing ? editContent : children}
-
       {isEditing && (
         <div className="mt-8 flex justify-end gap-3 border-t border-gray-100 pt-5">
           <button type="button" onClick={onCancel} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold text-[#2d2d2d] hover:bg-gray-300">
             Cancel
           </button>
-
           <button type="button" onClick={onSave} className="rounded-xl bg-[#2d2d2d] px-6 py-3 font-semibold text-white hover:bg-black">
             Save
           </button>

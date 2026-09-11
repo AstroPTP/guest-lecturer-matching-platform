@@ -1,12 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-
 import OtpForm from "@/components/shared/OtpForm";
 
 export default function VerifyEmailForm() {
   const router = useRouter();
-
   return (
     <OtpForm
       title="Check your email"

@@ -4,54 +4,25 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import arrowBackIcon from "@/assets/arrow_back.png";
-
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
-
-import {
-  emptyGuestLecturerFilters,
-  emptyUnitCoordinatorFilters,
-  getGuestLecturerDiscoveryFilters,
-  getUnitCoordinatorDiscoveryFilters,
-  saveGuestLecturerDiscoveryFilters,
-  saveUnitCoordinatorDiscoveryFilters,
-} from "@/services/filter/discoveryFilterService";
-
+import { emptyGuestLecturerFilters, emptyUnitCoordinatorFilters,getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters, saveGuestLecturerDiscoveryFilters, saveUnitCoordinatorDiscoveryFilters,} from "@/services/filter/discoveryFilterService";
 import { professionalFields } from "@/constants/profileOptions/guestLecturer";
-
-import {
-  experienceLevels,
-  expertiseTopics,
-  sessionDurationOptions,
-  formatOptions,
-  unitCoordinatorAudienceSizeOptions,
-  weekDays,
-} from "@/constants/profileOptions/shared";
+import { experienceLevels, expertiseTopics, formatOptions,sessionDurationOptions, unitCoordinatorAudienceSizeOptions,weekDays} from "@/constants/profileOptions/shared";
 
 interface FilterPageContentProps {
   role: UserRole;
-
   discoveryHref: string;
 }
 
 export default function FilterPageContent({ role, discoveryHref }: FilterPageContentProps) {
   const router = useRouter();
-
-  const [guestLecturerFilters, setGuestLecturerFilters] = useState<GuestLecturerDiscoveryFilters>({
-    ...emptyGuestLecturerFilters,
-  });
-
-  const [unitCoordinatorFilters, setUnitCoordinatorFilters] = useState<UnitCoordinatorDiscoveryFilters>({
-    ...emptyUnitCoordinatorFilters,
-  });
-
+  const [guestLecturerFilters, setGuestLecturerFilters] = useState<GuestLecturerDiscoveryFilters>({...emptyGuestLecturerFilters});
+  const [unitCoordinatorFilters, setUnitCoordinatorFilters] = useState<UnitCoordinatorDiscoveryFilters>({ ...emptyUnitCoordinatorFilters});
   const [loadError, setLoadError] = useState("");
-
   useEffect(() => {
     let cancelled = false;
-
     async function loadFilters() {
       try {
         if (role === "guestLecturer") {
@@ -60,12 +31,9 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
           if (!cancelled) {
             setGuestLecturerFilters(filters);
           }
-
           return;
         }
-
         const filters = await getUnitCoordinatorDiscoveryFilters();
-
         if (!cancelled) {
           setUnitCoordinatorFilters(filters);
         }
@@ -75,9 +43,7 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
         }
       }
     }
-
     void loadFilters();
-
     return () => {
       cancelled = true;
     };
@@ -91,7 +57,7 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
         await saveUnitCoordinatorDiscoveryFilters(unitCoordinatorFilters);
       }
     } catch {
-      
+  
     }
 
     router.push(discoveryHref);
@@ -99,16 +65,10 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
 
   function handleClear() {
     if (role === "guestLecturer") {
-      setGuestLecturerFilters({
-        ...emptyGuestLecturerFilters,
-      });
-
+      setGuestLecturerFilters({  ...emptyGuestLecturerFilters });
       return;
     }
-
-    setUnitCoordinatorFilters({
-      ...emptyUnitCoordinatorFilters,
-    });
+    setUnitCoordinatorFilters({ ...emptyUnitCoordinatorFilters });
   }
 
   return (
@@ -123,14 +83,11 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
         </Link>
 
         <h1 className="text-3xl font-extrabold text-[#2d2d2d]">Filters</h1>
-
         <button type="button" onClick={handleClear} className="px-3 py-2 font-semibold text-gray-600 hover:text-black">
           Clear All
         </button>
       </div>
-
       {loadError && <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-700">{loadError}</div>}
-
       {role === "guestLecturer" ? (
         <GuestLecturerFilterFields filters={guestLecturerFilters} setFilters={setGuestLecturerFilters} />
       ) : (
@@ -146,12 +103,8 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
   );
 }
 
-function GuestLecturerFilterFields({
-  filters,
-  setFilters,
-}: {
+function GuestLecturerFilterFields({filters,setFilters}: {
   filters: GuestLecturerDiscoveryFilters;
-
   setFilters: React.Dispatch<React.SetStateAction<GuestLecturerDiscoveryFilters>>;
 }) {
   return (
@@ -240,12 +193,8 @@ function GuestLecturerFilterFields({
   );
 }
 
-function UnitCoordinatorFilterFields({
-  filters,
-  setFilters,
-}: {
+function UnitCoordinatorFilterFields({ filters, setFilters}: {
   filters: UnitCoordinatorDiscoveryFilters;
-
   setFilters: React.Dispatch<React.SetStateAction<UnitCoordinatorDiscoveryFilters>>;
 }) {
   return (
