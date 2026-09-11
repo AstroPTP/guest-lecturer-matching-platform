@@ -1,5 +1,7 @@
 "use client";
 
+import { getInitials } from "@/utils/displayFormatters";
+
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -128,18 +130,6 @@ function ProfileImage({ photo, name, initials, variant }: { photo?: string; name
   );
 }
 
-function getInitials(fullName: string): string {
-  const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
-
-  if (nameParts.length === 0) {
-    return "?";
-  }
-
-  if (nameParts.length === 1) {
-    return nameParts[0].slice(0, 2).toUpperCase();
-  }
-  return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase();
-}
 
 function getMatchDetails(item: DiscoveryItem) {
   const topics = item.profile.expertise.selectedTopics;

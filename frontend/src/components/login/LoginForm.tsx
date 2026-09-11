@@ -12,17 +12,13 @@ export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [needsVerification, setNeedsVerification] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const searchParams = useSearchParams();
-  const role = searchParams.get("role");
-  const registerHref = role ? '/register?role=${role}' : "/register";
+  const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
+  const registerHref = `/register?role=${role}`;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setError("");
-    setNeedsVerification(false);
     if (role === "coordinator") {
       router.push("/unit_coordinator/profile");
     } else {
@@ -71,14 +67,6 @@ export default function LoginForm() {
           >
             Log in
           </button>
-          {error && <p className="text-center text-sm text-red-600">{error}</p>}
-          {needsVerification && (
-            <p className="text-center text-sm">
-              <Link href="/verify" className="font-medium text-blue-600 underline hover:text-blue-700">
-                Verify your email now
-              </Link>
-            </p>
-          )}
         </form>
 
         <div className="my-8 flex items-center gap-3">

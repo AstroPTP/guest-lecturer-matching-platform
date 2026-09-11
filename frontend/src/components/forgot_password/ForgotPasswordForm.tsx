@@ -12,11 +12,9 @@ interface ForgotPasswordFormProps {
 
 export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormProps) {
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedEmail = email.trim().toLowerCase();
-    setError("");
     onSubmitted(normalizedEmail);
   }
   return (
@@ -45,7 +43,6 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
               className="w-full bg-slate-50 border border-slate-200 rounded-lg py-3 pl-12 pr-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
 
         <button

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { UserRole } from "@/types/shared/userRole";
 import { cancelEmailChange, changePassword, confirmEmailChange, deleteAccount, getAccountSettings, requestEmailChange} from "@/services/settings/settingsService";
 import AccountSection from "@/components/settings/AccountSection";
 import PasswordSection from "@/components/settings/PasswordSection";
@@ -9,14 +8,13 @@ import DeleteAccountSection from "@/components/settings/DeleteAccountSection";
 import SettingsNav, { type SettingsTab } from "@/components/settings/SettingsNav";
 
 interface SettingsPageContentProps {
-  userType: UserRole;
   seedEmail: string;
 }
 
 export default function SettingsPageContent({  seedEmail }: SettingsPageContentProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("account");
   const [email, setEmail] = useState(seedEmail);
-  const [loadError, setLoadError] = useState("");
+  const [loadError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -29,9 +27,7 @@ export default function SettingsPageContent({  seedEmail }: SettingsPageContentP
           setEmail(settings.email);
         }
       } catch {
-        if (!cancelled) {
-          setLoadError("Account settings aren't connected to a backend yet — showing a placeholder email.");
-        }
+
       }
     }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { getPasswordRequirements } from "@/lib/validation";
+
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -12,42 +14,11 @@ export default function ResetPasswordForm() {
   const router = useRouter();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const hasMinLength = newPassword.length >= 8;
-  const hasSpecialCharacter = /[^A-Za-z0-9]/.test(newPassword);
-  const hasNumber = /\d/.test(newPassword);
-  const hasUppercase = /[A-Z]/.test(newPassword);
+  const {hasMinLength,hasUppercase, hasNumber,  hasSpecialCharacter, strength: passwordStrength, isValid: isPasswordValid} = getPasswordRequirements(newPassword);
   const passwordsMatch = newPassword === confirmPassword && confirmPassword !== "";
-  const isPasswordValid = hasMinLength && hasSpecialCharacter && hasNumber && hasUppercase;
-  let passwordStrength = 0;
-
-  if (hasMinLength) {
-    passwordStrength++;
-  }
-
-  if (hasSpecialCharacter) {
-    passwordStrength++;
-  }
-
-  if (hasNumber) {
-    passwordStrength++;
-  }
-
-  if (hasUppercase) {
-    passwordStrength++;
-  }
-
-  const strengthState =
-    newPassword.length === 0
-      ? { label: "", color: "#E5E7EB" }
-      : passwordStrength <= 1
-        ? { label: "Weak", color: "#EF4444" }
-        : passwordStrength <= 3
-          ? { label: "Medium", color: "#F59E0B" }
-          : { label: "Strong", color: "#10B981" };
-
+  const strengthState = newPassword.length === 0  ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1  ? { label: "Weak", color: "#EF4444" }: passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" }: { label: "Strong", color: "#10B981" };
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -61,7 +32,6 @@ export default function ResetPasswordForm() {
       return;
     }
 
-    setError("");
     router.push("/success");
   }
   return (
@@ -189,7 +159,6 @@ export default function ResetPasswordForm() {
           >
             Set new password
           </button>
-          {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
         </div>
       </form>
     </main>

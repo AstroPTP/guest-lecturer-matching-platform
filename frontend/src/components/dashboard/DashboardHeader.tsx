@@ -12,8 +12,6 @@ import type { UserRole } from "@/types/shared/userRole";
 interface DashboardHeaderProps {
   role: UserRole;
   notificationHref: string;
-  messagesHref: string;
-  profileHref: string;
   theme: "guest" | "coordinator";
 }
 

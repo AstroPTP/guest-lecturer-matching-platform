@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
-import { formatStoredValue } from "@/utils/displayFormatters";
+import { formatStoredValue, getInitials } from "@/utils/displayFormatters";
 
 interface MatchCardProps {
   item: MatchedProfile;
@@ -82,15 +82,4 @@ function getProfileDescription(item: MatchedProfile): string {
   }
   const { academicRole, schoolDepartment } = item.profile.basicInformation;
   return [formatStoredValue(academicRole), formatStoredValue(schoolDepartment)].filter(Boolean).join(", ");
-}
-
-function getInitials(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return "?";
-  }
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
-  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }

@@ -99,7 +99,9 @@ export default function NotificationsPageContent() {
     <div className="mx-auto w-full max-w-5xl px-8 py-12">
       <div className="mb-12 flex items-center justify-between">
         <div>
-          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-gray-500">Activity centre</p>
+          <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-gray-500">
+            Activity centre
+          </p>
           <h2 className="text-4xl font-bold tracking-tight text-[#242424]">Notifications</h2>
         </div>
 

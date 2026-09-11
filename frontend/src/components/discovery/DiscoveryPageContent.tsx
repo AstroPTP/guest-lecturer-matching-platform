@@ -406,7 +406,7 @@ function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: UnitCoordi
     const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => expertise.selectedTopics.includes(topic));
     const matchesExperience = filters.experienceLevels.length === 0 || filters.experienceLevels.includes(expertise.experienceLevel);
     const matchesField = filters.professionalFields.length === 0 || filters.professionalFields.includes(basicInformation.professionalField);
-    const matchesFormats = filters.formats.length === 0 || filters.formats.includes(engagementProfile.format);
+    const matchesFormats =  filters.formats.length === 0 || filters.formats.some((format) => engagementProfile.formats?.includes(format));
     const matchesDurations = filters.sessionDurations.length === 0 || filters.sessionDurations.includes(engagementProfile.sessionDuration);
     const matchesDays = filters.availableDays.length === 0 || filters.availableDays.some((day) => engagementProfile.schedule.availableDays.includes(day));
     const matchesSpeaking = !filters.requiresSpeakingExperience || expertise.hasSpeakingExperience;
