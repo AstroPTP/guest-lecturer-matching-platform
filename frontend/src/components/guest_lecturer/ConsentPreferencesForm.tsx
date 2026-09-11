@@ -2,53 +2,35 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-
-import type { GuestLecturerConsentData } from "@/types/profile/guestLecturerProfileTypes";
-
-import { getGuestLecturerConsent, saveGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
-
+import { getGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
 export default function ConsentPreferencesForm() {
   const router = useRouter();
-
   const [profileMatchingConsent, setProfileMatchingConsent] = useState(false);
   const [informationAccurate, setInformationAccurate] = useState(false);
   const [receiveUpdates, setReceiveUpdates] = useState(false);
-
   const [futureTeachingReuse, setFutureTeachingReuse] = useState(false);
   const [otherUnitsReuse, setOtherUnitsReuse] = useState(false);
   const [timeLimitedUse, setTimeLimitedUse] = useState(false);
-
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getGuestLecturerConsent();
-
         if (cancelled || !data) {
           return;
         }
-
         setProfileMatchingConsent(data.profileMatchingConsent);
-
         setInformationAccurate(data.informationAccurate);
-
         setReceiveUpdates(data.receiveUpdates);
-
         setFutureTeachingReuse(data.futureTeachingReuse);
-
         setOtherUnitsReuse(data.otherUnitsReuse);
-
         setTimeLimitedUse(data.timeLimitedUse);
-
         setTermsAccepted(data.termsAccepted);
       } catch {
-        // TODO(API): No backend to load saved consent from yet; continue with a blank form.
       }
     }
 
@@ -58,7 +40,6 @@ export default function ConsentPreferencesForm() {
       cancelled = true;
     };
   }, []);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -66,41 +47,18 @@ export default function ConsentPreferencesForm() {
       alert("Please consent to your profile being used for matching.");
       return;
     }
-
     if (!informationAccurate) {
       alert("Please confirm that your information is accurate.");
       return;
     }
-
     if (!termsAccepted) {
       alert("Please read and accept the Terms and Conditions.");
       return;
     }
-
-    const consentPreferencesData: GuestLecturerConsentData = {
-      profileMatchingConsent,
-      informationAccurate,
-      receiveUpdates,
-      futureTeachingReuse,
-      otherUnitsReuse,
-      timeLimitedUse,
-      termsAccepted,
-      verificationStatus: "pending-review",
-    };
-
-    try {
-      await saveGuestLecturerConsent(consentPreferencesData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/guest_lecturer/confirmation");
   }
-
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 4 of 4</p>
 
@@ -112,7 +70,6 @@ export default function ConsentPreferencesForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-12 text-center">
         <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-[#1f1f1f] md:text-5xl">Consent & Contact Preferences</h1>
 
@@ -122,7 +79,6 @@ export default function ConsentPreferencesForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        {/* Data Consent */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Data Consent</h2>
 
@@ -157,7 +113,6 @@ export default function ConsentPreferencesForm() {
           </p>
         </section>
 
-        {/* Recording Consent */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Recording Consent</h2>
 
@@ -189,7 +144,6 @@ export default function ConsentPreferencesForm() {
           <p className="mt-5 text-sm text-gray-500">You can withdraw this consent at any time by contacting CCAE.</p>
         </section>
 
-        {/* Terms and Conditions */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Terms and Conditions</h2>
 
@@ -235,7 +189,6 @@ export default function ConsentPreferencesForm() {
           </div>
         </section>
 
-        {/* Profile Verification */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-2xl font-bold text-[#1f1f1f]">Profile Verification</h2>
@@ -249,7 +202,6 @@ export default function ConsentPreferencesForm() {
           </p>
         </section>
 
-        {/* Buttons */}
         <FormNavButtons submitLabel="Complete Profile" isFinalStep />
       </form>
     </main>

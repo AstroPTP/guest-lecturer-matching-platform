@@ -1,9 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { toAccountRole, toUserRole } from "@/services/auth/roleMapper";
-import type { AccountRole, AppRole } from "@/types/auth/authTypes";
-import { isAppRole } from "@/services/auth/roleMapper";
+import { isAppRole, toAccountRole, toUserRole } from "@/lib/auth/roles";
+import type { AccountRole, AppRole } from "@/lib/auth/roles";
 import type { UserRole } from "@/types/shared/userRole";
 
 export interface CurrentUser {

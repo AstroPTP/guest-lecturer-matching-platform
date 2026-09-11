@@ -20,7 +20,7 @@ import { ROLES_KEY } from './roles.decorator';
  * actually stores its metadata.
  *
  * Reached through the property descriptor rather than as `Class.prototype.name`
- * because the latter is an unbound method reference and eslint rejects it —
+ * because the latter is an unbound method reference and eslint rejects it,
  * fairly, since it is a real hazard anywhere `this` matters. Throwing on a
  * missing name is a bonus: rename or delete a route and this fails loudly
  * instead of quietly asserting on `undefined`.

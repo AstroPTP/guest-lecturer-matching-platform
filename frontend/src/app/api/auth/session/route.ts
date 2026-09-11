@@ -4,10 +4,10 @@ import { readSessionClaims } from '@/lib/auth/session';
 /**
  * The signed-in user, for the browser.
  *
- * Returns claims only — subject, email, name, roles. **Never the access
- * token.** The token stays in the HttpOnly cookie and is attached to backend
- * calls server-side by /api/backend, so nothing in the browser can read it
- * (TAM-01).
+ * Returns claims only: subject, email, name and roles. **Never the access
+ * token.** The token stays in the session the Auth0 SDK manages and is
+ * attached to backend calls server-side by /api/backend, so nothing running in
+ * the page can read it.
  */
 export async function GET() {
   const claims = await readSessionClaims();

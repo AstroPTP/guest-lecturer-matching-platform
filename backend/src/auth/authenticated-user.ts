@@ -8,12 +8,12 @@ import { AppRole } from './roles';
  * supplied directly by the caller.
  */
 export interface AuthenticatedUser {
-  /** The `sub` claim — the Auth0 user id, e.g. `auth0|65f1a…`. */
+  /** The `sub` claim, the Auth0 user id, e.g. `auth0|65f1a`. */
   id: string;
   email?: string;
   /**
    * Roles from the namespaced Auth0 claim, filtered to values this
-   * application recognises. Empty when the claim is absent — see JwtStrategy
+   * application recognises. Empty when the claim is absent, see JwtStrategy
    * for why that is never treated as "all roles".
    */
   roles: AppRole[];

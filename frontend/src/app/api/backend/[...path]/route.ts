@@ -16,7 +16,7 @@ import { readAccessToken } from '@/lib/auth/session';
  *     document.cookie, cannot be stolen by injected script, and never appears
  *     in a JS variable.
  *   - Browser traffic is same-origin, so it is not subject to CORS at all.
- *     The backend's CORS allowlist (KAN-227) still matters as defence in
+ *     The backend's CORS allowlist still matters as defence in
  *     depth for anything calling it directly, but the frontend no longer
  *     depends on it.
  *
@@ -80,7 +80,7 @@ async function forward(request: NextRequest, path: string[]) {
     );
   }
 
-  // Pass the body and status straight through so the SAS §2.5.5 envelope the
+  // Pass the body and status straight through so the error envelope the
   // backend produced reaches the client unchanged.
   return new NextResponse(response.body, {
     status: response.status,

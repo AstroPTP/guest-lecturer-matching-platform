@@ -10,6 +10,6 @@ export const ROLES_KEY = 'roles';
  *   @Post('users/:id/roles')
  *
  * Most-permissive-wins: a caller holding several roles is admitted if any one
- * of them is listed, per the RBAC Matrix enforcement notes.
+ * of them is listed.
  */
 export const Roles = (...roles: AppRole[]) => SetMetadata(ROLES_KEY, roles);

@@ -1,5 +1,7 @@
 "use client";
 
+import { getPasswordRequirements } from "@/lib/validation";
+
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -10,53 +12,13 @@ import arrow_back from "@/assets/arrow_back.png";
 
 export default function ResetPasswordForm() {
   const router = useRouter();
-
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
-
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  // Password requirements
-  const hasMinLength = newPassword.length >= 8;
-  const hasSpecialCharacter = /[^A-Za-z0-9]/.test(newPassword);
-  const hasNumber = /\d/.test(newPassword);
-  const hasUppercase = /[A-Z]/.test(newPassword);
+  const {hasMinLength,hasUppercase, hasNumber,  hasSpecialCharacter, strength: passwordStrength, isValid: isPasswordValid} = getPasswordRequirements(newPassword);
   const passwordsMatch = newPassword === confirmPassword && confirmPassword !== "";
-  const isPasswordValid = hasMinLength && hasSpecialCharacter && hasNumber && hasUppercase;
-  let passwordStrength = 0;
-
-  if (hasMinLength) {
-    passwordStrength++;
-  }
-
-  if (hasSpecialCharacter) {
-    passwordStrength++;
-  }
-
-  if (hasNumber) {
-    passwordStrength++;
-  }
-
-  if (hasUppercase) {
-    passwordStrength++;
-  }
-
-  let strengthLabel = "";
-
-  if (newPassword.length > 0) {
-    if (passwordStrength === 1) {
-      strengthLabel = "Weak";
-    } else if (passwordStrength === 2) {
-      strengthLabel = "Fair";
-    } else if (passwordStrength === 3) {
-      strengthLabel = "Good";
-    } else if (passwordStrength === 4) {
-      strengthLabel = "Strong";
-    }
-  }
-
+  const strengthState = newPassword.length === 0  ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1  ? { label: "Weak", color: "#EF4444" }: passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" }: { label: "Strong", color: "#10B981" };
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -70,12 +32,8 @@ export default function ResetPasswordForm() {
       return;
     }
 
-    setError("");
-
-
     router.push("/success");
   }
-
   return (
     <main className="w-full max-w-md bg-white rounded-xl p-8 md:p-12">
       <div className="mb-8">
@@ -87,9 +45,7 @@ export default function ResetPasswordForm() {
         >
           <Image src={arrow_back} alt="Back" width={24} height={24} />
         </button>
-
         <h1 className="text-4xl font-bold text-[#2d2d2d] mb-2">New password</h1>
-
         <p className="text-gray-600 leading-relaxed">Your new password must be different from previous used passwords.</p>
       </div>
 
@@ -143,11 +99,17 @@ export default function ResetPasswordForm() {
         <div className="space-y-4 pt-2">
           <div className="flex items-center gap-2">
             {[1, 2, 3, 4].map((level) => (
-              <div key={level} className={"h-1 flex-1 rounded-full " + (passwordStrength >= level ? "bg-teal-500" : "bg-gray-300")} />
+              <div
+                key={level}
+                className="h-1 flex-1 rounded-full transition-colors"
+                style={{ backgroundColor: passwordStrength >= level ? strengthState.color : "#E5E7EB" }}
+              />
             ))}
           </div>
 
-          <p className="min-h-5 text-sm text-right font-medium text-gray-700">{strengthLabel}</p>
+          <p className="min-h-5 text-sm text-right font-medium transition-colors" style={{ color: strengthState.color }}>
+            {strengthState.label}
+          </p>
 
           <div className="space-y-3 pt-2">
             <p className="text-sm font-bold text-[#2d2d2d] uppercase tracking-wider">Password Requirements</p>
@@ -184,7 +146,7 @@ export default function ResetPasswordForm() {
           </div>
 
           {confirmPassword !== "" && (
-            <p className={"text-sm " + (passwordsMatch ? "text-gray-600" : "text-red-600")}>
+            <p className={"text-sm font-medium " + (passwordsMatch ? "text-[#10B981]" : "text-[#EF4444]")}>
               {passwordsMatch ? "Passwords match." : "Passwords do not match."}
             </p>
           )}
@@ -197,7 +159,6 @@ export default function ResetPasswordForm() {
           >
             Set new password
           </button>
-          {error && <p className="mt-3 text-center text-sm text-red-600">{error}</p>}
         </div>
       </form>
     </main>

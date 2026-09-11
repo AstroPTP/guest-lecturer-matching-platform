@@ -1,5 +1,5 @@
 /**
- * The three application roles, from SRS §5.3 and SAS §2.5.
+ * The three application roles.
  *
  * These strings are the contract between the identity provider and this
  * backend: they are the values stored in each Auth0 user's `app_metadata`,

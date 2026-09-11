@@ -20,11 +20,9 @@ const notificationIcons: Record<NotificationType, StaticImageData> = {
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState(initialNotifications);
-
   function markAsRead(id: number) {
     setNotifications((current) => current.map((notification) => (notification.id === id ? { ...notification, read: true } : notification)));
   }
-
   return (
     <div className="admin-activity-centre">
       <header className="activity-centre-heading">

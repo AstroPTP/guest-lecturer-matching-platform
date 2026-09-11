@@ -1,102 +1,71 @@
-import { cookies } from 'next/headers';
-import { ROLES_CLAIM, SESSION_COOKIE } from './config';
+import { auth0 } from '@/lib/auth0';
 
 /**
- * Server-side session handling.
+ * Reading the signed-in user, server-side only.
  *
- * The access token lives in an HttpOnly cookie and is read only here, on the
- * server. It is never returned to the browser and never placed anywhere
- * JavaScript can reach — which is what checklist items TAM-01 and TAM-02
- * actually test for. Calls to the NestJS API go through the route handler at
- * /api/backend, which attaches the token server-side.
+ * The access token lives in the session the Auth0 SDK manages, and it is read
+ * here on the server and nowhere else. Nothing in this file runs in the
+ * browser, and the token is never returned to it: /api/backend attaches it to
+ * outbound calls, and /api/auth/session returns claims without it.
+ *
+ * That is what makes the token unreachable from JavaScript. It cannot be read
+ * from document.cookie, cannot be lifted by injected script, and never lands in
+ * a variable the page can see.
  */
 
+/** What the browser is allowed to know about the signed-in user. */
 export interface SessionClaims {
   sub: string;
   email?: string;
   name?: string;
   roles: string[];
-  exp: number;
+  exp?: number;
 }
 
 /**
- * Decodes a token WITHOUT verifying it.
+ * The namespaced claim the identity provider puts roles in.
  *
- * Safe only because of where it is used: to render a name and choose a menu.
- * Nothing here is an access decision. Every actual authorisation decision is
- * made by the NestJS guards, which verify the RS256 signature against the
- * tenant's published keys on every single request. If this decoded a forged
- * token, the holder would see a different sidebar and still be refused by the
- * backend.
+ * The namespace is not decoration. Auth0 silently discards custom claims whose
+ * name is not a URI, so a claim called plain `roles` never reaches the token at
+ * all and nothing reports why.
  */
-export function decodeClaims(token: string): SessionClaims | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) {
-    return null;
-  }
+const ROLES_CLAIM = 'https://glmp.curtin.edu.au/roles';
 
-  try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf8'),
-    ) as Record<string, unknown>;
-
-    if (typeof payload.sub !== 'string') {
-      return null;
-    }
-
-    const claimed = payload[ROLES_CLAIM];
-
-    return {
-      sub: payload.sub,
-      email: typeof payload.email === 'string' ? payload.email : undefined,
-      name: typeof payload.name === 'string' ? payload.name : undefined,
-      // Missing claim means no roles, matching the backend's RolesGuard.
-      roles: Array.isArray(claimed)
-        ? claimed.filter((r): r is string => typeof r === 'string')
-        : [],
-      exp: typeof payload.exp === 'number' ? payload.exp : 0,
-    };
-  } catch {
-    return null;
-  }
-}
-
-/** The raw token. Server-side callers only — never send this to the browser. */
+/**
+ * The raw access token, for attaching to a backend call server-side.
+ *
+ * Returns null rather than throwing when there is no session, so a caller can
+ * treat signed-out as an ordinary case.
+ */
 export async function readAccessToken(): Promise<string | null> {
-  const store = await cookies();
-  return store.get(SESSION_COOKIE)?.value ?? null;
+  const session = await auth0.getSession();
+  return session?.tokenSet?.accessToken ?? null;
 }
 
+/**
+ * The claims describing the signed-in user.
+ *
+ * Roles are read from the token the provider issued. A missing or malformed
+ * claim yields an empty array, never a default role: if the Post-Login Action
+ * that populates it is disabled or fails, every guarded route closes rather
+ * than opening. The backend enforces the same rule independently, so this is
+ * for rendering, not for access decisions.
+ */
 export async function readSessionClaims(): Promise<SessionClaims | null> {
-  const token = await readAccessToken();
-  if (!token) {
+  const session = await auth0.getSession();
+  if (!session?.user) {
     return null;
   }
 
-  const claims = decodeClaims(token);
-  if (!claims) {
-    return null;
-  }
+  const raw = (session.user as Record<string, unknown>)[ROLES_CLAIM];
+  const roles = Array.isArray(raw)
+    ? raw.filter((r): r is string => typeof r === 'string')
+    : [];
 
-  // An expired token is treated as no session, so the UI does not show a
-  // logged-in state whose every request comes back 401.
-  if (claims.exp && claims.exp * 1000 < Date.now()) {
-    return null;
-  }
-
-  return claims;
-}
-
-/** Cookie options. Every flag here is doing a job. */
-export function sessionCookieOptions(maxAgeSeconds: number) {
   return {
-    // Unreachable from document.cookie — TAM-01.
-    httpOnly: true,
-    // Not sent over plain http outside development — TAM-02.
-    secure: process.env.NODE_ENV === 'production',
-    // Not attached to cross-site requests, which is the CSRF control.
-    sameSite: 'strict' as const,
-    path: '/',
-    maxAge: maxAgeSeconds,
+    sub: String(session.user.sub ?? ''),
+    email: typeof session.user.email === 'string' ? session.user.email : undefined,
+    name: typeof session.user.name === 'string' ? session.user.name : undefined,
+    roles,
   };
 }

@@ -1,14 +1,11 @@
 import Image from "next/image";
-
 import checkIcon from "@/assets/check.png";
 import closeIcon from "@/assets/close.png";
-
 import type { AcademicEvent } from "@/types/events/eventTypes";
 import type { UserRole } from "@/types/shared/userRole";
 
 interface PastEventItemProps {
   event: AcademicEvent;
-
   currentUserType: UserRole;
 }
 
@@ -23,11 +20,8 @@ export default function PastEventItem({ event, currentUserType }: PastEventItemP
         <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
           <span>{formatFullDate(event.date)}</span>
         </div>
-
         <h3 className="mt-2 text-lg font-bold text-[#2d2d2d]">{event.title}</h3>
-
         <p className="mt-2 line-clamp-1 text-sm leading-6 text-gray-600">{event.description}</p>
-
         <p className="mt-2 text-sm text-gray-500">
           {currentUserType === "guestLecturer" ? "Created by " + event.coordinatorName : "Guest Lecturer: " + event.guestLecturerName}
         </p>

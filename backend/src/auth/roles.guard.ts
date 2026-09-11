@@ -12,13 +12,13 @@ import { ROLES_KEY } from './roles.decorator';
 
 /**
  * Authorisation gate. Runs after JwtAuthGuard, so by the time it sees a
- * request the signature has already been verified — which is the ordering the
+ * request the signature has already been verified, which is the ordering the
  * whole design depends on. A caller who edits the role list inside their own
  * token never reaches this guard; they are rejected at the signature check
  * with 401 (checklist TAM-04, EOP-03).
  *
- * Reads only the token. No database call on the hot path, per the RBAC Matrix
- * enforcement notes and the SRS §6.2 latency budget.
+ * Reads only the token. No database call on the hot path, so authorisation
+ * adds no query latency to a request.
  */
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -53,7 +53,7 @@ export class RolesGuard implements CanActivate {
     // Most-permissive-wins: any one matching role admits the caller.
     //
     // An empty user.roles matches nothing and is denied. That is the point of
-    // EOP-04 — if the access token hook is disabled or throws, tokens arrive
+    // EOP-04. If the access token hook is disabled or throws, tokens arrive
     // with no roles claim, and every guarded route closes rather than opens.
     const permitted = user.roles.some((held) => required.includes(held));
 

@@ -1,8 +1,8 @@
 /**
  * Which dashboard a signed-in person sees.
  *
- * ccaeAdmin was added for KAN-223: the RBAC matrix and SAS §2.5 have always
- * had three roles, but this type only carried two, so the admin dashboard had
- * no role to belong to.
+ * ccaeAdmin exists because the application has always had three roles while
+ * this type carried two, so the administrator dashboard had no role to belong
+ * to. The value matches the role name the identity provider puts in the token.
  */
 export type UserRole = "guestLecturer" | "unitCoordinator" | "ccaeAdmin";

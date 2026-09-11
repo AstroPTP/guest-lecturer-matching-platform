@@ -3,52 +3,66 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
-import eventIcon from "@/assets/event.png";
 import searchIcon from "@/assets/search.png";
-import {
-  auditActorRoles,
-  auditCategories,
-  auditDateRange,
-  auditEntries,
-  auditEntryTotal,
-  auditMetrics,
-} from "@/data/audit_log";
+import {auditActorRoles,auditCategories,  auditDateRange, auditEntries, auditEntryTotal, auditMetrics} from "@/data/audit_log";
 import type { AuditActorRole, AuditCategory } from "@/types/admin";
 
 export default function AuditLogPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<AuditCategory | "All">("All");
   const [actorRole, setActorRole] = useState<AuditActorRole | "All">("All");
+  const [startDateTime, setStartDateTime] = useState<string>(auditDateRange.start);
+  const [endDateTime, setEndDateTime] = useState<string>(auditDateRange.end);
 
   const filteredEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
+    const startTime = startDateTime ? new Date(startDateTime).getTime() : Number.NEGATIVE_INFINITY;
+    const endTime = endDateTime ? new Date(endDateTime).getTime() + 59_999 : Number.POSITIVE_INFINITY;
 
     return auditEntries.filter((entry) => {
+      const entryTime = new Date(entry.timestamp.replace("\n", "T")).getTime();
       const matchesQuery =
         !normalized ||
         entry.actorName.toLowerCase().includes(normalized) ||
         entry.action.toLowerCase().includes(normalized) ||
         entry.target.toLowerCase().includes(normalized);
+      const matchesDateRange = entryTime >= startTime && entryTime <= endTime;
 
       return (
         matchesQuery &&
+        matchesDateRange &&
         (category === "All" || entry.category === category) &&
         (actorRole === "All" || entry.actorRole === actorRole)
       );
     });
-  }, [actorRole, category, query]);
+  }, [actorRole, category, endDateTime, query, startDateTime]);
 
   return (
     <div className="audit-page">
       <header className="audit-heading">
         <h1>Audit Log</h1>
         <div className="audit-date">
-          <label>Date range</label>
-          <div>
-            <span>{auditDateRange.start}</span>
+          <span className="audit-date-label">Date range</span>
+          <div className="audit-date-inputs">
+            <label>
+              <span className="sr-only">Start date and time</span>
+              <input
+                max={endDateTime || undefined}
+                onChange={(event) => setStartDateTime(event.target.value)}
+                type="datetime-local"
+                value={startDateTime}
+              />
+            </label>
             <Image alt="" aria-hidden="true" height={14} src={arrowIcon} width={14} />
-            <span>{auditDateRange.end}</span>
-            <Image alt="" aria-hidden="true" height={14} src={eventIcon} width={14} />
+            <label>
+              <span className="sr-only">End date and time</span>
+              <input
+                min={startDateTime || undefined}
+                onChange={(event) => setEndDateTime(event.target.value)}
+                type="datetime-local"
+                value={endDateTime}
+              />
+            </label>
           </div>
         </div>
       </header>

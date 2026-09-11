@@ -13,7 +13,7 @@ import { IS_PUBLIC_KEY } from './public.decorator';
  * protected unless it carries @Public().
  *
  * Its whole job is to run the JwtStrategy and translate the outcome into the
- * two SAS §2.5.5 codes the frontend branches on.
+ * two error codes the frontend branches on.
  */
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -39,7 +39,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   /**
    * Distinguishes "you sent no credentials" from "you sent bad credentials".
    *
-   * Both are 401 — the difference is only in the code, so the frontend can
+   * Both are 401. The difference is only in the code, so the frontend can
    * send an unauthenticated visitor to log in rather than showing them a
    * "session expired" error. Neither branch reveals why a token failed; a
    * caller learning whether it was the signature, the audience or the expiry

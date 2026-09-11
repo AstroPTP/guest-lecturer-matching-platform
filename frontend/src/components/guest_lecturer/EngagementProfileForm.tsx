@@ -2,32 +2,17 @@
 
 import { FormEvent, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-
 import FormNavButtons from "@/components/shared/FormNavButtons";
-
-import type { GuestLecturerEngagementData } from "@/types/profile/guestLecturerProfileTypes";
-
-import { getGuestLecturerEngagement, saveGuestLecturerEngagement } from "@/services/profile/guestLecturerProfileService";
-
-import {
-  deliveryFocusOptions,
-  formatOptions,
-  guestLecturerAudienceSizeOptions,
-  guestLecturerAvailabilityFrequencyOptions,
-  sessionDurationOptions,
-  weekDays,
-} from "@/constants/profileOptions/shared";
+import { getGuestLecturerEngagement } from "@/services/profile/guestLecturerProfileService";
+import { deliveryFocusOptions, formatOptions, guestLecturerAudienceSizeOptions, guestLecturerAvailabilityFrequencyOptions, sessionDurationOptions, weekDays} from "@/constants/profileOptions/shared";
 
 export default function EngagementProfileForm() {
   const router = useRouter();
-
   const [primaryLocation, setPrimaryLocation] = useState("");
   const [sessionDuration, setSessionDuration] = useState("");
   const [audienceSize, setAudienceSize] = useState("");
   const [formats, setFormats] = useState<string[]>([]);
-
   const [deliveryFocus, setDeliveryFocus] = useState<string[]>([]);
-
   const [availableDays, setAvailableDays] = useState<string[]>([]);
   const [availableFrom, setAvailableFrom] = useState("");
   const [availableTo, setAvailableTo] = useState("");
@@ -35,7 +20,6 @@ export default function EngagementProfileForm() {
   const [availabilityNotes, setAvailabilityNotes] = useState("");
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getGuestLecturerEngagement();
@@ -43,42 +27,20 @@ export default function EngagementProfileForm() {
         if (cancelled || !data) {
           return;
         }
-
         setPrimaryLocation(data.primaryLocation);
-
         setSessionDuration(data.sessionDuration);
-
         setAudienceSize(data.audienceSize);
-
-        setFormats(
-          data.formats?.length
-            ? data.formats
-            : data.format
-              ? data.format
-                  .split(",")
-                  .map((item) => item.trim())
-                  .filter(Boolean)
-              : [],
-        );
-
+        setFormats(data.formats?.length ? data.formats : data.format ? data.format.split(",").map((item) => item.trim()).filter(Boolean): []);
         setDeliveryFocus(data.deliveryFocus);
-
         setAvailableDays(data.schedule.availableDays);
-
         setAvailableFrom(data.schedule.availableFrom);
-
         setAvailableTo(data.schedule.availableTo);
-
         setAvailabilityFrequency(data.schedule.availabilityFrequency);
-
         setAvailabilityNotes(data.schedule.availabilityNotes);
       } catch {
-        // TODO(API): No backend to load a saved draft from yet; continue with a blank form.
       }
     }
-
     void loadDraft();
-
     return () => {
       cancelled = true;
     };
@@ -89,7 +51,6 @@ export default function EngagementProfileForm() {
       setFormats(formats.filter((selectedOption) => selectedOption !== option));
       return;
     }
-
     setFormats([...formats, option]);
   }
 
@@ -98,7 +59,6 @@ export default function EngagementProfileForm() {
       setDeliveryFocus(deliveryFocus.filter((selectedOption) => selectedOption !== option));
       return;
     }
-
     setDeliveryFocus([...deliveryFocus, option]);
   }
 
@@ -107,18 +67,14 @@ export default function EngagementProfileForm() {
       setAvailableDays(availableDays.filter((selectedDay) => selectedDay !== day));
       return;
     }
-
     setAvailableDays([...availableDays, day]);
   }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (!primaryLocation.trim()) {
       alert("Please enter your primary location.");
       return;
     }
-
     if (!sessionDuration) {
       alert("Please select your preferred session duration.");
       return;
@@ -128,7 +84,6 @@ export default function EngagementProfileForm() {
       alert("Please select your preferred audience size.");
       return;
     }
-
     if (formats.length === 0) {
       alert("Please select at least one preferred delivery format.");
       return;
@@ -149,36 +104,11 @@ export default function EngagementProfileForm() {
       return;
     }
 
-    const engagementProfileData: GuestLecturerEngagementData = {
-      primaryLocation,
-      sessionDuration,
-      audienceSize,
-      format: formats.join(", "),
-      formats,
-      deliveryFocus,
-
-      schedule: {
-        availableDays,
-        availableFrom,
-        availableTo,
-        availabilityFrequency,
-        availabilityNotes,
-      },
-    };
-
-    try {
-      await saveGuestLecturerEngagement(engagementProfileData);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
-      return;
-    }
-
     router.push("/guest_lecturer/consent");
   }
 
   return (
     <main className="mx-auto w-full max-w-6xl">
-      {/* Progress */}
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 3 of 4</p>
 
@@ -190,7 +120,6 @@ export default function EngagementProfileForm() {
         </div>
       </div>
 
-      {/* Heading */}
       <div className="mb-12 text-center">
         <h1 className="mb-5 text-4xl font-extrabold tracking-tight text-[#1f1f1f] md:text-5xl">Engagement Profile</h1>
 
@@ -200,9 +129,7 @@ export default function EngagementProfileForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        {/* Main preferences */}
         <section>
-          {/* Primary Location */}
           <div className="mb-7">
             <label htmlFor="primaryLocation" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
               Primary Location
@@ -219,7 +146,6 @@ export default function EngagementProfileForm() {
             />
           </div>
 
-          {/* Select row */}
           <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
             <div>
               <label htmlFor="sessionDuration" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
@@ -266,19 +192,19 @@ export default function EngagementProfileForm() {
 
               <div className="flex flex-wrap gap-3">
                 {formatOptions.map((option) => {
-                  const isSelected = formats.includes(option);
+                  const isSelected = formats.includes(option.value);
 
                   return (
                     <button
-                      key={option}
+                      key={option.value}
                       type="button"
-                      onClick={() => handleFormatClick(option)}
+                      onClick={() => handleFormatClick(option.value)}
                       className={
                         "rounded-full px-5 py-3 text-sm font-semibold transition-colors " +
                         (isSelected ? "bg-[#242424] text-white" : "bg-[#e9e9e7] text-[#333333] hover:bg-gray-300")
                       }
                     >
-                      {option}
+                      {option.label}
                     </button>
                   );
                 })}
@@ -287,16 +213,12 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        {/* Delivery Focus */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Delivery Focus</h2>
-
           <p className="mt-2 text-sm text-gray-500">Select the types of engagement you would be comfortable delivering.</p>
-
           <div className="mt-5 flex flex-wrap gap-3">
             {deliveryFocusOptions.map((option) => {
               const isSelected = deliveryFocus.includes(option);
-
               return (
                 <button
                   key={option}
@@ -314,18 +236,14 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        {/* Schedule */}
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Typical Availability</h2>
-
           <p className="mt-2 text-sm text-gray-500">
             Select the days and times when you are usually available. Unit Coordinators will still confirm the exact date with you.
           </p>
 
-          {/* Days */}
           <div className="mt-7">
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">Preferred Days</p>
-
             <div className="flex flex-wrap gap-3">
               {weekDays.map((day) => {
                 const isSelected = availableDays.includes(day.value);
@@ -349,7 +267,6 @@ export default function EngagementProfileForm() {
             </div>
           </div>
 
-          {/* Time */}
           <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
             <div>
               <label htmlFor="availableFrom" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
@@ -369,7 +286,6 @@ export default function EngagementProfileForm() {
               <label htmlFor="availableTo" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
                 Available To
               </label>
-
               <input
                 id="availableTo"
                 type="time"
@@ -383,7 +299,6 @@ export default function EngagementProfileForm() {
               <label htmlFor="availabilityFrequency" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
                 Availability Frequency
               </label>
-
               <select
                 id="availabilityFrequency"
                 value={availabilityFrequency}
@@ -400,7 +315,6 @@ export default function EngagementProfileForm() {
             </div>
           </div>
 
-          {/* Notes */}
           <div className="mt-7">
             <label htmlFor="availabilityNotes" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
               Availability Notes
@@ -415,12 +329,9 @@ export default function EngagementProfileForm() {
               placeholder="e.g., Available during university teaching weeks with two weeks' notice."
               className="w-full resize-none border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none placeholder:text-gray-400 focus:bg-white"
             />
-
             <p className="mt-1 text-right text-xs text-gray-500">{availabilityNotes.length}/250</p>
           </div>
         </section>
-
-        {/* Navigation */}
         <FormNavButtons submitLabel="Next" />
       </form>
     </main>
