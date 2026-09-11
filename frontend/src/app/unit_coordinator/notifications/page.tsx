@@ -8,8 +8,6 @@ export default function UnitCoordinatorNotificationsPage() {
       role="unitCoordinator"
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
-      messagesHref="/unit_coordinator/messages"
-      profileHref="/unit_coordinator/my_profile"
     >
       <NotificationsPageContent />
     </DashboardShell>

@@ -8,8 +8,6 @@ export default function GuestLecturerNotificationsPage() {
       role="guestLecturer"
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
-      messagesHref="/guest_lecturer/messages"
-      profileHref="/guest_lecturer/my_profile"
     >
       <NotificationsPageContent />
     </DashboardShell>

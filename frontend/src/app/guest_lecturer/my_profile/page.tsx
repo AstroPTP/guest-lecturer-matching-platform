@@ -1,5 +1,9 @@
 "use client";
 
+import { ProfileField, ProfileLabel, ProfileInput, ProfileSelect, TagList } from "@/components/profile/profileFields";
+import { cloneData } from "@/utils/cloneData";
+import { formatTimeRange } from "@/utils/displayFormatters";
+
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import DashboardShell from "@/components/dashboard/DashboardShell";
@@ -287,8 +291,6 @@ export default function GuestLecturerMyProfilePage() {
         role="guestLecturer"
         menuItems={guestLecturerMenu}
         notificationHref="/guest_lecturer/notifications"
-        messagesHref="/guest_lecturer/messages"
-        profileHref="/guest_lecturer/my_profile"
       >
         <div className="flex min-h-96 items-center justify-center">
           <p className="text-gray-500">Loading profile...</p>
@@ -303,8 +305,6 @@ export default function GuestLecturerMyProfilePage() {
         role="guestLecturer"
         menuItems={guestLecturerMenu}
         notificationHref="/guest_lecturer/notifications"
-        messagesHref="/guest_lecturer/messages"
-        profileHref="/guest_lecturer/my_profile"
       >
         <div className="rounded-2xl bg-white p-8 shadow-sm">
           <h1 className="text-2xl font-bold">{loadError ? "Profile unavailable" : "Profile not found"}</h1>
@@ -319,8 +319,6 @@ export default function GuestLecturerMyProfilePage() {
       role="guestLecturer"
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
-      messagesHref="/guest_lecturer/messages"
-      profileHref="/guest_lecturer/my_profile"
     >
       <div className="mx-auto w-full max-w-6xl">
         <div className="mb-8">
@@ -817,85 +815,6 @@ function AvailabilityEditor({
     </div>
   );
 }
-
-function ProfileField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <ProfileLabel>{label}</ProfileLabel>
-      <p className="whitespace-pre-wrap leading-7 text-[#333333]">{value || "Not provided"}</p>
-    </div>
-  );
-}
-
-function ProfileLabel({ children }: { children: React.ReactNode }) {
-  return <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">{children}</p>;
-}
-
-function TagList({ label, items }: { label: string; items: string[] }) {
-  return (
-    <div>
-      <ProfileLabel>{label}</ProfileLabel>
-      {items.length === 0 ? (
-        <p className="text-gray-400">Not provided</p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {items.map((item) => (
-            <span key={item} className="rounded-full bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700">
-              {formatStoredValue(item)}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProfileInput({ label, value, type = "text", onChange }: { label: string; value: string; type?: string; onChange: (value: string) => void }) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-bold uppercase tracking-wider">{label}</label>
-
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none focus:bg-white"
-      />
-    </div>
-  );
-}
-
-type SelectOption =
-  | string
-  | {
-      value: string;
-      label: string;
-    };
-
-function ProfileSelect({ label, value, options, onChange }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void }) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-bold uppercase tracking-wider">{label}</label>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none"
-      >
-        <option value="">Select an option</option>
-        {options.map((option) => {
-          const optionValue = typeof option === "string" ? option : option.value;
-          const optionLabel = typeof option === "string" ? option : option.label;
-          return (
-            <option key={optionValue} value={optionValue}>
-              {optionLabel}
-            </option>
-          );
-        })}
-      </select>
-    </div>
-  );
-}
-
 function ToggleEditor({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
   return (
     <div className="flex items-center justify-between rounded-xl bg-gray-100 px-5 py-4">
@@ -908,9 +827,6 @@ function ToggleEditor({ label, checked, onChange }: { label: string; checked: bo
   );
 }
 
-function cloneData<T>(data: T): T {
-  return JSON.parse(JSON.stringify(data)) as T;
-}
 
 function formatLabelsFor(values: string[]) {
   return values.map((value) => formatOptions.find((option) => option.value === value)?.label ?? value).join(", ");
@@ -937,11 +853,4 @@ function formatAudienceSize(value: string) {
   };
 
   return labels[value] ?? formatStoredValue(value);
-}
-
-function formatTimeRange(from?: string, to?: string) {
-  if (!from || !to) 
-    return "";
-
-  return from + " – " + to;
 }

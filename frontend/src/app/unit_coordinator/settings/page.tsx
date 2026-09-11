@@ -10,10 +10,8 @@ export default function UnitCoordinatorSettingsPage() {
       role="unitCoordinator"
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
-      messagesHref="/unit_coordinator/messages"
-      profileHref="/unit_coordinator/my_profile"
     >
-      <SettingsPageContent userType="unitCoordinator"  seedEmail="" />
+      <SettingsPageContent  seedEmail="" />
     </DashboardShell>
   );
 }

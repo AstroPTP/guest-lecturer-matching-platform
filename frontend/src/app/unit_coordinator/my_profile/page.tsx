@@ -1,5 +1,9 @@
 "use client";
 
+import { ProfileField, ProfileLabel, ProfileInput, ProfileSelect, TagList } from "@/components/profile/profileFields";
+import { cloneData } from "@/utils/cloneData";
+import { formatTimeRange } from "@/utils/displayFormatters";
+
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { ChangeEvent, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
@@ -381,7 +385,7 @@ export default function UnitCoordinatorMyProfilePage() {
                 <TagList label="Preferred Days" items={profile.engagementProfile.schedule.preferredDays} />
                 <ProfileField
                   label="Preferred Time"
-                  value={formatTimeRange(profile.engagementProfile.schedule.preferredFrom, profile.engagementProfile.schedule.preferredTo)}
+                  value={formatTimeRange(profile.engagementProfile.schedule.preferredFrom, profile.engagementProfile.schedule.preferredTo, "Not provided")}
                 />
                 <ProfileField
                   label="Engagement Frequency"
@@ -561,60 +565,11 @@ function CoordinatorDashboardShell({ children }: { children: ReactNode }) {
       role="unitCoordinator"
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
-      messagesHref="/unit_coordinator/messages"
-      profileHref="/unit_coordinator/my_profile"
     >
       {children}
     </DashboardShell>
   );
 }
-
-function ProfileField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <ProfileLabel>{label}</ProfileLabel>
-      <p className="whitespace-pre-wrap leading-7 text-[#333333]">{value || "Not provided"}</p>
-    </div>
-  );
-}
-
-function ProfileLabel({ children }: { children: ReactNode }) {
-  return <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-gray-500">{children}</p>;
-}
-
-function TagList({ label, items, formatItems = true }: { label: string; items: string[]; formatItems?: boolean }) {
-  return (
-    <div>
-      <ProfileLabel>{label}</ProfileLabel>
-      {items.length === 0 ? (
-        <p className="text-gray-400">Not provided</p>
-      ) : (
-        <div className="flex flex-wrap gap-2">
-          {items.map((item) => (
-            <span key={item} className="rounded-full bg-gray-200 px-4 py-2 text-sm font-semibold text-gray-700">
-              {formatItems ? formatStoredValue(item) : item}
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProfileInput({ label, value, type = "text", onChange }: { label: string; value: string; type?: string; onChange: (value: string) => void }) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-bold uppercase tracking-wider">{label}</label>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none focus:bg-white"
-      />
-    </div>
-  );
-}
-
 function ProfileTextarea({ label, value, onChange, maxLength = 500 }: { label: string; value: string; onChange: (value: string) => void; maxLength?: number }) {
   return (
     <div>
@@ -633,30 +588,6 @@ function ProfileTextarea({ label, value, onChange, maxLength = 500 }: { label: s
   );
 }
 
-type SelectOption = string | { value: string; label: string };
-function ProfileSelect({ label, value, options, onChange }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void }) {
-  return (
-    <div>
-      <label className="mb-2 block text-xs font-bold uppercase tracking-wider">{label}</label>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="w-full border-0 border-b-2 border-black bg-gray-100 px-4 py-4 outline-none"
-      >
-        <option value="">Select an option</option>
-        {options.map((option) => {
-          const optionValue = typeof option === "string" ? option : option.value;
-          const optionLabel = typeof option === "string" ? option : option.label;
-          return (
-            <option key={optionValue} value={optionValue}>
-              {optionLabel}
-            </option>
-          );
-        })}
-      </select>
-    </div>
-  );
-}
 
 function ChoiceButtons({
   label,
@@ -700,13 +631,4 @@ function formatOption(value: string, options: { value: string; label: string }[]
 
 function formatStoredValue(value?: string) {
   return formatSharedStoredValue(value) || "Not provided";
-}
-
-function formatTimeRange(from?: string, to?: string) {
-  if (!from || !to) return "Not provided";
-  return from + " – " + to;
-}
-
-function cloneData<T>(data: T): T {
-  return JSON.parse(JSON.stringify(data)) as T;
 }

@@ -10,8 +10,6 @@ export default function UnitCoordinatorMatchesPage() {
       role="unitCoordinator"    
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
-      messagesHref="/unit_coordinator/messages"
-      profileHref="/unit_coordinator/my_profile"
     >
       <MatchesPageContent
         currentUserType="unitCoordinator"

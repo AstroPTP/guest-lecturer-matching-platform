@@ -61,8 +61,6 @@ export default function GuestLecturerMessagesPage() {
       role="guestLecturer"
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
-      messagesHref="/guest_lecturer/messages"
-      profileHref="/guest_lecturer/my_profile"
     >
       {isLoading ? (
         <div className="flex min-h-[400px] items-center justify-center">

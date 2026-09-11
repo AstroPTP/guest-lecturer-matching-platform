@@ -60,8 +60,6 @@ export default function UnitCoordinatorMessagesPage() {
       role="unitCoordinator"
       menuItems={unitCoordinatorMenu}
       notificationHref="/unit_coordinator/notifications"
-      messagesHref="/unit_coordinator/messages"
-      profileHref="/unit_coordinator/my_profile"
     >
       {isLoading ? (
         <div className="flex min-h-[400px] items-center justify-center">

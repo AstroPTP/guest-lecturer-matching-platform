@@ -10,10 +10,8 @@ export default function GuestLecturerSettingsPage() {
       role="guestLecturer"
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
-      messagesHref="/guest_lecturer/messages"
-      profileHref="/guest_lecturer/my_profile"
     >
-      <SettingsPageContent userType="guestLecturer" seedEmail="" />
+      <SettingsPageContent seedEmail="" />
     </DashboardShell>
   );
 }
