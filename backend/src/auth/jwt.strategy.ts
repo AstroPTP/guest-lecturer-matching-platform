@@ -19,6 +19,7 @@ const JWKS_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
 interface Auth0JwtPayload {
   sub?: unknown;
   email?: unknown;
+  name?: unknown;
   [claim: string]: unknown;
 }
 
@@ -90,6 +91,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       id: subject,
       email: typeof payload.email === 'string' ? payload.email : undefined,
+      name: typeof payload.name === 'string' ? payload.name : undefined,
       roles: this.extractRoles(payload),
     };
   }
