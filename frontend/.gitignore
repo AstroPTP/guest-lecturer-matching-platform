@@ -32,7 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-# ...but the placeholder template is meant to be committed.
+# ...but a committed placeholder template is meant to be readable. Without this
+# exception the rule above silently ignores it, which is why the template that
+# pull request #46 adds would otherwise never appear in a clone.
+!.env.local.template
 !.env.example
 
 # vercel
