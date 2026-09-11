@@ -1,13 +1,10 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-
 import type { ActionResult, RequestEmailChangeResult } from "@/types/settings/settingsTypes";
-
 import { Field, FeedbackBanner, PasswordInput, SectionHeader, isValidEmail } from "@/components/settings/settingsShared";
 
 type Step = "view" | "editEmail" | "verifyCode";
-
 export default function AccountSection({
   currentEmail,
   onRequestEmailChange,
@@ -51,16 +48,12 @@ export default function AccountSection({
       });
       return;
     }
-
     setIsSubmitting(true);
-
     const result = await onRequestEmailChange({
       newEmail: newEmail.trim(),
       currentPassword,
     });
-
     setIsSubmitting(false);
-
     if (!result.success) {
       setFeedback({
         type: "error",
@@ -68,7 +61,6 @@ export default function AccountSection({
       });
       return;
     }
-
     setStep("verifyCode");
     setFeedback(null);
   }
@@ -87,12 +79,10 @@ export default function AccountSection({
     const result = await onConfirmEmailChange({ code: code.trim() });
 
     setIsSubmitting(false);
-
     if (!result.success) {
       setFeedback({ type: "error",  message: result.error ?? "Couldn't verify that code.",});
       return;
     }
-
     setFeedback({ type: "success", message: "Email updated successfully." });
     setStep("view");
     setCurrentPassword("");
@@ -102,10 +92,8 @@ export default function AccountSection({
   return (
     <section>
       <SectionHeader title="Account" description="Manage the email address associated with your account." />
-
       <div className="mt-6 rounded-2xl border border-gray-100 bg-white p-5">
         <p className="text-xs font-bold uppercase tracking-[0.1em] text-gray-500">Email address</p>
-
         {step === "view" && (
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-base text-[#2d2d2d]">{currentEmail}</p>
@@ -197,7 +185,6 @@ export default function AccountSection({
           </form>
         )}
       </div>
-
       {feedback && <FeedbackBanner type={feedback.type} message={feedback.message} />}
     </section>
   );

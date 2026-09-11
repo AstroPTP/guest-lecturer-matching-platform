@@ -7,6 +7,18 @@ export function formatStoredValue(value?: string): string {
 }
 
 export function getInitials(fullName: string): string {
-  return fullName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((namePart) => namePart.charAt(0).toUpperCase()).join("");
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "?";
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+export function formatTimeRange(from?: string, to?: string, fallback = ""): string {
+  if (!from || !to) return fallback;
+  return from + " – " + to;
 }
 

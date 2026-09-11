@@ -169,11 +169,7 @@ export default function AnalyticsPage() {
               return (
                 <div key={coordinator.name}>
                   <span className="lecturer-initials">
-                    {coordinator.name
-                      .split(" ")
-                      .slice(-2)
-                      .map((part) => part[0])
-                      .join("")}
+                    {coordinator.name.split(" ").slice(-2).map((part) => part[0]).join("")}
                   </span>
                   <p>
                     <strong>{coordinator.name}</strong>

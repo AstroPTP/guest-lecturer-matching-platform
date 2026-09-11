@@ -16,7 +16,6 @@ export default function BasicInformationForm() {
   const [photoPreview, setPhotoPreview] = useState("");
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getGuestLecturerBasicInformation();
@@ -24,7 +23,6 @@ export default function BasicInformationForm() {
         if (cancelled || !data) {
           return;
         }
-
         setFullName(data.fullName);
         setProfessionalField(data.professionalField);
         setProfessionalRole(data.professionalRole);
@@ -33,7 +31,6 @@ export default function BasicInformationForm() {
       } catch {
       }
     }
-
     void loadDraft();
     return () => {
       cancelled = true;
@@ -43,7 +40,9 @@ export default function BasicInformationForm() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file){
+      return;
+    }
     if (file.size > 1024 * 1024) {
       alert("Please select an image smaller than 1 MB.");
       event.target.value = "";
@@ -54,21 +53,16 @@ export default function BasicInformationForm() {
       const imageData = reader.result as string;
       setPhotoPreview(imageData);
     };
-
     reader.readAsDataURL(file);
   }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     router.push("/guest_lecturer/expertise");
   }
-
   return (
     <main className="mx-auto w-full max-w-6xl">
-
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold tracking-[0.2em] text-gray-500">STEP 1 OF 4</p>
-
         <div className="flex gap-2">
           <div className="h-[3px] w-14 rounded-full bg-black"></div>
           <div className="h-[3px] w-10 rounded-full bg-gray-300"></div>
@@ -112,13 +106,9 @@ export default function BasicInformationForm() {
             className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none focus:bg-white"
           />
         </div>
-
-
         <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
-
           <div>
             <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Professional Field</label>
-
             <select
               required
               value={professionalField}
@@ -132,8 +122,6 @@ export default function BasicInformationForm() {
               ))}
             </select>
           </div>
-
-
           <div>
             <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Current Professional Role</label>
 
@@ -144,15 +132,12 @@ export default function BasicInformationForm() {
               className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none"
             >
               <option value="">Select your role</option>
-
               {professionalRoles.map((role) => (
                 <option key={role}>{role}</option>
               ))}
             </select>
           </div>
         </div>
-
-
         <div>
           <div className="mb-2 flex justify-between">
             <label className="text-sm font-bold uppercase tracking-widest">Short Bio</label>
@@ -169,8 +154,6 @@ export default function BasicInformationForm() {
             className="w-full resize-none bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none focus:bg-white"
           />
         </div>
-
-
         <div className="mt-14 flex justify-end">
           <button
             type="submit"
