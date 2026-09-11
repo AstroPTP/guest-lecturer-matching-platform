@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { validateEnv } from './config/env.validation';
 import { loadEnvFile } from './config/load-env';
 
@@ -33,6 +34,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Every error leaves through here, so nothing reaches a client except the
+  // four-field error envelope. Stack traces stay server-side.
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   await app.listen(env.port);
 }

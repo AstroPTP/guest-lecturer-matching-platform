@@ -195,6 +195,9 @@ what the commit history and the pull request are for.
 |---|---|
 | Rate limiting and HTTP security headers | `backend/src/main.ts`, `backend/src/app.module.ts` |
 | Boot-time environment validation | `backend/src/config/` |
+| Token verification and role guards | `backend/src/auth/` |
+| Shared error codes and the response envelope | `backend/src/common/` |
+| Local identity provider for development and tests | `tools/dev-idp/` |
 
 ---
 

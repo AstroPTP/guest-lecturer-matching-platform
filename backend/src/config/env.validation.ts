@@ -5,8 +5,8 @@
  * Nest builds the module graph. A missing or malformed value stops the process
  * with a message naming every problem at once.
  *
- * The alternative — reading process.env at the point of use and falling back to
- * a default — is what we are deliberately avoiding. A backend that starts
+ * The alternative, reading process.env at the point of use and falling back to
+ * a default, is what we are deliberately avoiding. A backend that starts
  * without AUTH0_DOMAIN cannot verify a single token, so it answers 401 to
  * every request and looks like a broken guard rather than a missing variable.
  * Failing at boot points straight at the cause.
@@ -38,7 +38,7 @@ class EnvErrors {
   private readonly messages: string[] = [];
 
   add(variable: string, problem: string): void {
-    this.messages.push(`  ${variable} — ${problem}`);
+    this.messages.push(`  ${variable}: ${problem}`);
   }
 
   throwIfAny(): void {
@@ -66,7 +66,7 @@ function readString(
 }
 
 /**
- * AUTH0_DOMAIN is a bare host — no scheme, no path, no trailing slash.
+ * AUTH0_DOMAIN is a bare host: no scheme, no path, no trailing slash.
  *
  * It is pasted out of the Auth0 dashboard, where it is displayed bare, but
  * people reflexively add https://. Both forms would then be used to build the
@@ -144,7 +144,7 @@ function readAllowedOrigins(
     if (origin === '*') {
       errors.add(
         'FRONTEND_URL',
-        'must not be "*" — CORS runs with credentials enabled, so the ' +
+        'must not be "*": CORS runs with credentials enabled, so the ' +
           'allowlist has to name real origins',
       );
       continue;
@@ -183,7 +183,7 @@ function readAllowedOrigins(
  */
 /**
  * Auth0's issuer is the tenant domain with a scheme and a trailing slash, and
- * the trailing slash is not optional — it is compared against the token's
+ * the trailing slash is not optional. It is compared against the token's
  * `iss` claim as an exact string. Deriving both this and the JWKS URI from
  * AUTH0_DOMAIN means there is one variable to get wrong instead of three.
  */
@@ -197,7 +197,7 @@ export function auth0JwksUri(domain: string): string {
 
 /**
  * Local development points AUTH0_DOMAIN at the dev IdP on localhost, which
- * has no TLS. Anything else must be https — a tenant reached over plain http
+ * has no TLS. Anything else must be https, because a tenant reached over plain http
  * would put tokens on the wire in clear.
  */
 function domainOrigin(domain: string): string {

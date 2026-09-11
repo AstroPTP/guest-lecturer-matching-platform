@@ -114,7 +114,7 @@ describe('validateEnv', () => {
   });
 
   describe('derived Auth0 URLs', () => {
-    // Auth0's issuer has a trailing slash and it is not optional — it is
+    // Auth0's issuer has a trailing slash and it is not optional. It is
     // compared against the token's `iss` claim as an exact string.
     it('builds the issuer with its trailing slash', () => {
       expect(auth0Issuer('glma-dev.au.auth0.com')).toBe(
