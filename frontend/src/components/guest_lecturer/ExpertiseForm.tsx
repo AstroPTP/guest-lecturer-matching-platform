@@ -68,7 +68,6 @@ export default function ExpertiseForm() {
     <main className="mx-auto w-full max-w-6xl">
       <div className="mb-8 flex flex-col items-center">
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.25em] text-gray-500">Step 2 of 4</p>
-
         <div className="flex gap-2">
           <div className="h-[3px] w-12 rounded-full bg-[#2d2d2d]" />
           <div className="h-[3px] w-12 rounded-full bg-[#2d2d2d]" />
@@ -96,7 +95,6 @@ export default function ExpertiseForm() {
           <div className="mt-5 flex flex-wrap gap-3">
             {expertiseTopics.map((topic) => {
               const isSelected = selectedTopics.includes(topic);
-
               return (
                 <button
                   key={topic}
@@ -116,13 +114,10 @@ export default function ExpertiseForm() {
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Experience Level</h2>
-
           <p className="mt-2 text-sm text-gray-500">Where would you place yourself in your industry career?</p>
-
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {experienceLevels.map((level) => {
               const isSelected = experienceLevel === level.value;
-
               return (
                 <button
                   key={level.value}

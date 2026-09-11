@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-
 import arrowIcon from "@/assets/arrow.png";
 import checkIcon from "@/assets/check.png";
 
@@ -16,7 +15,6 @@ interface ProfileCompletedProps {
 export default function ProfileCompleted({ title, description, button1Text, button1Href }: ProfileCompletedProps) {
   const router = useRouter();
   const isCoordinator = button1Href.startsWith("/unit_coordinator");
-
   return (
     <main
       className={"flex min-h-screen items-center justify-center px-6 " + (isCoordinator ? "bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50" : "bg-gradient-to-br from-emerald-50 via-cyan-50 to-amber-50") }
@@ -27,11 +25,8 @@ export default function ProfileCompleted({ title, description, button1Text, butt
         >
           <Image src={checkIcon} alt="" width={46} height={46} />
         </div>
-
         <h1 className="mt-8 text-5xl font-extrabold tracking-tight text-[#2d2d2d] md:text-6xl">{title}</h1>
-
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-[#4f5555] md:text-xl">{description}</p>
-
         <div className="mt-14">
           <button
             type="button"

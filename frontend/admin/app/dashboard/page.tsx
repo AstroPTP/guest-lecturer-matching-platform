@@ -7,12 +7,7 @@ import checkIcon from "@/assets/check.png";
 import eventIcon from "@/assets/event.png";
 import groupIcon from "@/assets/group.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
-import {
-  dashboardMonthlyRegistrations,
-  dashboardSummary,
-  recentRegistrations,
-  weeklyRegistrations,
-} from "@/data/dashboard";
+import { dashboardMonthlyRegistrations,dashboardSummary,recentRegistrations, weeklyRegistrations} from "@/data/dashboard";
 import { VerificationStatus } from "@/types/admin";
 
 const summaryIcons: Record<(typeof dashboardSummary)[number]["key"], StaticImageData> = {
