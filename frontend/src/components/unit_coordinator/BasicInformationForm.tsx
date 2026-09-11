@@ -23,7 +23,6 @@ export default function BasicInformationForm() {
         if (cancelled || !data) {
           return;
         }
-
         setFullName(data.fullName);
         setSchoolDepartment(data.schoolDepartment);
         setAcademicRole(data.academicRole);

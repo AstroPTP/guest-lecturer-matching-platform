@@ -1,19 +1,12 @@
 "use client";
 
 import Image, { type StaticImageData } from "next/image";
-
 import deleteIcon from "@/assets/delete.png";
 import emailIcon from "@/assets/email.png";
 import passkeyIcon from "@/assets/passkey.png";
 
 export type SettingsTab = "account" | "password" | "delete";
-
-const NAV_ITEMS: {
-  id: SettingsTab;
-  label: string;
-  description: string;
-  icon: StaticImageData;
-}[] = [
+const NAV_ITEMS: {id: SettingsTab;label: string; description: string; icon: StaticImageData}[] = [
   {
     id: "account",
     label: "Account",

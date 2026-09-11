@@ -32,7 +32,6 @@ export default function ConsentOption({ checked, onChange, title, description }:
 
       <span>
         <span className="block font-semibold text-[#2d2d2d]">{title}</span>
-
         <span className="mt-1 block text-sm leading-relaxed text-gray-500">{description}</span>
       </span>
     </button>

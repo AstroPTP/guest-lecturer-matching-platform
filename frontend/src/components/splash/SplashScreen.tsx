@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import school from "@/assets/school.png";
 
 const PROGRESS_DURATION_MS = 2800;
@@ -17,7 +16,6 @@ export default function SplashScreen() {
     const animationFrame = window.requestAnimationFrame(() => {
       setProgressStarted(true);
     });
-
     const redirectTimer = window.setTimeout(() => {
       router.replace("/landing");
     }, REDIRECT_DELAY_MS);
@@ -44,7 +42,6 @@ export default function SplashScreen() {
         </h1>
 
         <p className="text-xl font-medium text-gray-600 md:text-2xl">Curtin University · Faculty of Business &amp; Law</p>
-
         <div className="mt-16 h-1 w-48 overflow-hidden rounded-full bg-gray-200">
           <div
             className="h-full rounded-full bg-blue-600 transition-[width] ease-out"
@@ -57,7 +54,6 @@ export default function SplashScreen() {
 
         <p className="mt-10 text-sm font-bold tracking-[0.4em] text-gray-500">FINDING YOUR NEXT MATCH...</p>
       </main>
-
       <footer className="py-10" />
     </div>
   );

@@ -12,8 +12,6 @@ import type { UserRole } from "@/types/shared/userRole";
 interface DashboardHeaderProps {
   role: UserRole;
   notificationHref: string;
-  messagesHref: string;
-  profileHref: string;
   theme: "guest" | "coordinator";
 }
 
@@ -22,14 +20,11 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
   const roleLabel = role === "unitCoordinator" ? "Unit Coordinator" : "Guest Lecturer";
   const greeting = useSyncExternalStore(subscribeToBrowserChanges, getGreeting, getServerGreeting);
   const [fullName, setFullName] = useState(roleLabel);
-
   useEffect(() => {
     let cancelled = false;
-
     async function loadFullName() {
       try {
         const name = await getProfileFullName(role, roleLabel);
-
         if (!cancelled) {
           setFullName(name);
         }
@@ -41,16 +36,12 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
       cancelled = true;
     };
   }, [role, roleLabel]);
-
   const [unreadCount, setUnreadCount] = useState(0);
-
   useEffect(() => {
     let cancelled = false;
-
     async function loadUnreadCount() {
       try {
         const count = await getUnreadNotificationCount();
-
         if (!cancelled) {
           setUnreadCount(count);
         }
@@ -60,14 +51,11 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
         }
       }
     }
-
     void loadUnreadCount();
-
     return () => {
       cancelled = true;
     };
   }, []);
-
   return (
     <header
       className={ "sticky top-0 z-20 flex h-[72px] items-center justify-between border-b bg-white/90 px-8 backdrop-blur " +  (theme === "coordinator" ? "border-blue-100" : "border-teal-100")  }
@@ -77,7 +65,6 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
           {greeting}, {fullName}!
         </p>
       </div>
-
       <div className="relative">
         <button
           type="button"
