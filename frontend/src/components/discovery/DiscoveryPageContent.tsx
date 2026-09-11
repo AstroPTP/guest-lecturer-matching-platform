@@ -11,7 +11,7 @@ import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchModalData, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
-import filterIcon from "@/assets/filter.png.png";
+import filterIcon from "@/assets/filter.png";
 import { getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters } from "@/services/filter/discoveryFilterService";
 import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import { createNotification } from "@/services/notifications/notificationService";
@@ -46,7 +46,6 @@ export default function DiscoveryPageContent({
   filterHref,
 }: DiscoveryPageContentProps) {
   const router = useRouter();
-
   const [items, setItems] = useState<DiscoveryItem[]>([]);
   const [actionHistory, setActionHistory] = useState<DiscoveryHistoryItem[]>([]);
   const [matchModalData, setMatchModalData] = useState<MatchModalData | null>(null);
@@ -58,12 +57,10 @@ export default function DiscoveryPageContent({
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadDataset() {
       setIsLoading(true);
       setErrorMessage(null);
       setActionError(null);
-
       try {
         const [interests, matches, dismisses, blocks, filters] = await Promise.all([
           getInterests(),
@@ -107,69 +104,52 @@ export default function DiscoveryPageContent({
     };
   }, [initialItems, currentUserType, isReviewingDismissed]);
   const currentItem = items[0];
-
   function removeCurrentItem(profileId: string, action: DiscoveryAction) {
     const selectedItem = items.find((item) => item.profile.id === profileId);
-
     if (!selectedItem) {
       return;
     }
-
     setActionHistory((currentHistory) => [...currentHistory, { action, item: selectedItem }]);
     setItems((currentItems) => currentItems.filter((item) => item.profile.id !== profileId));
   }
 
   async function handleDismiss(profileId: string) {
     setActionError(null);
-
     try {
       await dismissProfile(profileId);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
     }
-
     removeCurrentItem(profileId, "dismiss");
   }
 
   async function handleRestore(profileId: string) {
     setActionError(null);
-
     try {
       await removeDismiss(profileId);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
     }
-
     setItems((currentItems) => currentItems.filter((item) => item.profile.id !== profileId));
   }
-
   async function handleExpressInterest(profileId: string) {
     const selectedItem = items.find((item) => item.profile.id === profileId);
-
     if (!selectedItem) {
       return;
     }
-
     setActionError(null);
-
     try {
       if (isReviewingDismissed) {
         await removeDismiss(profileId);
       }
-
       const result = await expressInterest(profileId);
-
       removeCurrentItem(profileId, "interest");
-
       if (result.matched && result.match) {
         const matchedProfileName = selectedItem.profile.basicInformation.fullName;
-
         const currentRoleRoot = currentUserType === "guestLecturer" ? "/guest_lecturer" : "/unit_coordinator";
-
         const matchedRoleRoot = selectedItem.profileType === "guestLecturer" ? "/guest_lecturer" : "/unit_coordinator";
-
         await createNotification({
           id: "match-" + result.match.id + "-" + CURRENT_USER_PLACEHOLDER_ID,
           recipientId: CURRENT_USER_PLACEHOLDER_ID,
@@ -201,18 +181,14 @@ export default function DiscoveryPageContent({
     if (actionHistory.length === 0) {
       return;
     }
-
     const lastAction = actionHistory[actionHistory.length - 1];
     const targetUserId = lastAction.item.profile.id;
-
     setActionError(null);
-
     try {
       if (lastAction.action === "interest") {
         await removeInterest(targetUserId);
         setMatchModalData(null);
       }
-
       if (lastAction.action === "dismiss") {
         await removeDismiss(targetUserId);
       }
@@ -223,25 +199,20 @@ export default function DiscoveryPageContent({
 
     setItems((currentItems) => {
       const itemAlreadyExists = currentItems.some((item) => item.profile.id === targetUserId);
-
       if (itemAlreadyExists) {
         return currentItems;
       }
-
       return [lastAction.item, ...currentItems];
     });
 
     setActionHistory((currentHistory) => currentHistory.slice(0, -1));
   }
-
   function handleReviewDismissed() {
     setIsReviewingDismissed(true);
   }
-
   function handleBackToDiscovery() {
     setIsReviewingDismissed(false);
   }
-
   if (isLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -303,11 +274,9 @@ export default function DiscoveryPageContent({
         </div>
 
         {actionError && <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-700">{actionError}</div>}
-
         {isReviewingDismissed && (
           <div className="mb-6 rounded-2xl border border-gray-200 bg-gray-100 px-5 py-4">
             <p className="font-semibold text-[#2d2d2d]">Reviewing dismissed profiles</p>
-
             <p className="mt-1 text-sm leading-6 text-gray-600">You can restore a profile to Discovery or express interest if you have changed your mind.</p>
           </div>
         )}
@@ -357,7 +326,6 @@ function EmptyDiscoveryState({
   isReviewingDismissed: boolean;
   hasDismissedProfiles: boolean;
   hasActionHistory: boolean;
-
   onUndo: () => void;
   onReviewDismissed: () => void;
   onBackToDiscovery: () => void;
@@ -370,9 +338,7 @@ function EmptyDiscoveryState({
         </div>
 
         <h2 className="mt-6 text-2xl font-bold text-gray-900">No dismissed profiles</h2>
-
         <p className="mx-auto mt-3 max-w-lg leading-7 text-gray-500">There are no dismissed profiles available to review.</p>
-
         <button type="button" onClick={onBackToDiscovery} className="mt-7 rounded-xl bg-[#2d2d2d] px-7 py-3 font-semibold text-white transition hover:bg-black">
           Back to Discovery
         </button>
@@ -380,18 +346,14 @@ function EmptyDiscoveryState({
     );
   }
 
-  // Show the same "no more profiles" state whether or not filters are
-  // active, instead of a separate filter-specific empty message.
+
   return (
     <section className="rounded-3xl border border-gray-200 bg-white px-6 py-20 text-center shadow-sm">
       <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-200">
         <Image src={infoIcon} alt="" width={28} height={28} />
       </div>
-
       <h2 className="mt-6 text-2xl font-bold text-gray-900">No more profiles</h2>
-
       <p className="mx-auto mt-3 max-w-lg leading-7 text-gray-500">You have reviewed all currently available profiles.</p>
-
       <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
         {hasActionHistory && (
           <button
@@ -425,19 +387,12 @@ function applyGuestLecturerFilters(items: DiscoveryItem[], filters: GuestLecture
     }
 
     const { expertise, engagementProfile } = item.profile;
-
     const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => expertise.selectedTopics.includes(topic));
-
     const matchesFormats = filters.formats.length === 0 || filters.formats.some((format) => engagementProfile.formats.includes(format));
-
     const matchesDurations = filters.sessionDurations.length === 0 || filters.sessionDurations.includes(engagementProfile.sessionDuration);
-
     const matchesAudience = filters.audienceSizes.length === 0 || filters.audienceSizes.includes(engagementProfile.audienceSize);
-
     const matchesDays = filters.preferredDays.length === 0 || filters.preferredDays.some((day) => engagementProfile.schedule.preferredDays.includes(day));
-
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
-
     return matchesTopics && matchesFormats && matchesDurations && matchesAudience && matchesDays && matchesLocation;
   });
 }
@@ -447,27 +402,16 @@ function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: UnitCoordi
     if (item.profileType !== "guestLecturer") {
       return false;
     }
-
     const { basicInformation, expertise, engagementProfile } = item.profile;
-
     const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => expertise.selectedTopics.includes(topic));
-
     const matchesExperience = filters.experienceLevels.length === 0 || filters.experienceLevels.includes(expertise.experienceLevel);
-
     const matchesField = filters.professionalFields.length === 0 || filters.professionalFields.includes(basicInformation.professionalField);
-
-    const matchesFormats = filters.formats.length === 0 || filters.formats.includes(engagementProfile.format);
-
+    const matchesFormats =  filters.formats.length === 0 || filters.formats.some((format) => engagementProfile.formats?.includes(format));
     const matchesDurations = filters.sessionDurations.length === 0 || filters.sessionDurations.includes(engagementProfile.sessionDuration);
-
     const matchesDays = filters.availableDays.length === 0 || filters.availableDays.some((day) => engagementProfile.schedule.availableDays.includes(day));
-
     const matchesSpeaking = !filters.requiresSpeakingExperience || expertise.hasSpeakingExperience;
-
     const matchesInternational = !filters.requiresInternationalExperience || expertise.hasInternationalExperience;
-
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
-
     return matchesTopics && matchesExperience && matchesField && matchesFormats && matchesDurations && matchesDays && matchesSpeaking && matchesInternational && matchesLocation;
   });
 }
@@ -485,11 +429,9 @@ function getAvailableDiscoveryItems(
     const alreadyInterested = interests.some(
       (interest) => interest.fromUserId === CURRENT_USER_PLACEHOLDER_ID && interest.toUserId === targetUserId,
     );
-
     const alreadyDismissed = dismisses.some(
       (dismiss) => dismiss.fromUserId === CURRENT_USER_PLACEHOLDER_ID && dismiss.toUserId === targetUserId,
     );
-
     return !alreadyInterested && !alreadyDismissed && !isMatchedOrBlocked(targetUserId, matches, blocks);
   });
 }

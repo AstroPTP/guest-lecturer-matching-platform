@@ -2,42 +2,25 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-
 import infoIcon from "@/assets/info.png";
-
 import CreateEventModal from "./CreateEventModal";
 import PastEventItem from "./PastEventItem";
 import UpcomingEventCard from "./UpcomingEventCard";
-
 import type { AcademicEvent, CreateAcademicEventData } from "@/types/events/eventTypes";
-
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 import type { UserRole } from "@/types/shared/userRole";
 
-import {
-  acceptEvent,
-  cancelEvent,
-  completeEvent,
-  createEvent,
-  declineEvent,
-  getEventsForCoordinator,
-  getEventsForGuestLecturer,
-} from "@/services/events/eventService";
+import { acceptEvent, cancelEvent,completeEvent, createEvent, declineEvent, getEventsForCoordinator, getEventsForGuestLecturer} from "@/services/events/eventService";
 
 interface EventPageContentProps {
-  currentUserId: string;
-
   currentUserType: UserRole;
-
   currentUserName: string;
   currentUserRole: string;
   currentUserOrganisation: string;
-
   matchedGuestLecturers?: MatchedProfile[];
 }
 
 export default function EventPageContent({
-  currentUserId,
   currentUserType,
   currentUserName,
   currentUserRole,
@@ -45,20 +28,15 @@ export default function EventPageContent({
   matchedGuestLecturers = [],
 }: EventPageContentProps) {
   const [events, setEvents] = useState<AcademicEvent[]>([]);
-
   const [showCreateModal, setShowCreateModal] = useState(false);
-
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const loadEvents = useCallback(async () => {
     setErrorMessage(null);
-
     try {
-      const nextEvents =
-        currentUserType === "unitCoordinator" ? await getEventsForCoordinator(currentUserId) : await getEventsForGuestLecturer(currentUserId);
+      const nextEvents = currentUserType === "unitCoordinator" ? await getEventsForCoordinator() : await getEventsForGuestLecturer();
 
       setEvents(nextEvents);
     } catch (error) {
@@ -67,7 +45,7 @@ export default function EventPageContent({
     } finally {
       setIsLoading(false);
     }
-  }, [currentUserId, currentUserType]);
+  }, [currentUserType]);
 
   useEffect(() => {
     async function run() {
@@ -76,9 +54,7 @@ export default function EventPageContent({
 
     void run();
   }, [loadEvents]);
-
   const upcomingEvents = events.filter((event) => event.status !== "completed" && event.status !== "declined" && event.status !== "cancelled");
-
   const pastEvents = events.filter((event) => event.status === "completed" || event.status === "declined" || event.status === "cancelled");
 
   if (isLoading) {
@@ -88,7 +64,6 @@ export default function EventPageContent({
       </div>
     );
   }
-
   if (errorMessage) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -99,7 +74,6 @@ export default function EventPageContent({
 
   function showMessage(value: string) {
     setMessage(value);
-
     setTimeout(() => {
       setMessage("");
     }, 2500);
@@ -107,14 +81,11 @@ export default function EventPageContent({
 
   function showActionError(value: string) {
     setActionError(value);
-
     setTimeout(() => {
       setActionError("");
     }, 4000);
   }
-
   const NOT_INTEGRATED_MESSAGE = "This isn't connected to a backend yet, so that action couldn't be saved.";
-
   async function handleCreateEvent(data: CreateAcademicEventData): Promise<boolean> {
     try {
       await createEvent(data);
@@ -125,7 +96,6 @@ export default function EventPageContent({
 
     setShowCreateModal(false);
     await loadEvents();
-
     showMessage("Event invitation sent successfully.");
     return true;
   }
@@ -137,12 +107,9 @@ export default function EventPageContent({
       showActionError(NOT_INTEGRATED_MESSAGE);
       return;
     }
-
     await loadEvents();
-
     showMessage("Event accepted successfully.");
   }
-
   async function handleDecline(eventId: string) {
     try {
       await declineEvent(eventId);
@@ -152,7 +119,6 @@ export default function EventPageContent({
     }
 
     await loadEvents();
-
     showMessage("Event invitation declined.");
   }
 
@@ -181,7 +147,6 @@ export default function EventPageContent({
 
     showMessage("Event marked as completed.");
   }
-
   return (
     <>
       <div className="mx-auto w-full max-w-6xl">
@@ -271,7 +236,6 @@ export default function EventPageContent({
 
       {showCreateModal && currentUserType === "unitCoordinator" && (
         <CreateEventModal
-          coordinatorId={currentUserId}
           coordinatorName={currentUserName}
           matchedGuestLecturers={matchedGuestLecturers}
           onClose={() => setShowCreateModal(false)}
@@ -282,10 +246,7 @@ export default function EventPageContent({
   );
 }
 
-function EmptyEventState({
-  currentUserType,
-  onCreate,
-}: {
+function EmptyEventState({ currentUserType,onCreate,}: {
   currentUserType: UserRole;
 
   onCreate: () => void;

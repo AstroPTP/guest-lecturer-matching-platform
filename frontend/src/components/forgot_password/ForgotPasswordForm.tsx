@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import Image from "next/image";
-
 import emailIcon from "@/assets/email.png";
 import arrow from "@/assets/arrow.png";
 
@@ -13,15 +12,11 @@ interface ForgotPasswordFormProps {
 
 export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormProps) {
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
-
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedEmail = email.trim().toLowerCase();
-    setError("");
     onSubmitted(normalizedEmail);
   }
-
   return (
     <main className="w-full max-w-md bg-white rounded-xl border border-blue-100 shadow-xl shadow-blue-900/10 p-8 sm:p-12">
       <div className="text-center mb-10">
@@ -35,10 +30,8 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
           <label htmlFor="email" className="block text-xs font-bold uppercase tracking-wider mb-2">
             Email Address
           </label>
-
           <div className="relative">
             <Image src={emailIcon} alt="Email" width={20} height={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 object-contain" />
-
             <input
               id="email"
               name="email"
@@ -50,7 +43,6 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
               className="w-full bg-slate-50 border border-slate-200 rounded-lg py-3 pl-12 pr-4 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
-          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </div>
 
         <button

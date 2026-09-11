@@ -4,14 +4,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
 import searchIcon from "@/assets/search.png";
-import {
-  auditActorRoles,
-  auditCategories,
-  auditDateRange,
-  auditEntries,
-  auditEntryTotal,
-  auditMetrics,
-} from "@/data/audit_log";
+import {auditActorRoles,auditCategories,  auditDateRange, auditEntries, auditEntryTotal, auditMetrics} from "@/data/audit_log";
 import type { AuditActorRole, AuditCategory } from "@/types/admin";
 
 export default function AuditLogPage() {

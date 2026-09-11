@@ -20,7 +20,6 @@ export default function EngagementProfileForm() {
   const [availabilityNotes, setAvailabilityNotes] = useState("");
   useEffect(() => {
     let cancelled = false;
-
     async function loadDraft() {
       try {
         const data = await getGuestLecturerEngagement();
@@ -28,7 +27,6 @@ export default function EngagementProfileForm() {
         if (cancelled || !data) {
           return;
         }
-
         setPrimaryLocation(data.primaryLocation);
         setSessionDuration(data.sessionDuration);
         setAudienceSize(data.audienceSize);
@@ -61,7 +59,6 @@ export default function EngagementProfileForm() {
       setDeliveryFocus(deliveryFocus.filter((selectedOption) => selectedOption !== option));
       return;
     }
-
     setDeliveryFocus([...deliveryFocus, option]);
   }
 
@@ -218,13 +215,10 @@ export default function EngagementProfileForm() {
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Delivery Focus</h2>
-
           <p className="mt-2 text-sm text-gray-500">Select the types of engagement you would be comfortable delivering.</p>
-
           <div className="mt-5 flex flex-wrap gap-3">
             {deliveryFocusOptions.map((option) => {
               const isSelected = deliveryFocus.includes(option);
-
               return (
                 <button
                   key={option}
@@ -244,14 +238,12 @@ export default function EngagementProfileForm() {
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Typical Availability</h2>
-
           <p className="mt-2 text-sm text-gray-500">
             Select the days and times when you are usually available. Unit Coordinators will still confirm the exact date with you.
           </p>
 
           <div className="mt-7">
             <p className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">Preferred Days</p>
-
             <div className="flex flex-wrap gap-3">
               {weekDays.map((day) => {
                 const isSelected = availableDays.includes(day.value);
@@ -294,7 +286,6 @@ export default function EngagementProfileForm() {
               <label htmlFor="availableTo" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
                 Available To
               </label>
-
               <input
                 id="availableTo"
                 type="time"
@@ -308,7 +299,6 @@ export default function EngagementProfileForm() {
               <label htmlFor="availabilityFrequency" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
                 Availability Frequency
               </label>
-
               <select
                 id="availabilityFrequency"
                 value={availabilityFrequency}
@@ -339,11 +329,9 @@ export default function EngagementProfileForm() {
               placeholder="e.g., Available during university teaching weeks with two weeks' notice."
               className="w-full resize-none border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none placeholder:text-gray-400 focus:bg-white"
             />
-
             <p className="mt-1 text-right text-xs text-gray-500">{availabilityNotes.length}/250</p>
           </div>
         </section>
-
         <FormNavButtons submitLabel="Next" />
       </form>
     </main>

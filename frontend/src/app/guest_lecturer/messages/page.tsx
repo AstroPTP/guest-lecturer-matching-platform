@@ -1,15 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import MessagesPageContent from "@/components/messages/MessagesPageContent";
-
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
-import { DEMO_GUEST_LECTURER_ID } from "@/config/demoUsers";
-
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
-
 import type { ConversationSeed } from "@/types/messages/messageTypes";
 import { formatStoredValue } from "@/utils/displayFormatters";
 
@@ -21,10 +16,8 @@ export default function GuestLecturerMessagesPage() {
   useEffect(() => {
     async function loadConversations() {
       setErrorMessage(null);
-
       try {
-        const matches = await getMatchedProfiles(DEMO_GUEST_LECTURER_ID, "guestLecturer");
-
+        const matches = await getMatchedProfiles("guestLecturer");
         const nextSeeds: ConversationSeed[] = [];
 
         for (const item of matches) {
@@ -33,7 +26,6 @@ export default function GuestLecturerMessagesPage() {
           }
 
           const { basicInformation, engagementProfile } = item.profile;
-
           nextSeeds.push({
             participant: {
               id: item.profile.id,
@@ -61,18 +53,14 @@ export default function GuestLecturerMessagesPage() {
         setIsLoading(false);
       }
     }
-
     void loadConversations();
   }, []);
 
   return (
     <DashboardShell
       role="guestLecturer"
-      currentUserId={DEMO_GUEST_LECTURER_ID}
       menuItems={guestLecturerMenu}
       notificationHref="/guest_lecturer/notifications"
-      messagesHref="/guest_lecturer/messages"
-      profileHref="/guest_lecturer/my_profile"
     >
       {isLoading ? (
         <div className="flex min-h-[400px] items-center justify-center">
@@ -85,7 +73,6 @@ export default function GuestLecturerMessagesPage() {
       ) : (
         <MessagesPageContent
           userType="guestLecturer"
-          currentUserId={DEMO_GUEST_LECTURER_ID}
           conversationSeeds={conversationSeeds}
           participantProfileHref="/guest_lecturer/matches"
         />
