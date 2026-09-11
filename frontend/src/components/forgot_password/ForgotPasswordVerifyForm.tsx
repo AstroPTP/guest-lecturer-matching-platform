@@ -6,10 +6,8 @@ import OtpForm from "@/components/shared/OtpForm";
 interface ForgotPasswordVerifyFormProps {
   email: string;
 }
-
 export default function ForgotPasswordVerifyForm({ email }: ForgotPasswordVerifyFormProps) {
   const router = useRouter();
-
   return (
     <OtpForm
       title="Reset your password"

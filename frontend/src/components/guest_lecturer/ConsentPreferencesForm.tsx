@@ -40,7 +40,6 @@ export default function ConsentPreferencesForm() {
       cancelled = true;
     };
   }, []);
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -48,12 +47,10 @@ export default function ConsentPreferencesForm() {
       alert("Please consent to your profile being used for matching.");
       return;
     }
-
     if (!informationAccurate) {
       alert("Please confirm that your information is accurate.");
       return;
     }
-
     if (!termsAccepted) {
       alert("Please read and accept the Terms and Conditions.");
       return;

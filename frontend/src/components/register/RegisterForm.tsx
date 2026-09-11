@@ -2,99 +2,46 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-
 import person from "@/assets/person.png";
 import email from "@/assets/email.png";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import check from "@/assets/check.png";
-
-import type { AccountRole } from "@/types/auth/authTypes";
-
 import { getPasswordRequirements } from "@/lib/validation";
 
 export default function RegisterForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<AccountRole>("guest");
-
-  const {
-    hasMinLength,
-    hasUppercase,
-    hasSpecialCharacter,
-    hasNumber,
-    strength: passwordStrength,
-    isValid: isPasswordValid,
-  } = getPasswordRequirements(password);
-
-  const strengthState =
-    password.length === 0
-      ? { label: "", color: "#E5E7EB" }
-      : passwordStrength <= 1
-        ? { label: "Weak", color: "#EF4444" }
-        : passwordStrength <= 3
-          ? { label: "Medium", color: "#F59E0B" }
-          : { label: "Strong", color: "#10B981" };
-
+  const searchParams = useSearchParams();
+  const role = searchParams.get("role") === "coordinator" ? "coordinator" : "guest";
+  const { hasMinLength, hasUppercase, hasSpecialCharacter, hasNumber,  strength: passwordStrength, isValid: isPasswordValid } = getPasswordRequirements(password);
+  const strengthState = password.length === 0 ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1 ? { label: "Weak", color: "#EF4444" } : passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" } : { label: "Strong", color: "#10B981" };
   const router = useRouter();
-
   async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
     if (!isPasswordValid) {
       alert("Please make sure your password meets all requirements.");
       return;
     }
-
     router.push("/verify");
   }
-
   return (
     <main className="w-full max-w-md">
-      {/* Header */}
       <div className="mb-12 text-center">
         <h1 className="mb-4 text-4xl font-bold">Guest Lecturer Matching</h1>
-
         <p className="text-base text-gray-600">Join the industrial network of academic professionals.</p>
       </div>
 
-      {/* Grey Card */}
       <div className="rounded-xl border border-blue-100 bg-white p-10 shadow-xl shadow-blue-900/10">
         <form className="space-y-6" onSubmit={handleRegister}>
-          {/* Role */}
-          <div>
-            <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Register as</label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setRole("guest")}
-                aria-pressed={role === "guest"}
-                className={
-                  "rounded-lg border py-3 text-sm font-semibold transition " +
-                  (role === "guest" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-gray-600 hover:border-blue-200")
-                }
-              >
-                Guest Lecturer
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRole("coordinator")}
-                aria-pressed={role === "coordinator"}
-                className={
-                  "rounded-lg border py-3 text-sm font-semibold transition " +
-                  (role === "coordinator" ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-gray-600 hover:border-blue-200")
-                }
-              >
-                Unit Coordinator
-              </button>
+          <div className="mb-8 flex justify-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-black bg-gray-100 px-4 py-2 text-[12px] leading-none uppercase">
+              <div className="font-medium tracking-[0.03em] text-gray-700">Registering as</div>
+              <div className="font-semibold tracking-normal text-blue-600">{role === "coordinator" ? "Unit Coordinator" : "Guest Lecturer"}</div>
             </div>
           </div>
-
-          {/* Full Name */}
           <div>
             <label htmlFor="fullName" className="mb-2 block text-sm font-bold uppercase tracking-widest">
               Full Name
@@ -243,7 +190,7 @@ export default function RegisterForm() {
             </label>
           </div>
 
-          {/* Create account button */}
+
           <button
             type="submit"
             className="w-full rounded-xl bg-blue-600 py-4 font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"

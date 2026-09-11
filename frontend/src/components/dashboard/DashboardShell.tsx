@@ -9,11 +9,9 @@ interface DashboardShellProps {
   menuItems: DashboardMenuItem[];
   role: UserRole;
   notificationHref: string;
-  messagesHref: string;
-  profileHref: string;
 }
 
-export default function DashboardShell({ children, menuItems, role, notificationHref, messagesHref, profileHref }: DashboardShellProps) {
+export default function DashboardShell({ children, menuItems, role, notificationHref }: DashboardShellProps) {
   const theme = role === "unitCoordinator" ? "coordinator" : "guest";
   return (
     <div
@@ -24,8 +22,6 @@ export default function DashboardShell({ children, menuItems, role, notification
         <DashboardHeader
           role={role}
           notificationHref={notificationHref}
-          messagesHref={messagesHref}
-          profileHref={profileHref}
           theme={theme}
         />
         <main className="min-h-[calc(100vh-5rem)] px-8 py-8">{children}</main>

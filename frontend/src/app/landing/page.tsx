@@ -17,6 +17,7 @@ export default function LandingPage() {
             description="Give back to your field."
             buttonText="Join as Speaker"
             items={["Build your academic profile", "Industrial university matches", "Scheduling & honorariums"]}
+            role="guest"
           />
 
           <FeatureCard
@@ -24,6 +25,7 @@ export default function LandingPage() {
             description="Find verified industry experts."
             buttonText="Join as Coordinator"
             items={["Verified practitioners", "Advanced search", "Booking workflow"]}
+            role="coordinator"
           />
         </div>
       </section>
