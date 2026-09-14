@@ -11,7 +11,9 @@ describe('UnitCoordinatorsController', () => {
       providers: [UnitCoordinatorsService],
     }).compile();
 
-    controller = module.get<UnitCoordinatorsController>(UnitCoordinatorsController);
+    controller = module.get<UnitCoordinatorsController>(
+      UnitCoordinatorsController,
+    );
   });
 
   it('should be defined', () => {

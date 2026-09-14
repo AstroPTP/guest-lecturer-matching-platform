@@ -45,11 +45,15 @@ describe('NotificationsService', () => {
 
   it('throws ForbiddenException when the caller is not the recipient', () => {
     const notification = service.create(baseDto);
-    expect(() => service.markAsRead(notification.id, 'someone-else')).toThrow(ForbiddenException);
+    expect(() => service.markAsRead(notification.id, 'someone-else')).toThrow(
+      ForbiddenException,
+    );
   });
 
   it('throws NotFoundException for an unknown id', () => {
-    expect(() => service.markAsRead('nonexistent', 'user-1')).toThrow(NotFoundException);
+    expect(() => service.markAsRead('nonexistent', 'user-1')).toThrow(
+      NotFoundException,
+    );
   });
 
   it('marks all of a recipient notifications as read, leaving others untouched', () => {

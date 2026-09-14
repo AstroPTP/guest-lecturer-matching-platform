@@ -29,7 +29,10 @@ export class GuestSpeakersService {
     return this.profiles.get(userId) ?? null;
   }
 
-  saveBasicInformation(userId: string, dto: BasicInformationDto): GuestSpeakerProfile {
+  saveBasicInformation(
+    userId: string,
+    dto: BasicInformationDto,
+  ): GuestSpeakerProfile {
     const profile = this.getOrCreate(userId);
     profile.basicInformation = dto;
     return profile;

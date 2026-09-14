@@ -1,8 +1,17 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { CreateEventDto } from './dto/create-event.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 
-export type EventStatus = 'invitation-sent' | 'accepted' | 'declined' | 'completed' | 'cancelled';
+export type EventStatus =
+  | 'invitation-sent'
+  | 'accepted'
+  | 'declined'
+  | 'completed'
+  | 'cancelled';
 
 export interface Event extends CreateEventDto {
   id: string;
@@ -65,15 +74,26 @@ export class EventsService {
   updateStatus(id: string, status: EventStatus, callerId: string): Event {
     const event = this.findOne(id);
 
-    if (GUEST_LECTURER_ACTIONS.includes(status) && event.guestLecturerId !== callerId) {
-      throw new ForbiddenException('You are not the invited guest lecturer for this event');
+    if (
+      GUEST_LECTURER_ACTIONS.includes(status) &&
+      event.guestLecturerId !== callerId
+    ) {
+      throw new ForbiddenException(
+        'You are not the invited guest lecturer for this event',
+      );
     }
-    if (COORDINATOR_ACTIONS.includes(status) && event.coordinatorId !== callerId) {
-      throw new ForbiddenException('You are not the coordinator for this event');
+    if (
+      COORDINATOR_ACTIONS.includes(status) &&
+      event.coordinatorId !== callerId
+    ) {
+      throw new ForbiddenException(
+        'You are not the coordinator for this event',
+      );
     }
 
     event.status = status;
-    if (status === 'accepted' || status === 'declined') event.respondedAt = new Date().toISOString();
+    if (status === 'accepted' || status === 'declined')
+      event.respondedAt = new Date().toISOString();
     if (status === 'completed') event.completedAt = new Date().toISOString();
 
     this.notifyStatusChange(event, status);
@@ -86,7 +106,8 @@ export class EventsService {
       this.notificationsService.create({
         recipientId: event.coordinatorId,
         type: 'event',
-        title: status === 'accepted' ? 'Invitation accepted' : 'Invitation declined',
+        title:
+          status === 'accepted' ? 'Invitation accepted' : 'Invitation declined',
         description: `${event.guestLecturerName} ${status} your invitation to "${event.title}"`,
         actionLabel: 'View event',
         href: '/unit_coordinator/events',
@@ -97,7 +118,8 @@ export class EventsService {
       this.notificationsService.create({
         recipientId: event.guestLecturerId,
         type: 'event',
-        title: status === 'cancelled' ? 'Event cancelled' : 'Event marked complete',
+        title:
+          status === 'cancelled' ? 'Event cancelled' : 'Event marked complete',
         description: `"${event.title}" was ${status} by ${event.coordinatorName}`,
         actionLabel: 'View event',
         href: '/guest_lecturer/events',

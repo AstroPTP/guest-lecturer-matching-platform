@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventsController } from './events.controller';
 import { EventsService } from './events.service';
-import { JwtGuard } from '../auth/jwt.guard';
+import { JwtAuthGuard } from '../auth/jwt.guard';
 import { AppRole } from '../auth/roles';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 
@@ -19,7 +19,7 @@ describe('EventsController', () => {
       controllers: [EventsController],
       providers: [EventsService],
     })
-      .overrideGuard(JwtGuard)
+      .overrideGuard(JwtAuthGuard)
       .useValue({ canActivate: () => true })
       .compile();
 
