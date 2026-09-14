@@ -200,6 +200,7 @@ what the commit history and the pull request are for.
 | Local identity provider for development and tests | `tools/dev-idp/` |
 | Rate limit tiers and reverse proxy trust | `backend/src/main.ts` |
 | Content security policy and transport security headers | `backend/src/main.ts` |
+| Request body size limit | `backend/src/main.ts` |
 
 ---
 

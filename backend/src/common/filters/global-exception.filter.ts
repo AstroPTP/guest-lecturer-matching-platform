@@ -86,9 +86,39 @@ function resolveCorrelationId(request: Request): string {
 }
 
 function resolveStatus(exception: unknown): HttpStatus {
-  return exception instanceof HttpException
-    ? exception.getStatus()
-    : HttpStatus.INTERNAL_SERVER_ERROR;
+  if (exception instanceof HttpException) {
+    return exception.getStatus();
+  }
+
+  // Express middleware throws plain errors carrying a status rather than a
+  // Nest HttpException. body-parser's PayloadTooLargeError is the one we hit
+  // in practice. Without this, an oversized body reports 500 INTERNAL_ERROR,
+  // which reads as a server fault when it was the caller's request that was
+  // rejected, and hides a control that is in fact working (DOS-10).
+  return clientErrorStatusOf(exception) ?? HttpStatus.INTERNAL_SERVER_ERROR;
+}
+
+/**
+ * A 4xx carried on a non-HttpException, or undefined.
+ *
+ * Restricted to 4xx deliberately: a 5xx thrown by library internals is still
+ * an unexpected server error and should be reported as one, with its detail
+ * kept server-side.
+ */
+function clientErrorStatusOf(exception: unknown): HttpStatus | undefined {
+  if (typeof exception !== 'object' || exception === null) {
+    return undefined;
+  }
+
+  const candidate = exception as { status?: unknown; statusCode?: unknown };
+  const raw =
+    typeof candidate.status === 'number'
+      ? candidate.status
+      : typeof candidate.statusCode === 'number'
+        ? candidate.statusCode
+        : undefined;
+
+  return raw !== undefined && raw >= 400 && raw < 500 ? raw : undefined;
 }
 
 /**
@@ -119,6 +149,17 @@ function resolveCodeAndMessage(
     return { code: defaultCodeFor(status), message: defaultMessageFor(status) };
   }
 
+  // Not an HttpException, but resolveStatus recognised a 4xx on it: an
+  // Express middleware error such as body-parser's PayloadTooLargeError. The
+  // caller gets the code matching that status, but never the library's own
+  // message, which names internals.
+  if (
+    status >= HttpStatus.BAD_REQUEST &&
+    status < HttpStatus.INTERNAL_SERVER_ERROR
+  ) {
+    return { code: defaultCodeFor(status), message: defaultMessageFor(status) };
+  }
+
   // Unhandled. The detail goes to the log above; the client is told nothing
   // beyond that it failed.
   return {
@@ -137,6 +178,8 @@ function defaultCodeFor(status: HttpStatus): ErrorCode {
       return ErrorCode.ValidationFailed;
     case HttpStatus.TOO_MANY_REQUESTS:
       return ErrorCode.RateLimitExceeded;
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return ErrorCode.PayloadTooLarge;
     default:
       return ErrorCode.InternalError;
   }
@@ -152,6 +195,8 @@ function defaultMessageFor(status: HttpStatus): string {
       return 'The request could not be processed';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'Too many requests';
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return 'The request body is too large';
     default:
       return 'An unexpected error occurred';
   }

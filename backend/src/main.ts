@@ -88,6 +88,12 @@ async function bootstrap() {
     app.set('trust proxy', proxyHops);
   }
 
+  // DOS-10. Express defaults to a 100kb JSON body. Stated explicitly so the
+  // limit is a decision on the record rather than a framework default nobody
+  // chose, and so an oversized body is a 413 rather than memory pressure.
+  app.useBodyParser('json', { limit: '100kb' });
+  app.useBodyParser('urlencoded', { limit: '100kb', extended: true });
+
   // Every error leaves through here, so nothing reaches a client except the
   // four-field error envelope. Stack traces stay server-side.
   app.useGlobalFilters(new GlobalExceptionFilter());
