@@ -198,6 +198,7 @@ what the commit history and the pull request are for.
 | Token verification and role guards | `backend/src/auth/` |
 | Shared error codes and the response envelope | `backend/src/common/` |
 | Local identity provider for development and tests | `tools/dev-idp/` |
+| Rate limit tiers and reverse proxy trust | `backend/src/main.ts` |
 
 ---
 

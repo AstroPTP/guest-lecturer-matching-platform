@@ -50,6 +50,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.warn(context);
     }
 
+    // DOS-08. A 429 without Retry-After leaves a well-behaved client guessing,
+    // so it retries immediately and stays limited. 60 matches the ttl on both
+    // throttler tiers: the 60/min global default and the 10/min on /auth.
+    if (status === HttpStatus.TOO_MANY_REQUESTS) {
+      response.setHeader('Retry-After', '60');
+    }
+
     const body: ErrorEnvelope = {
       code,
       message,
