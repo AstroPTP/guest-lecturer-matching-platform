@@ -6,7 +6,7 @@ import { CreateUnitDto } from './dto/create-unit.dto';
 export class UnitsController {
   constructor(private readonly unitsService: UnitsService) {}
 
-  @()
+  @Post()
   create(@Body() createUnitDto: CreateUnitDto) {
     return this.unitsService.create(createUnitDto);
   }
