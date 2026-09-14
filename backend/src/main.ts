@@ -58,9 +58,23 @@ async function bootstrap() {
     }),
   );
 
+  // An explicit allowlist, never a wildcard and never `origin: true`. The
+  // origins come from validateEnv(), which rejects "*", a trailing slash and a
+  // path, so a malformed value stops the process at boot rather than quietly
+  // widening what the browser will trust.
+  //
+  // There is deliberately no fallback. The previous `?? 'http://localhost:3000'`
+  // meant an unset FRONTEND_URL silently trusted localhost, which is harmless
+  // locally and a hole anywhere else.
+  //
+  // Browser traffic reaches the API through the frontend's same-origin proxy,
+  // so this is defence in depth for anything calling the backend directly.
   app.enableCors({
-    origin: process.env.FRONTEND_URL ?? 'http://localhost:3000',
+    origin: env.allowedOrigins,
     credentials: true,
+    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Correlation-Id'],
+    maxAge: 600,
   });
 
   app.useGlobalPipes(

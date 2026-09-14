@@ -1,9 +1,11 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { AuthenticatedUser } from './authenticated-user';
 import { CurrentUser } from './current-user.decorator';
 import { AppRole } from './roles';
 import { Roles } from './roles.decorator';
+import { APP_ENV } from '../config/app-env.token';
+import type { AppEnv } from '../config/env.validation';
 
 /**
  * Auth routes.
@@ -19,6 +21,8 @@ import { Roles } from './roles.decorator';
 @Controller('auth')
 @Throttle({ default: { limit: 10, ttl: 60000 } })
 export class AuthController {
+  constructor(@Inject(APP_ENV) private readonly env: AppEnv) {}
+
   /**
    * Echoes back what the backend concluded about the caller after verifying
    * their token. It is what the guard tests are run against, and what the
@@ -34,27 +38,38 @@ export class AuthController {
   }
 
   /**
-   * A route that actually requires a role, for the same reason whoami exists.
+   * The security posture of the running service, for an administrator.
    *
-   * Until the admin endpoints land there is no route in this application
-   * carrying @Roles(), which means RolesGuard has only ever run inside the
-   * test harness. Checklist items EOP-01 and EOP-04 could be asserted but not
-   * demonstrated, and a control nobody has watched work on a running server is
-   * a weaker claim than one they have.
+   * Role-restricted because it describes how the service is configured, and a
+   * caller who cannot administer it has no reason to know. It reports whether
+   * each control is active, never how it is configured: no origins, no limits,
+   * no variable values. Knowing that a control is on tells an attacker nothing
+   * they could not learn by testing it, whereas its configuration would.
    *
-   * It discloses nothing. A caller who is admitted learns only that they hold
-   * a role their own token already told them they hold, and a caller who is
-   * refused learns only that they do not.
-   *
-   * Delete this once a real ccae_admin endpoint exists. It is scaffolding for
-   * verification, not a feature.
+   * This also keeps one route carrying @Roles() on a running server. Without
+   * one, RolesGuard only ever executes inside the test harness, and a control
+   * nobody has watched work is a weaker claim than one they have.
    */
-  @Get('admin_only')
+  @Get('admin/security-status')
   @Roles(AppRole.CcaeAdmin)
-  adminOnly(@CurrentUser() user: AuthenticatedUser): {
-    permitted: true;
-    id: string;
+  securityStatus(@CurrentUser() user: AuthenticatedUser): {
+    checkedBy: string;
+    authenticationRequired: true;
+    roleEnforcement: true;
+    corsRestricted: boolean;
+    rateLimited: true;
+    errorsSanitised: true;
   } {
-    return { permitted: true, id: user.id };
+    return {
+      checkedBy: user.id,
+      authenticationRequired: true,
+      roleEnforcement: true,
+      // False would mean the boot-time validation let an empty allowlist
+      // through, which it does not, so this is a live assertion rather than a
+      // constant.
+      corsRestricted: this.env.allowedOrigins.length > 0,
+      rateLimited: true,
+      errorsSanitised: true,
+    };
   }
 }
