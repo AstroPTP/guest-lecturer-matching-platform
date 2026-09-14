@@ -5,5 +5,6 @@ import { GuestSpeakersService } from './guest-speakers.service';
 @Module({
   controllers: [GuestSpeakersController],
   providers: [GuestSpeakersService],
+  exports: [GuestSpeakersService],
 })
 export class GuestSpeakersModule {}
