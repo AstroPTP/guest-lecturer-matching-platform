@@ -29,7 +29,10 @@ export class UnitCoordinatorsService {
     return this.profiles.get(userId) ?? null;
   }
 
-  saveBasicInformation(userId: string, dto: BasicInformationDto): UnitCoordinatorProfile {
+  saveBasicInformation(
+    userId: string,
+    dto: BasicInformationDto,
+  ): UnitCoordinatorProfile {
     const profile = this.getOrCreate(userId);
     profile.basicInformation = dto;
     return profile;
