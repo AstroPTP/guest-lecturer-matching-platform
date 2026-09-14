@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+echo -e "BACKEND: TESTS AND BUILD\n========================="
+cd backend || exit 1
+
+echo -e "\nRunning tests cases...\n"
+npm run test || exit 1
+npm run test:e2e || exit 1
+
+echo -e "\nRunning build...\n"
+npm run build || exit 1
+cd ..
+    
+echo -e "\nFRONTEND: TESTS AND BUILD\n========================="
+cd frontend || exit 1
+
+echo -e "\nRunning build...\n"
+npm run build || exit 1
+cd ..
+
+echo -e "\n=========================\nAll checks passed\n========================="
