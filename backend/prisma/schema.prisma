@@ -47,13 +47,12 @@ model coordinator {
   focus_ama             Boolean? @default(false)
   created_at         DateTime @default(now()) @db.Timestamptz(6)
   location           String?  @db.VarChar
-  availability_id    BigInt
   users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model user_expertise {
-  user_id   BigInt @default(autoincrement())
+  user_id   BigInt 
   expertise String @db.VarChar
   users     users  @relation(fields: [user_id], references: [userid], onDelete: Cascade)
 
@@ -98,7 +97,7 @@ model users {
   lastloginat  DateTime?      @db.Timestamp(6)
   deletedat    DateTime?      @db.Timestamp(6)
   availability availability[]
-  coordinator  coordinator[]
+  coordinator  coordinator?
   user_expertise    user_expertise[]
-  guest        guest[]
+  guest        guest?
 }

@@ -62,63 +62,80 @@ export class GuestSpeakersService {
     return [...this.profiles.values()];
   }
 
-  private async createNewGuestInDatabase(guestDTO: GuestSpeakerProfile)
-  {
-    const newUser = await prisma.guest.create({
-            data: {
-                guest_id: guestDTO.speakerId,
-                user_id: guestDTO.userId,
-                first_name: guestDTO.firstName, 
-                last_name: guestDTO.lastName, 
-                field: guestDTO.basicInformation?.professionalField, 
-                role: guestDTO.basicInformation?.professionalRole, 
-                bio: guestDTO.basicInformation?.bio, 
-                prior_details: guestDTO.expertise?.speakingDetails, 
-                international_details: guestDTO.expertise?.internationalDetails, 
-                linkedin_profile: guestDTO.expertise?.linkedin, 
-                location: guestDTO.engagementProfile?.primaryLocation, 
-                duration: guestDTO.engagementProfile?.sessionDuration, 
-                audience: guestDTO.engagementProfile?.audienceSize,
-                format_online: guestDTO.engagementProfile?.formats?.includes("Online"),
-                format_inperson: guestDTO.engagementProfile?.formats?.includes("Face-to-Face"),
-                format_prerecorded: guestDTO.engagementProfile?.formats?.includes("Pre-recorded"),
-                focus_lecture: guestDTO.engagementProfile?.deliveryFocus.includes("Seminar/Lecture"),
-                focus_casestudy: guestDTO.engagementProfile?.deliveryFocus.includes("Case Study"),
-                focus_workshop: guestDTO.engagementProfile?.deliveryFocus.includes("Interactive Workshop"),
-                focus_discussion: guestDTO.engagementProfile?.deliveryFocus.includes("Discussion Lead"),
-                focus_ama: guestDTO.engagementProfile?.deliveryFocus.includes("AMA Session")
-            },
-        });
+  private async createNewGuestInDatabase(guestDTO: GuestSpeakerProfile) {
+    await prisma.guest.create({
+      data: {
+        user_id: guestDTO.userId,
+        first_name: guestDTO.basicInformation?.firstName,
+        last_name: guestDTO.basicInformation?.lastName,
+        field: guestDTO.basicInformation?.professionalField,
+        role: guestDTO.basicInformation?.professionalRole,
+        bio: guestDTO.basicInformation?.bio,
+        prior_details: guestDTO.expertise?.speakingDetails,
+        international_details: guestDTO.expertise?.internationalDetails,
+        linkedin_profile: guestDTO.expertise?.linkedin,
+        location: guestDTO.engagementProfile?.primaryLocation,
+        duration: guestDTO.engagementProfile?.sessionDuration,
+        audience: guestDTO.engagementProfile?.audienceSize,
+        format_online: guestDTO.engagementProfile?.formats?.includes('Online'),
+        format_inperson:
+          guestDTO.engagementProfile?.formats?.includes('Face-to-Face'),
+        format_prerecorded:
+          guestDTO.engagementProfile?.formats?.includes('Pre-recorded'),
+        focus_lecture:
+          guestDTO.engagementProfile?.deliveryFocus.includes('Seminar/Lecture'),
+        focus_casestudy:
+          guestDTO.engagementProfile?.deliveryFocus.includes('Case Study'),
+        focus_workshop: guestDTO.engagementProfile?.deliveryFocus.includes(
+          'Interactive Workshop',
+        ),
+        focus_discussion:
+          guestDTO.engagementProfile?.deliveryFocus.includes('Discussion Lead'),
+        focus_ama:
+          guestDTO.engagementProfile?.deliveryFocus.includes('AMA Session'),
+      },
+    });
 
     for (const topic of guestDTO.expertise?.selectedTopics ?? []) {
       await prisma.user_expertise.create({
-          data: {
-              userId: guestDTO.userId,
-              expertise: topic
-          }
+        data: {
+          user_id: guestDTO.userId,
+          expertise: topic,
+        },
       });
     }
 
     const availability = {
-            monday: guestDTO.engagementProfile?.schedule.availableDays.includes("Monday"),
-            tuesday: guestDTO.engagementProfile?.schedule.availableDays.includes("Tuesday"),
-            wednesday: guestDTO.engagementProfile?.schedule.availableDays.includes("Wednesday"),
-            thursday: guestDTO.engagementProfile?.schedule.availableDays.includes("Thursday"),
-            friday: guestDTO.engagementProfile?.schedule.availableDays.includes("Friday")
-        };
-    
-        const availableFrom = new Date(`1970-01-01T${guestDTO.engagementProfile?.schedule.availableFrom}:00`);
-        const availableTo = new Date(`1970-01-01T${guestDTO.engagementProfile?.schedule.availableTo}:00`);
-    
-        await prisma.availability.create({
-            data: {
-                userId: guestDTO.userId,
-                ...availability,
-                available_from: availableFrom,
-                available_to: availableTo,
-                frequency: guestDTO.engagementProfile?.schedule.availabilityFrequency,
-                notes: guestDTO.engagementProfile?.schedule.availabilityNotes
-            }
-        });
+      monday:
+        guestDTO.engagementProfile?.schedule.availableDays.includes('Monday'),
+      tuesday:
+        guestDTO.engagementProfile?.schedule.availableDays.includes('Tuesday'),
+      wednesday:
+        guestDTO.engagementProfile?.schedule.availableDays.includes(
+          'Wednesday',
+        ),
+      thursday:
+        guestDTO.engagementProfile?.schedule.availableDays.includes('Thursday'),
+      friday:
+        guestDTO.engagementProfile?.schedule.availableDays.includes('Friday'),
+    };
+
+    const availableFrom = new Date(
+      `1970-01-01T${guestDTO.engagementProfile?.schedule.availableFrom}:00`,
+    );
+    const availableTo = new Date(
+      `1970-01-01T${guestDTO.engagementProfile?.schedule.availableTo}:00`,
+    );
+
+    await prisma.availability.create({
+      data: {
+        user_id: guestDTO.userId,
+        ...availability,
+        available_from: availableFrom,
+        available_to: availableTo,
+        frequency: guestDTO.engagementProfile?.schedule.availabilityFrequency,
+        notes: guestDTO.engagementProfile?.schedule.availabilityNotes,
+      },
+    });
   }
 }

@@ -26,16 +26,14 @@ export class UsersService {
     return this.users;
   }
 
-  private async createUserInDatabase(userDTO: User)
-  {
-    const newUser = await prisma.user.create({
-            data: {
-                userid: userDTO.uuid,
-                userauthid: userDTO.auth0Id,
-                email: userDTO.email, 
-                role: userDTO.role, 
-                createdat: userDTO.createdAt
-            },
-        });
+  private async createUserInDatabase(userDTO: User) {
+    await prisma.users.create({
+      data: {
+        auth0Id: userDTO.auth0Id,
+        email: userDTO.email,
+        role: userDTO.role,
+        createdat: userDTO.createdAt,
+      },
+    });
   }
 }
