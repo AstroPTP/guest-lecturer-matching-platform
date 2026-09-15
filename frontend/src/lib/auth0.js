@@ -18,7 +18,12 @@ import { Auth0Client } from '@auth0/nextjs-auth0/server';
 let client;
 
 function instance() {
-  client ??= new Auth0Client();
+  client ??= new Auth0Client({
+    authorizationParameters: {
+      audience: process.env.AUTH0_AUDIENCE,
+      scope: 'openid profile email',
+    },
+  });
   return client;
 }
 
