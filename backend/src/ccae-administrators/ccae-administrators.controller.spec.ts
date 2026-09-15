@@ -11,7 +11,9 @@ describe('CcaeAdministratorsController', () => {
       providers: [CcaeAdministratorsService],
     }).compile();
 
-    controller = module.get<CcaeAdministratorsController>(CcaeAdministratorsController);
+    controller = module.get<CcaeAdministratorsController>(
+      CcaeAdministratorsController,
+    );
   });
 
   it('should be defined', () => {

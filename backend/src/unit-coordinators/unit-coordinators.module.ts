@@ -4,6 +4,7 @@ import { UnitCoordinatorsService } from './unit-coordinators.service';
 
 @Module({
   controllers: [UnitCoordinatorsController],
-  providers: [UnitCoordinatorsService]
+  providers: [UnitCoordinatorsService],
+  exports: [UnitCoordinatorsService],
 })
 export class UnitCoordinatorsModule {}
