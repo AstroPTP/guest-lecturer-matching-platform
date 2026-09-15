@@ -7,7 +7,7 @@ const adapter = new PrismaPg({
 
 export const prisma = new PrismaClient({adapter});
 
-export async function newUser(p_userAuthId, p_email, p_role, p_consentstate, p_createdat)
+export async function newUser(user: CreateUserProfileDto)
 {
     const newUser = await prisma.user.create({
         data: {
