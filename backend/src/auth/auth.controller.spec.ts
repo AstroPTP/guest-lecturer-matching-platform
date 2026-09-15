@@ -25,7 +25,7 @@ import { ROLES_KEY } from './roles.decorator';
  * missing name is a bonus: rename or delete a route and this fails loudly
  * instead of quietly asserting on `undefined`.
  */
-function handlerNamed(name: 'whoami' | 'adminOnly'): object {
+function handlerNamed(name: 'whoami' | 'securityStatus'): object {
   const descriptor = Object.getOwnPropertyDescriptor(
     AuthController.prototype,
     name,
@@ -37,16 +37,17 @@ function handlerNamed(name: 'whoami' | 'adminOnly'): object {
 }
 
 describe('AuthController route protection', () => {
-  it('admin_only requires the ccae_admin role', () => {
-    const roles = Reflect.getMetadata(ROLES_KEY, handlerNamed('adminOnly')) as
-      | string[]
-      | undefined;
+  it('the admin security-status route requires the ccae_admin role', () => {
+    const roles = Reflect.getMetadata(
+      ROLES_KEY,
+      handlerNamed('securityStatus'),
+    ) as string[] | undefined;
 
     expect(roles).toEqual([AppRole.CcaeAdmin]);
   });
 
   it('neither route is marked public', () => {
-    for (const name of ['whoami', 'adminOnly'] as const) {
+    for (const name of ['whoami', 'securityStatus'] as const) {
       expect(
         Reflect.getMetadata(IS_PUBLIC_KEY, handlerNamed(name)),
       ).toBeUndefined();

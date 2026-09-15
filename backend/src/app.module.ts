@@ -5,14 +5,14 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { AppService } from './app.service';
 import { CcaeAdministratorsModule } from './ccae-administrators/ccae-administrators.module';
-import { GuestSpeakersController } from './guest-speakers/guest-speakers.controller';
-import { GuestSpeakersService } from './guest-speakers/guest-speakers.service';
 import { GuestSpeakersModule } from './guest-speakers/guest-speakers.module';
 import { MatchRequestsModule } from './match-requests/match-requests.module';
 import { MessagesModule } from './messages/messages.module';
 import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.module';
 import { UnitsModule } from './units/units.module';
 import { UsersModule } from './users/users.module';
+import { EventsModule } from './events/events.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -30,15 +30,16 @@ import { UsersModule } from './users/users.module';
     UnitCoordinatorsModule,
     UnitsModule,
     UsersModule,
+    EventsModule,
+    NotificationsModule,
   ],
-  controllers: [AppController, GuestSpeakersController],
+  controllers: [AppController],
   providers: [
     AppService,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
-    GuestSpeakersService,
   ],
 })
 export class AppModule {}
