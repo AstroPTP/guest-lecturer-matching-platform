@@ -1,7 +1,7 @@
-import { GuestExpertiseDto  } from "src/guest-speakers/dto/expertise.dto";
-import { GuestBasicInformationDto } from "src/guest-speakers/dto/basic-information.dto";
-import { GuestScheduleDto } from "src/guest-speakers/dto/engagement.dto";
-import { GuestEngagementDto } from "src/guest-speakers/dto/engagement.dto";
+import { ExpertiseDto  } from "src/guest-speakers/dto/expertise.dto";
+import { BasicInformationDto } from "src/guest-speakers/dto/basic-information.dto";
+import { ScheduleDto } from "src/guest-speakers/dto/engagement.dto";
+import { EngagementDto } from "src/guest-speakers/dto/engagement.dto";
 
 import { UCExpertiseDto  } from "src/unit-coordinators/dto/expertise.dto";
 import { UCBasicInformationDto } from "src/unit-coordinators/dto/basic-information.dto";
@@ -34,7 +34,7 @@ export async function newUser(user: CreateUserProfileDto)
     });
 }
 
-export async function newGuestProfile(expertise: GuestExpertiseDto, user: CreateUserProfileDto, basic: GuestBasicInformationDto, schedule: GuestScheduleDto, engagement: GuestEngagementDto)
+export async function newGuestProfile(expertise: ExpertiseDto, user: CreateUserProfileDto, basic: BasicInformationDto, schedule: ScheduleDto, engagement: EngagementDto)
 {
     const newUser = await prisma.guest.create({
         data: {
@@ -42,8 +42,8 @@ export async function newGuestProfile(expertise: GuestExpertiseDto, user: Create
             user_id: user.uuid,
             first_name: basic.firstName, 
             last_name: basic.lastName, 
-            field: basic.field, 
-            role: basic.role, 
+            field: basic.professionalField, 
+            role: basic.professionalRole, 
             bio: basic.bio, 
             prior_details: expertise.speakingDetails, 
             international_details: expertise.internationalDetails, 
