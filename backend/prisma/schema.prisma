@@ -95,6 +95,7 @@ model units{
 }
 
 model match_requests{
+  match_id        BigInt    @id @default(autoincrement())
   coordinator_id  BigInt
   guest_id        BigInt
   status          String?   @db.VarChar
@@ -104,6 +105,16 @@ model match_requests{
   coordinator coordinators @relation(fields: [coordinator_id], references: [coordinator_id], onDelete: Cascade)
   guest guests @relation(fields: [guest_id], references: [guest_id], onDelete: Cascade)
 
+  message messages[]
 
-  @@id([coordinator_id, guest_id])
+  @@unique([coordinator_id, guest_id])
+}
+
+model messages{
+  message_id BigInt     @id @default(autoincrement())
+  match_id BigInt       
+  content String        @db.VarChar
+  sent_at DateTime?     @db.Timestamp(6)
+
+  match match_requests @relation(fields: [match_id], references: [match_id], onDelete: Cascade)
 }
