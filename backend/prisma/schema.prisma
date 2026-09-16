@@ -85,3 +85,10 @@ model users {
   expertise    expertise[]
   guest        guest[]
 }
+
+model admins {
+  admin_id     BigInt         @id @default(autoincrement())
+  admin_level  String         @db.VarChar
+  last_login   DateTime?      @db.Timestamp(6)
+
+}
