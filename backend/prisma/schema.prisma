@@ -85,3 +85,8 @@ model users {
   expertise    expertise[]
   guest        guest[]
 }
+
+model units{
+  unit_code String @id @db.VarChar
+  unit_name String @db.VarChar
+}
