@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { CreateCcaeAdministratorDto } from './dto/create-ccae-administrator.dto';
 
+import { prisma } from '../prisma';
+
 export interface CcaeAdministrator extends CreateCcaeAdministratorDto {
   adminId: string;
   lastLogin: Date;
@@ -22,5 +24,14 @@ export class CcaeAdministratorsService {
 
   findAll() {
     return this.administrators;
+  }
+
+  private async createUnitInDatabase(dto: CcaeAdministrator) { 
+    await prisma.admins.create({ 
+      data: { 
+        admin_level: dto.adminLevel, 
+        last_login: dto.lastLogin, 
+      }, 
+    }); 
   }
 }
