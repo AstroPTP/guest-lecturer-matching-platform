@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { CreateUnitDto } from './dto/create-unit.dto';
 
+
+import { prisma } from '../prisma';
+
 export interface Unit extends CreateUnitDto {
   unitId: string;
 }
@@ -20,5 +23,14 @@ export class UnitsService {
 
   findAll() {
     return this.units;
+  }
+
+  private async createNewUnitInDatabase(dto: CreateUnitDto) {
+    await prisma.units.create({ 
+      data: { 
+        unit_code: dto.unitCode, 
+        unit_name: dto.unitName 
+      }, 
+    });
   }
 }

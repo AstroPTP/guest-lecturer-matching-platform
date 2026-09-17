@@ -23,4 +23,14 @@ export class MessagesService {
   findAll() {
     return this.messages;
   }
+
+  private async createNewMatchRequestInDatabase(dto: Messages) {
+        await prisma.match_requests.create({ 
+          data: { 
+            match_id: dto.matchId,
+            content: dto.content,
+            sent_at: dto.sentAt
+          }, 
+        });
+      }
 }

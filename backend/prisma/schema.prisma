@@ -24,7 +24,7 @@ model availability {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model coordinator {
+model coordinators {
   coordinator_id     BigInt   @id @default(autoincrement())
   user_id            BigInt?  @unique
   first_name         String?  @db.VarChar
@@ -48,6 +48,8 @@ model coordinator {
   created_at         DateTime @default(now()) @db.Timestamptz(6)
   location           String?  @db.VarChar
   users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
+  match_requests match_requests[]
+
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -60,7 +62,7 @@ model user_expertise {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model guest {
+model guests {
   guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
   user_id               BigInt?  @unique
   first_name            String?  @db.VarChar
@@ -84,20 +86,51 @@ model guest {
   focus_ama             Boolean? @default(false)
   created_at            DateTime @default(now()) @db.Timestamptz(6)
   users                 users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "Guest_user_id_fkey")
+  match_requests match_requests[]
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
-  userid       BigInt         @id @default(autoincrement())
-  auth0Id      String?        @db.VarChar
-  email        String?
-  role         String?
-  consentstate Boolean?
-  createdat    DateTime?      @db.Timestamp(6)
-  lastloginat  DateTime?      @db.Timestamp(6)
-  deletedat    DateTime?      @db.Timestamp(6)
-  availability availability[]
-  coordinator  coordinator?
-  user_expertise    user_expertise[]
-  guest        guest?
+  userid                BigInt         @id @default(autoincrement())
+  auth0Id               String?        @db.VarChar
+  email                 String?
+  role                  String?
+  consentstate          Boolean?
+  createdat             DateTime?      @db.Timestamp(6)
+  lastloginat           DateTime?      @db.Timestamp(6)
+  deletedat             DateTime?      @db.Timestamp(6)
+  availability          availability[]
+  coordinator           coordinators?
+  user_expertise        user_expertise[]
+  guest                 guests?
+}
+
+model units{
+  unit_code String @id @db.VarChar
+  unit_name String @db.VarChar
+}
+
+model match_requests{
+  match_id        BigInt    @id @default(autoincrement())
+  coordinator_id  BigInt
+  guest_id        BigInt
+  status          String?   @db.VarChar
+  requested_at    DateTime? @db.Timestamp(6)
+  updated_at      DateTime? @db.Timestamp(6)
+
+  coordinator coordinators @relation(fields: [coordinator_id], references: [coordinator_id], onDelete: Cascade)
+  guest guests @relation(fields: [guest_id], references: [guest_id], onDelete: Cascade)
+
+  message messages[]
+
+  @@unique([coordinator_id, guest_id])
+}
+
+model messages{
+  message_id BigInt     @id @default(autoincrement())
+  match_id BigInt       
+  content String        @db.VarChar
+  sent_at DateTime?     @db.Timestamp(6)
+
+  match match_requests @relation(fields: [match_id], references: [match_id], onDelete: Cascade)
 }
