@@ -28,4 +28,16 @@ export class MatchRequestsService {
   findAll() {
     return this.matchRequests;
   }
+
+  private async createNewMatchRequestInDatabase(dto: MatchRequest) {
+      await prisma.match_requests.create({ 
+        data: { 
+          coordinator_id: dto.unitId,
+          guest_id: dto.speakerId,
+          status: dto.status,
+          requested_at: dto.requestedAt,
+          updated_at: dto.updatedAt
+        }, 
+      });
+    }
 }
