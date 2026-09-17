@@ -1,6 +1,10 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  // The application is compiled as CommonJS. Without this the generator emits
+  // ES modules, which build fine and then fail at startup with "exports is not
+  // defined in ES module scope".
+  moduleFormat = "cjs"
 }
 
 datasource db {

@@ -4,7 +4,7 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 
-import { prisma } from '../prisma';
+import { prisma, resolveUserId, splitName } from '../prisma';
 
 export interface UnitCoordinatorProfile {
   userId: string;
@@ -65,18 +65,22 @@ export class UnitCoordinatorsService {
   private async createNewCoordinatorInDatabase(
     coordinatorDTO: UnitCoordinatorProfile,
   ) {
-    await prisma.coordinator.create({
+    const userId = await resolveUserId(coordinatorDTO.userId);
+    const name = splitName(coordinatorDTO.basicInformation?.fullName);
+
+    await prisma.coordinators.create({
       data: {
-        guest_id: coordinatorDTO.speakerId,
-        user_id: coordinatorDTO.userId,
-        first_name: coordinatorDTO.firstName,
-        last_name: coordinatorDTO.lastName,
+        user_id: userId,
+        first_name: name.first_name,
+        last_name: name.last_name,
         faculty: coordinatorDTO.basicInformation?.schoolDepartment,
         role: coordinatorDTO.basicInformation?.academicRole,
         bio: coordinatorDTO.basicInformation?.bio,
         learning_objective: coordinatorDTO.expertise?.learningObjective,
         discipline: coordinatorDTO.expertise?.industryRelevance,
-        experience: coordinatorDTO.expertise?.experienceLevelsRequired,
+        // experience is Int? in the schema but the form collects a list of
+        // experience levels. Left unwritten rather than guessing at a number.
+        // Raised for whoever owns the schema to settle.
         location: coordinatorDTO.engagementProfile?.primaryLocation,
         duration: coordinatorDTO.engagementProfile?.sessionDuration,
         audience: coordinatorDTO.engagementProfile?.audienceSize,
@@ -112,7 +116,7 @@ export class UnitCoordinatorsService {
     for (const topic of coordinatorDTO.expertise?.selectedTopics ?? []) {
       await prisma.user_expertise.create({
         data: {
-          user_id: coordinatorDTO.userId,
+          user_id: userId,
           expertise: topic,
         },
       });
@@ -150,7 +154,7 @@ export class UnitCoordinatorsService {
 
     await prisma.availability.create({
       data: {
-        user_id: coordinatorDTO.userId,
+        user_id: userId,
         ...availability,
         available_from: availableFrom,
         available_to: availableTo,

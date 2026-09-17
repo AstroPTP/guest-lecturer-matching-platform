@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { prisma, toId } from '../prisma';
 import { CreateMatchRequestDto } from './dto/create-match-request.dto';
 
 export interface MatchRequest extends CreateMatchRequestDto {
@@ -30,14 +31,14 @@ export class MatchRequestsService {
   }
 
   private async createNewMatchRequestInDatabase(dto: MatchRequest) {
-      await prisma.match_requests.create({ 
-        data: { 
-          coordinator_id: dto.unitId,
-          guest_id: dto.speakerId,
-          status: dto.status,
-          requested_at: dto.requestedAt,
-          updated_at: dto.updatedAt
-        }, 
-      });
-    }
+    await prisma.match_requests.create({
+      data: {
+        coordinator_id: toId(dto.unitId, 'unitId'),
+        guest_id: toId(dto.speakerId, 'speakerId'),
+        status: dto.status,
+        requested_at: dto.requestedAt,
+        updated_at: dto.updatedAt,
+      },
+    });
+  }
 }
