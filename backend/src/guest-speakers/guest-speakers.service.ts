@@ -4,7 +4,7 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 
-import { prisma } from '../prisma';
+import { prisma, resolveUserId, splitName } from '../prisma';
 
 export interface GuestSpeakerProfile {
   userId: string;
@@ -63,17 +63,20 @@ export class GuestSpeakersService {
   }
 
   private async createNewGuestInDatabase(guestDTO: GuestSpeakerProfile) {
-    await prisma.guest.create({
+    const userId = await resolveUserId(guestDTO.userId);
+    const name = splitName(guestDTO.basicInformation?.fullName);
+
+    await prisma.guests.create({
       data: {
-        user_id: guestDTO.userId,
-        first_name: guestDTO.basicInformation?.firstName,
-        last_name: guestDTO.basicInformation?.lastName,
+        user_id: userId,
+        first_name: name.first_name,
+        last_name: name.last_name,
         field: guestDTO.basicInformation?.professionalField,
         role: guestDTO.basicInformation?.professionalRole,
         bio: guestDTO.basicInformation?.bio,
         prior_details: guestDTO.expertise?.speakingDetails,
         international_details: guestDTO.expertise?.internationalDetails,
-        linkedin_profile: guestDTO.expertise?.linkedin,
+        linkedIn_profile: guestDTO.expertise?.linkedin,
         location: guestDTO.engagementProfile?.primaryLocation,
         duration: guestDTO.engagementProfile?.sessionDuration,
         audience: guestDTO.engagementProfile?.audienceSize,
@@ -99,7 +102,7 @@ export class GuestSpeakersService {
     for (const topic of guestDTO.expertise?.selectedTopics ?? []) {
       await prisma.user_expertise.create({
         data: {
-          user_id: guestDTO.userId,
+          user_id: userId,
           expertise: topic,
         },
       });
@@ -129,7 +132,7 @@ export class GuestSpeakersService {
 
     await prisma.availability.create({
       data: {
-        user_id: guestDTO.userId,
+        user_id: userId,
         ...availability,
         available_from: availableFrom,
         available_to: availableTo,
