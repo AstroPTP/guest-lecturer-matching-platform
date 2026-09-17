@@ -10,7 +10,7 @@ datasource db {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model availability {
   id             BigInt    @id @default(autoincrement())
-  user_id        BigInt?
+  user_id        BigInt?   
   monday         Boolean?  @default(false)
   tuesday        Boolean?  @default(false)
   wednesday      Boolean?  @default(false)
@@ -18,7 +18,7 @@ model availability {
   friday         Boolean?  @default(false)
   available_from DateTime? @db.Time(6)
   available_to   DateTime? @db.Time(6)
-  frequency      Int?
+  frequency      String?
   notes          String?   @db.VarChar
   users          users?    @relation(fields: [user_id], references: [userid], onDelete: Cascade)
 }
@@ -26,7 +26,7 @@ model availability {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model coordinator {
   coordinator_id     BigInt   @id @default(autoincrement())
-  user_id            BigInt?
+  user_id            BigInt?  @unique
   first_name         String?  @db.VarChar
   last_name          String?  @db.VarChar
   faculty            String?  @db.VarChar
@@ -35,16 +35,24 @@ model coordinator {
   experience         Int?
   discipline         String?  @db.VarChar
   learning_objective String?  @db.VarChar
-  duration           Int?
-  audience           Int?
+  duration           String?
+  audience           String?
+  format_online         Boolean? @default(false)
+  format_inperson       Boolean? @default(false)
+  format_prerecorded    Boolean? @default(false)
+  focus_lecture         Boolean? @default(false)
+  focus_casestudy       Boolean? @default(false)
+  focus_workshop        Boolean? @default(false)
+  focus_discussion      Boolean? @default(false)
+  focus_ama             Boolean? @default(false)
   created_at         DateTime @default(now()) @db.Timestamptz(6)
   location           String?  @db.VarChar
   users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model expertise {
-  user_id   BigInt @default(autoincrement())
+model user_expertise {
+  user_id   BigInt 
   expertise String @db.VarChar
   users     users  @relation(fields: [user_id], references: [userid], onDelete: Cascade)
 
@@ -54,7 +62,7 @@ model expertise {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model guest {
   guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
-  user_id               BigInt?
+  user_id               BigInt?  @unique
   first_name            String?  @db.VarChar
   last_name             String?  @db.VarChar
   field                 String?  @db.VarChar
@@ -64,8 +72,16 @@ model guest {
   international_details String?  @db.VarChar
   linkedIn_profile      String?  @db.VarChar
   location              String?  @db.VarChar
-  duration              Int?
-  audience              Int?
+  duration              String?  
+  audience              String?  
+  format_online         Boolean? @default(false)
+  format_inperson       Boolean? @default(false)
+  format_prerecorded    Boolean? @default(false)
+  focus_lecture         Boolean? @default(false)
+  focus_casestudy       Boolean? @default(false)
+  focus_workshop        Boolean? @default(false)
+  focus_discussion      Boolean? @default(false)
+  focus_ama             Boolean? @default(false)
   created_at            DateTime @default(now()) @db.Timestamptz(6)
   users                 users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "Guest_user_id_fkey")
 }
@@ -73,17 +89,17 @@ model guest {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
   userid       BigInt         @id @default(autoincrement())
-  userauthid   BigInt?
+  auth0Id      String?        @db.VarChar
   email        String?
-  role         Int?
+  role         String?
   consentstate Boolean?
   createdat    DateTime?      @db.Timestamp(6)
   lastloginat  DateTime?      @db.Timestamp(6)
   deletedat    DateTime?      @db.Timestamp(6)
   availability availability[]
-  coordinator  coordinator[]
-  expertise    expertise[]
-  guest        guest[]
+  coordinator  coordinator?
+  user_expertise    user_expertise[]
+  guest        guest?
 }
 
 model admins {
