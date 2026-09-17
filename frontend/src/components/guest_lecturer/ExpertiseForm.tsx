@@ -152,7 +152,7 @@ export default function ExpertiseForm() {
             <button
               type="button"
               onClick={() => setHasSpeakingExperience(!hasSpeakingExperience)}
-              className={"relative h-8 w-14 shrink-0 rounded-full transition-colors duration-300 " + (hasSpeakingExperience ? "bg-blue-500" : "bg-gray-300")}
+              className={"relative h-8 w-14 shrink-0 rounded-full transition-colors duration-300 " + (hasSpeakingExperience ? "bg-black" : "bg-gray-300")}
             >
               <span
                 className={
@@ -197,7 +197,7 @@ export default function ExpertiseForm() {
               type="button"
               onClick={() => setHasInternationalExperience(!hasInternationalExperience)}
               className={
-                "relative h-8 w-14 shrink-0 rounded-full transition-colors duration-300 " + (hasInternationalExperience ? "bg-blue-500" : "bg-gray-300")
+                "relative h-8 w-14 shrink-0 rounded-full transition-colors duration-300 " + (hasInternationalExperience ? "bg-black" : "bg-gray-300")
               }
             >
               <span
