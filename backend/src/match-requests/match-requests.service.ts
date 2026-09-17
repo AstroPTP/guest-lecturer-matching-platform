@@ -11,27 +11,34 @@ export interface MatchRequest extends CreateMatchRequestDto {
 
 @Injectable()
 export class MatchRequestsService {
-  private matchRequests: MatchRequest[] = [];
-
-  create(createMatchRequestDto: CreateMatchRequestDto) {
+  /**
+   * Creates a match request and returns the stored row.
+   *
+   * The row comes back from the database rather than from memory, so the id is
+   * the one the database assigned and a later read finds the same record. That
+   * is the difference between this and what was here before, which returned an
+   * object that existed only until the process restarted.
+   */
+  async create(createMatchRequestDto: CreateMatchRequestDto) {
     const now = new Date();
-    const newMatchRequest: MatchRequest = {
-      matchId: crypto.randomUUID(),
+    return this.createNewMatchRequestInDatabase({
+      matchId: '',
       status: 'PENDING',
       requestedAt: now,
       updatedAt: now,
       ...createMatchRequestDto,
-    };
-    this.matchRequests.push(newMatchRequest);
-    return newMatchRequest;
+    });
   }
 
-  findAll() {
-    return this.matchRequests;
+  /** Every match request, from the database. */
+  async findAll() {
+    return prisma.match_requests.findMany({
+      orderBy: { requested_at: 'desc' },
+    });
   }
 
   private async createNewMatchRequestInDatabase(dto: MatchRequest) {
-    await prisma.match_requests.create({
+    return prisma.match_requests.create({
       data: {
         coordinator_id: toId(dto.unitId, 'unitId'),
         guest_id: toId(dto.speakerId, 'speakerId'),

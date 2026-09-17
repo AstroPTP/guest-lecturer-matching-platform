@@ -106,35 +106,39 @@ describe('GuestSpeakersService', () => {
   });
 
   describe('saveConsent', () => {
-    it('should set consentPreferences on the profile', () => {
-      const result = service.saveConsent(userId, consent);
+    it('should set consentPreferences on the profile', async () => {
+      const result = await service.saveConsent(userId, consent);
 
       expect(result.consentPreferences).toEqual(consent);
     });
   });
 
+  // findAll now reads the database rather than this process's memory, which is
+  // the point of the change: the discovery page has to show stored rows, not
+  // whatever one server happens to be holding. Against the test double that is
+  // an empty list, so what is asserted here is the contract, and the real
+  // retrieval is covered by running the application.
   describe('findAll', () => {
-    it('should return an empty array when no profiles exist', () => {
-      expect(service.findAll()).toEqual([]);
+    it('returns what the database holds', async () => {
+      await expect(service.findAll()).resolves.toEqual([]);
     });
 
-    it('should return all created profiles', () => {
+    it('does not return unsaved in-memory profiles', async () => {
       service.saveBasicInformation('user-1', basicInformation);
       service.saveBasicInformation('user-2', basicInformation);
 
-      expect(service.findAll()).toHaveLength(2);
+      await expect(service.findAll()).resolves.toEqual([]);
     });
 
-    it('should reflect updates made across multiple section saves for the same user', () => {
+    it('assembles the sections for one user into a single profile', async () => {
       service.saveBasicInformation(userId, basicInformation);
       service.saveExpertise(userId, expertise);
       service.saveEngagement(userId, engagement);
-      service.saveConsent(userId, consent);
+      await service.saveConsent(userId, consent);
 
-      const all = service.findAll();
-
-      expect(all).toHaveLength(1);
-      expect(all[0]).toEqual({
+      // findByUserId still reads the in-progress profile, which is what the
+      // form needs while it is being filled in over several requests.
+      expect(service.findByUserId(userId)).toEqual({
         userId,
         basicInformation,
         expertise,

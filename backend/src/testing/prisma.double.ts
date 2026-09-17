@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 /**
  * Stands in for the Prisma client in unit tests.
  *
@@ -50,6 +51,12 @@ export function splitName(fullName?: string): {
   };
 }
 
-export function toId(value: string | number | bigint): bigint {
-  return BigInt(value);
+export function toId(value: string | number | bigint, field = 'id'): bigint {
+  try {
+    return BigInt(value);
+  } catch {
+    // Mirrors the real helper. A double that throws a different error teaches
+    // the tests the wrong thing about how the code behaves.
+    throw new BadRequestException(`${field} must be a numeric id`);
+  }
 }
