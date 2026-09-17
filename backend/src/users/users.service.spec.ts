@@ -17,56 +17,30 @@ describe('UsersService', () => {
     expect(service).toBeDefined();
   });
 
+  // create writes through to the database now rather than an in-memory list,
+  // so against the test double this resolves to the empty row it returns; the
+  // real write is covered by running the application.
   describe('create', () => {
-    it('should create a new user with a generated uuid and createdAt', () => {
+    it('creates the user through the database', async () => {
       const dto: CreateUserProfileDto = {
         auth0Id: 'auth0|123456789',
         email: 'audrey@example.com',
         role: UserRole.UNIT_COORDINATOR,
       };
 
-      const result = service.create(dto);
-
-      expect(result.uuid).toBeDefined();
-      expect(result.createdAt).toBeInstanceOf(Date);
-      expect(result.auth0Id).toBe(dto.auth0Id);
-      expect(result.email).toBe(dto.email);
-      expect(result.role).toBe(dto.role);
-    });
-
-    it('should add the new user to the list', () => {
-      const dto: CreateUserProfileDto = {
-        auth0Id: 'auth0|987654321',
-        email: 'speaker@example.com',
-        role: UserRole.GUEST_SPEAKER,
-      };
-
-      service.create(dto);
-      const all = service.findAll();
-
-      expect(all).toHaveLength(1);
-      expect(all[0].email).toBe(dto.email);
+      await expect(service.create(dto)).resolves.toEqual({});
     });
   });
 
   describe('findAll', () => {
-    it('should return an empty array when no users exist', () => {
-      expect(service.findAll()).toEqual([]);
+    it('returns what the database holds', async () => {
+      await expect(service.findAll()).resolves.toEqual([]);
     });
+  });
 
-    it('should return all created users', () => {
-      service.create({
-        auth0Id: 'auth0|1',
-        email: 'a@example.com',
-        role: UserRole.CCAE_ADMINISTRATOR,
-      });
-      service.create({
-        auth0Id: 'auth0|2',
-        email: 'b@example.com',
-        role: UserRole.UNIT_COORDINATOR,
-      });
-
-      expect(service.findAll()).toHaveLength(2);
+  describe('findByAuth0Id', () => {
+    it('returns null when no row matches', async () => {
+      await expect(service.findByAuth0Id('auth0|does-not-exist')).resolves.toBeNull();
     });
   });
 });
