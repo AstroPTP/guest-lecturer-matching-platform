@@ -145,7 +145,7 @@ export default function ExpertiseForm() {
                   onClick={() => handleExperienceLevelClick(level.value)}
                   className={
                     "min-h-32 rounded-2xl p-5 text-left transition-colors " +
-                    (isSelected ? "bg-[#626976] text-white" : "bg-[#f0f0ee] text-[#1f1f1f] hover:bg-gray-200")
+                    (isSelected ? "bg-black text-white" : "bg-[#f0f0ee] text-[#1f1f1f] hover:bg-gray-200")
                   }
                 >
                   <h3 className="font-bold leading-tight">{level.title}</h3>
