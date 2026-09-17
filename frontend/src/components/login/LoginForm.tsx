@@ -15,7 +15,6 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const searchParams = useSearchParams();
   const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
-  const registerHref = `/register?role=${role}`;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,10 +94,14 @@ export default function LoginForm() {
           </button>
         </div>
 
-        <p className="text-center mt-10 text-sm">
-          Don&apos;t have an account?{" "}
-          <Link href={registerHref} className="font-medium text-blue-600 underline hover:text-blue-700">
-            Register here
+        <p className="text-center mt-10 text-sm text-gray-600">
+          Don&apos;t have an account? Register as{" "}
+          <Link href="/register?role=guest" className="font-medium text-blue-600 underline hover:text-blue-700">
+            Guest Lecturer
+          </Link>{" "}
+          or{" "}
+          <Link href="/register?role=coordinator" className="font-medium text-blue-600 underline hover:text-blue-700">
+            Unit Coordinator
           </Link>
         </p>
       </div>
