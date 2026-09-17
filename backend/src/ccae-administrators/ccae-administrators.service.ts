@@ -26,12 +26,12 @@ export class CcaeAdministratorsService {
     return this.administrators;
   }
 
-  private async createUnitInDatabase(dto: CcaeAdministrator) { 
-    await prisma.admins.create({ 
-      data: { 
-        admin_level: dto.adminLevel, 
-        last_login: dto.lastLogin, 
-      }, 
-    }); 
+  private async createUnitInDatabase(dto: CcaeAdministrator) {
+    await prisma.admins.create({
+      data: {
+        admin_level: dto.adminLevel,
+        last_login: dto.lastLogin,
+      },
+    });
   }
 }
