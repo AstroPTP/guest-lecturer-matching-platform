@@ -14,7 +14,7 @@ export default function Navbar() {
           </a>
         </nav>
         <nav aria-label="Account actions" className="flex gap-2 md:flex"> 
-          <a href="/register" className="rounded-xl bg-transparent px-6 py-3 text-black transition-colors hover:bg-gray-200">
+          <a href="#role-cards" className="rounded-xl bg-transparent px-6 py-3 text-black transition-colors hover:bg-gray-200">
             Sign Up
           </a>
           <a href="/login" className="rounded-xl bg-black px-6 py-3 text-white transition-colors hover:bg-gray-800">
