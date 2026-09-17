@@ -19,13 +19,35 @@ export default function RegisterForm() {
   const { hasMinLength, hasUppercase, hasSpecialCharacter, hasNumber,  strength: passwordStrength, isValid: isPasswordValid } = getPasswordRequirements(password);
   const strengthState = password.length === 0 ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1 ? { label: "Weak", color: "#EF4444" } : passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" } : { label: "Strong", color: "#10B981" };
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   async function handleRegister(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!isPasswordValid) {
       alert("Please make sure your password meets all requirements.");
       return;
     }
-    router.push("/verify");
+
+    const registerEmail = String(new FormData(event.currentTarget).get("email") || "").trim();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/passwordless/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: registerEmail }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "Could not send the verification code. Try again.");
+      }
+      router.push(`/verify?email=${encodeURIComponent(registerEmail)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send the verification code. Try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
   return (
     <main className="w-full max-w-md">
@@ -191,11 +213,14 @@ export default function RegisterForm() {
           </div>
 
 
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
           <button
             type="submit"
-            className="w-full rounded-xl bg-blue-600 py-4 font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
+            disabled={isSubmitting}
+            className="w-full rounded-xl bg-blue-600 py-4 font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:opacity-60"
           >
-            Create account
+            {isSubmitting ? "Sending code…" : "Create account"}
           </button>
         </form>
 
