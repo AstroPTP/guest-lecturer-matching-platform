@@ -106,8 +106,8 @@ export default function ExpertiseForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
-        <section>
+      <form onSubmit={handleSubmit} className="space-y-7">
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
           <p className="mt-2 text-sm text-gray-500">Select up to 5 topics you would like a Guest Lecturer to address.</p>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -131,7 +131,7 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Experience Level Requirement</h2>
           <p className="mt-2 text-sm text-gray-500">Select one or more acceptable professional experience levels for the Guest Lecturer.</p>
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -157,7 +157,7 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="industryRelevance" className="text-sm font-bold uppercase tracking-widest">
               Discipline / Industry Relevance
@@ -175,11 +175,11 @@ export default function ExpertiseForm() {
             value={industryRelevance}
             onChange={(event) => setIndustryRelevance(event.target.value)}
             placeholder="Briefly describe the industry context or professional disciplines relevant to the Guest Lecturer session."
-            className="w-full resize-none border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none focus:bg-white"
+            className="w-full resize-none border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none focus:bg-white"
           />
         </section>
 
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="learningObjective" className="text-sm font-bold uppercase tracking-widest">
               Learning Objective
@@ -197,7 +197,7 @@ export default function ExpertiseForm() {
             value={learningObjective}
             onChange={(event) => setLearningObjective(event.target.value)}
             placeholder="Describe what students should understand or gain from the Guest Lecturer session."
-            className="w-full resize-none border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none focus:bg-white"
+            className="w-full resize-none border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none focus:bg-white"
           />
         </section>
 
