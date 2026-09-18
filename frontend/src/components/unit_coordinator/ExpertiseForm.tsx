@@ -52,11 +52,11 @@ export default function ExpertiseForm() {
 
   function handleExperienceLevelClick(level: string) {
     if (experienceLevelsRequired.includes(level)) {
-      setExperienceLevelsRequired(experienceLevelsRequired.filter((selectedLevel) => selectedLevel !== level));
+      setExperienceLevelsRequired([]);
       return;
     }
 
-    setExperienceLevelsRequired([...experienceLevelsRequired, level]);
+    setExperienceLevelsRequired([level]);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -106,8 +106,8 @@ export default function ExpertiseForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
-        <section>
+      <form onSubmit={handleSubmit} className="space-y-7">
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
           <p className="mt-2 text-sm text-gray-500">Select up to 5 topics you would like a Guest Lecturer to address.</p>
           <div className="mt-5 flex flex-wrap gap-3">
@@ -121,7 +121,7 @@ export default function ExpertiseForm() {
                   onClick={() => handleTopicClick(topic)}
                   className={
                     "rounded-full px-5 py-3 text-sm font-semibold transition-colors " +
-                    (isSelected ? "bg-[#242424] text-white" : "bg-[#e9e9e7] text-[#333333] hover:bg-gray-300")
+                    (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                   }
                 >
                   {topic}
@@ -131,9 +131,9 @@ export default function ExpertiseForm() {
           </div>
         </section>
 
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Experience Level Requirement</h2>
-          <p className="mt-2 text-sm text-gray-500">Select one or more acceptable professional experience levels for the Guest Lecturer.</p>
+          <p className="mt-2 text-sm text-gray-500">Select the required professional experience level for the Guest Lecturer.</p>
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {experienceLevels.map((level) => {
               const isSelected = experienceLevelsRequired.includes(level.value);
@@ -145,19 +145,19 @@ export default function ExpertiseForm() {
                   onClick={() => handleExperienceLevelClick(level.value)}
                   className={
                     "min-h-32 rounded-2xl p-5 text-left transition-colors " +
-                    (isSelected ? "bg-[#626976] text-white" : "bg-[#f0f0ee] text-[#1f1f1f] hover:bg-gray-200")
+                    (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                   }
                 >
                   <h3 className="font-bold leading-tight">{level.title}</h3>
 
-                  <p className={"mt-2 text-sm leading-relaxed " + (isSelected ? "text-gray-100" : "text-gray-600")}>{level.description}</p>
+                  <p className={"mt-2 text-sm leading-relaxed " + (isSelected ? "text-gray-300" : "text-gray-600")}>{level.description}</p>
                 </button>
               );
             })}
           </div>
         </section>
 
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="industryRelevance" className="text-sm font-bold uppercase tracking-widest">
               Discipline / Industry Relevance
@@ -175,11 +175,11 @@ export default function ExpertiseForm() {
             value={industryRelevance}
             onChange={(event) => setIndustryRelevance(event.target.value)}
             placeholder="Briefly describe the industry context or professional disciplines relevant to the Guest Lecturer session."
-            className="w-full resize-none border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none focus:bg-white"
+            className="w-full resize-none border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none focus:bg-white"
           />
         </section>
 
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-2 flex items-center justify-between">
             <label htmlFor="learningObjective" className="text-sm font-bold uppercase tracking-widest">
               Learning Objective
@@ -197,7 +197,7 @@ export default function ExpertiseForm() {
             value={learningObjective}
             onChange={(event) => setLearningObjective(event.target.value)}
             placeholder="Describe what students should understand or gain from the Guest Lecturer session."
-            className="w-full resize-none border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none focus:bg-white"
+            className="w-full resize-none border-0 border-b-2 border-black bg-[#e9e9e7] px-4 py-4 outline-none focus:bg-white"
           />
         </section>
 

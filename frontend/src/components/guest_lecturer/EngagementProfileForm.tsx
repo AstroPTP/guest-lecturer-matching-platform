@@ -129,7 +129,7 @@ export default function EngagementProfileForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-7">
             <label htmlFor="primaryLocation" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
               Primary Location
@@ -201,7 +201,7 @@ export default function EngagementProfileForm() {
                       onClick={() => handleFormatClick(option.value)}
                       className={
                         "rounded-full px-5 py-3 text-sm font-semibold transition-colors " +
-                        (isSelected ? "bg-[#242424] text-white" : "bg-[#e9e9e7] text-[#333333] hover:bg-gray-300")
+                        (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                       }
                     >
                       {option.label}
@@ -226,7 +226,7 @@ export default function EngagementProfileForm() {
                   onClick={() => handleDeliveryFocus(option)}
                   className={
                     "rounded-full px-5 py-3 text-sm font-semibold transition-colors " +
-                    (isSelected ? "bg-[#242424] text-white" : "bg-[#e9e9e7] text-[#333333] hover:bg-gray-300")
+                    (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                   }
                 >
                   {option}
@@ -257,7 +257,7 @@ export default function EngagementProfileForm() {
                     onClick={() => handleAvailableDay(day.value)}
                     className={
                       "flex h-12 w-12 items-center justify-center rounded-full font-bold transition-colors " +
-                      (isSelected ? "bg-[#242424] text-white" : "bg-[#e9e9e7] text-[#2d2d2d] hover:bg-gray-300")
+                      (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                     }
                   >
                     {day.shortLabel}
