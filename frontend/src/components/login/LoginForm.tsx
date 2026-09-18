@@ -19,9 +19,9 @@ export default function LoginForm() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (role === "coordinator") {
-      router.push("/unit_coordinator/profile");
+      router.push("/unit_coordinator/discovery");
     } else {
-      router.push("/guest_lecturer/profile");
+      router.push("/guest_lecturer/discovery");
     }
   }
 
