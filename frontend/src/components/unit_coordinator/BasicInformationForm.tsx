@@ -87,39 +87,41 @@ export default function BasicInformationForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        <div className="mb-12 flex flex-col items-start gap-6 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-100 text-5xl text-gray-400"
-          >
-            {photoPreview ? (
-              <Image
-                src={photoPreview}
-                alt="Unit Coordinator profile preview"
-                width={96}
-                height={96}
-                unoptimized
-                className="h-full w-full rounded-full object-cover"
-              />
-            ) : (
-              "+"
-            )}
-          </button>
-
-          <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
-
-          <div>
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold hover:bg-gray-300">
-              Upload Photo
+      <form onSubmit={handleSubmit} className="space-y-7">
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
+          <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-dashed border-gray-300 bg-gray-100 text-5xl text-gray-400"
+            >
+              {photoPreview ? (
+                <Image
+                  src={photoPreview}
+                  alt="Unit Coordinator profile preview"
+                  width={96}
+                  height={96}
+                  unoptimized
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                "+"
+              )}
             </button>
 
-            <p className="mt-2 text-sm text-gray-500">Helps Guest Lecturers recognise the Unit Coordinator managing an engagement. Optional but recommended.</p>
-          </div>
-        </div>
+            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
 
-        <div className="mb-8">
+            <div>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold hover:bg-gray-300">
+                Upload Photo
+              </button>
+
+              <p className="mt-2 text-sm text-gray-500">Helps Guest Lecturers recognise the Unit Coordinator managing an engagement. Optional but recommended.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <label htmlFor="fullName" className="mb-2 block text-sm font-bold uppercase tracking-widest">
             Full Name
           </label>
@@ -133,55 +135,57 @@ export default function BasicInformationForm() {
             placeholder="Dr. Alex Morgan"
             className="w-full border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none focus:bg-white"
           />
-        </div>
+        </section>
 
-        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div>
-            <label htmlFor="schoolDepartment" className="mb-2 block text-sm font-bold uppercase tracking-widest">
-              Faculty of Business and Law — School / Department
-            </label>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label htmlFor="schoolDepartment" className="mb-2 block text-sm font-bold uppercase tracking-widest">
+                Faculty of Business and Law — School / Department
+              </label>
 
-            <select
-              id="schoolDepartment"
-              name="schoolDepartment"
-              required
-              value={schoolDepartment}
-              onChange={(event) => setSchoolDepartment(event.target.value)}
-              className="w-full border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none"
-            >
-              <option value="">Select your Faculty school or department</option>
-              {schoolDepartmentOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              <select
+                id="schoolDepartment"
+                name="schoolDepartment"
+                required
+                value={schoolDepartment}
+                onChange={(event) => setSchoolDepartment(event.target.value)}
+                className="w-full border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none"
+              >
+                <option value="">Select your Faculty school or department</option>
+                {schoolDepartmentOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="academicRole" className="mb-2 block text-sm font-bold uppercase tracking-widest">
+                Academic Role
+              </label>
+
+              <select
+                id="academicRole"
+                name="academicRole"
+                required
+                value={academicRole}
+                onChange={(event) => setAcademicRole(event.target.value)}
+                className="w-full border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none"
+              >
+                <option value="">Select your role</option>
+                {academicRoleOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+        </section>
 
-          <div>
-            <label htmlFor="academicRole" className="mb-2 block text-sm font-bold uppercase tracking-widest">
-              Academic Role
-            </label>
-
-            <select
-              id="academicRole"
-              name="academicRole"
-              required
-              value={academicRole}
-              onChange={(event) => setAcademicRole(event.target.value)}
-              className="w-full border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none"
-            >
-              <option value="">Select your role</option>
-              {academicRoleOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-2 flex justify-between">
             <label htmlFor="bio" className="text-sm font-bold uppercase tracking-widest">
               Short Bio
@@ -200,9 +204,9 @@ export default function BasicInformationForm() {
             placeholder="Briefly describe your relevance meeting (school, background, yourself...)"
             className="w-full resize-none border-0 border-b-2 border-black bg-gray-200 px-4 py-4 outline-none focus:bg-white"
           />
-        </div>
+        </section>
 
-        <div className="mt-14 flex justify-end">
+        <div className="flex justify-end">
           <button
             type="submit"
             className="min-w-[140px] rounded-xl bg-black px-9 py-4 font-semibold text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-gray-800 hover:shadow-lg active:translate-y-0"

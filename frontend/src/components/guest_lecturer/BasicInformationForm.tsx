@@ -78,24 +78,27 @@ export default function BasicInformationForm() {
           expertise and invite you to suitable guest lecture opportunities.
         </p>
       </div>
-      <form onSubmit={handleSubmit}>
-        <div className="mb-12 flex items-center gap-6">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-24 w-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-100 flex items-center justify-center text-5xl text-gray-400"
-          >
-            {photoPreview ? <Image src={photoPreview} className="h-full w-full rounded-full object-cover" alt="" width={96} height={96} unoptimized /> : "+"}
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
-          <div>
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold">
-              Upload Photo
+      <form onSubmit={handleSubmit} className="space-y-7">
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="h-24 w-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-100 flex items-center justify-center text-5xl text-gray-400"
+            >
+              {photoPreview ? <Image src={photoPreview} className="h-full w-full rounded-full object-cover" alt="" width={96} height={96} unoptimized /> : "+"}
             </button>
-            <p className="mt-2 text-sm text-gray-500">Helps Unit Coordinators recognise you. Optional but recommended.</p>
+            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
+            <div>
+              <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold">
+                Upload Photo
+              </button>
+              <p className="mt-2 text-sm text-gray-500">Helps Unit Coordinators recognise you. Optional but recommended.</p>
+            </div>
           </div>
-        </div>
-        <div className="mb-8">
+        </section>
+
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Full Name</label>
 
           <input
@@ -105,40 +108,44 @@ export default function BasicInformationForm() {
             placeholder="Dr. Julian Sterling"
             className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none focus:bg-white"
           />
-        </div>
-        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Professional Field</label>
-            <select
-              required
-              value={professionalField}
-              onChange={(event) => setProfessionalField(event.target.value)}
-              className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none"
-            >
-              <option value="">Select your field</option>
+        </section>
 
-              {professionalFields.map((field) => (
-                <option key={field}>{field}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Current Professional Role</label>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Professional Field</label>
+              <select
+                required
+                value={professionalField}
+                onChange={(event) => setProfessionalField(event.target.value)}
+                className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none"
+              >
+                <option value="">Select your field</option>
 
-            <select
-              required
-              value={professionalRole}
-              onChange={(event) => setProfessionalRole(event.target.value)}
-              className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none"
-            >
-              <option value="">Select your role</option>
-              {professionalRoles.map((role) => (
-                <option key={role}>{role}</option>
-              ))}
-            </select>
+                {professionalFields.map((field) => (
+                  <option key={field}>{field}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-bold uppercase tracking-widest">Current Professional Role</label>
+
+              <select
+                required
+                value={professionalRole}
+                onChange={(event) => setProfessionalRole(event.target.value)}
+                className="w-full bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none"
+              >
+                <option value="">Select your role</option>
+                {professionalRoles.map((role) => (
+                  <option key={role}>{role}</option>
+                ))}
+              </select>
+            </div>
           </div>
-        </div>
-        <div>
+        </section>
+
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-2 flex justify-between">
             <label className="text-sm font-bold uppercase tracking-widest">Short Bio</label>
 
@@ -153,8 +160,9 @@ export default function BasicInformationForm() {
             placeholder="Briefly describe your business or legal expertise..."
             className="w-full resize-none bg-gray-200 border-0 border-b-2 border-black px-4 py-4 outline-none focus:bg-white"
           />
-        </div>
-        <div className="mt-14 flex justify-end">
+        </section>
+
+        <div className="flex justify-end">
           <button
             type="submit"
             className="rounded-xl bg-black px-10 py-4 font-semibold text-white shadow-sm transition-all duration-200 hover:bg-gray-800 hover:shadow-md active:scale-[0.98]"

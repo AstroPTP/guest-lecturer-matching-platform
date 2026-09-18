@@ -129,7 +129,7 @@ export default function EngagementProfileForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-7">
-        <section>
+        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <div className="mb-7">
             <label htmlFor="primaryLocation" className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">
               Primary Location
