@@ -17,11 +17,23 @@ export default function ForgotPasswordVerifyForm({ email }: ForgotPasswordVerify
           We&apos;ve sent a 6-digit reset code to <span className="font-bold text-[#2d2d2d]">{email}</span>
         </>
       }
-      onVerify={async (_code) => {
+      onVerify={async (code) => {
+        const response = await fetch("/api/auth/passwordless/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, verificationCode: code }),
+        });
+        if (!response.ok) {
+          throw new Error("Invalid or expired code.");
+        }
         router.push("/reset_password");
       }}
       onResendCode={async () => {
-        alert("A new reset code has been sent.");
+        await fetch("/api/auth/passwordless/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        });
       }}
     />
   );

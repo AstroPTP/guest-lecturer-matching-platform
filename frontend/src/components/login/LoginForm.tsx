@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
 import visibility from "@/assets/visibility.png";
@@ -9,29 +9,31 @@ import googleIcon from "@/assets/google-icon.svg";
 import linkedInIcon from "@/assets/linkedin-icon.svg";
 
 export default function LoginForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const searchParams = useSearchParams();
   const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
+  const registerHref = `/register?role=${role}`;
+  const returnTo = role === "coordinator" ? "/unit_coordinator/profile" : "/guest_lecturer/profile";
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (role === "coordinator") {
-      router.push("/unit_coordinator/discovery");
-    } else {
-      router.push("/guest_lecturer/discovery");
-    }
+  function loginUrl(connection?: string) {
+    const params = new URLSearchParams({ returnTo });
+    if (connection) params.set("connection", connection);
+    return `/auth/login?${params.toString()}`;
   }
 
-  function handleGoogleLogin() {}
-  function handleLinkedInLogin() {}
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    window.location.href = returnTo;
+  }
+
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 via-slate-50 to-teal-50 px-4 ">
       <div className="bg-white w-full max-w-lg rounded-2xl border border-blue-100 shadow-xl shadow-blue-900/10 p-10">
         <h1 className="text-5xl font-bold mb-4">Welcome</h1>
         <p className="text-gray-600 mb-10">Sign in to continue your academic journey.</p>
+
         <form className="space-y-5" onSubmit={handleSubmit}>
           <input
             type="email"
@@ -74,24 +76,22 @@ export default function LoginForm() {
           <div className="h-px bg-gray-300 flex-1"></div>
         </div>
         <div className="space-y-4">
-          <button
-            type="button"
+          <a
+            href={loginUrl("google-oauth2")}
             aria-label="Continue with Google"
-            onClick={handleGoogleLogin}
             className="flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-medium text-slate-800 transition hover:border-blue-200 hover:bg-blue-50"
           >
             <Image src={googleIcon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" />
             Continue with Google
-          </button>
-          <button
-            type="button"
+          </a>
+          <a
+            href={loginUrl("linkedin")}
             aria-label="Continue with LinkedIn"
-            onClick={handleLinkedInLogin}
             className="flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-medium text-slate-800 transition hover:border-blue-200 hover:bg-blue-50"
           >
             <Image src={linkedInIcon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" />
             Continue with LinkedIn
-          </button>
+          </a>
         </div>
 
         <p className="text-center mt-10 text-sm text-gray-600">

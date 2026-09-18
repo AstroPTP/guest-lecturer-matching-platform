@@ -12,10 +12,30 @@ interface ForgotPasswordFormProps {
 
 export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormProps) {
   const [email, setEmail] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedEmail = email.trim().toLowerCase();
-    onSubmitted(normalizedEmail);
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await fetch("/api/auth/passwordless/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error || "Could not send the code. Try again.");
+      }
+      onSubmitted(normalizedEmail);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not send the code. Try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
   return (
     <main className="w-full max-w-md bg-white rounded-xl border border-blue-100 shadow-xl shadow-blue-900/10 p-8 sm:p-12">
@@ -45,11 +65,14 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
           </div>
         </div>
 
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
         <button
           type="submit"
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-4 font-medium text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700"
+          disabled={isSubmitting}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-4 font-medium text-white shadow-lg shadow-blue-600/20 transition-colors hover:bg-blue-700 disabled:opacity-60"
         >
-          <span>Send reset code</span>
+          <span>{isSubmitting ? "Sending…" : "Send reset code"}</span>
 
           <Image src={arrow} alt="" width={18} height={18} className="object-contain" />
         </button>

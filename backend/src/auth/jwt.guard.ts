@@ -7,6 +7,7 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { ErrorCode } from '../common/error-codes';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { attachDemoUser, demoBypassEnabled } from './demo-user';
 
 /**
  * Authentication gate. Registered globally in AuthModule, so every route is
@@ -30,6 +31,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
 
     if (isPublic) {
+      return true;
+    }
+
+    // Temporary, for testing the application before the login flow is wired.
+    // Attaches a simulated user instead of skipping the guards, so RolesGuard
+    // still runs and still refuses a route the simulated role cannot reach.
+    // Refuses to engage in production regardless of the flag. See demo-user.ts.
+    if (demoBypassEnabled()) {
+      attachDemoUser(context.switchToHttp().getRequest());
       return true;
     }
 

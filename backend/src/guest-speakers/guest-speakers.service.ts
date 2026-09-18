@@ -52,14 +52,33 @@ export class GuestSpeakersService {
     return profile;
   }
 
-  saveConsent(userId: string, dto: ConsentDto): GuestSpeakerProfile {
+  /**
+   * Saves consent, which is the last step of the profile form, and persists the
+   * assembled profile.
+   *
+   * The earlier steps collect into memory because the form is filled in over
+   * several requests. Consent is the point the person has finished and agreed,
+   * so it is the point the profile becomes a row.
+   */
+  async saveConsent(
+    userId: string,
+    dto: ConsentDto,
+  ): Promise<GuestSpeakerProfile> {
     const profile = this.getOrCreate(userId);
     profile.consentPreferences = dto;
+    await this.createNewGuestInDatabase(profile);
     return profile;
   }
 
-  findAll(): GuestSpeakerProfile[] {
-    return [...this.profiles.values()];
+  /**
+   * Every guest speaker, from the database.
+   *
+   * This is what the discovery page lists, so it has to be the stored rows
+   * rather than whatever happens to be in this process's memory. Retrieving
+   * from the database was the step the client was told was outstanding.
+   */
+  async findAll() {
+    return prisma.guests.findMany({ orderBy: { guest_id: 'asc' } });
   }
 
   private async createNewGuestInDatabase(guestDTO: GuestSpeakerProfile) {
