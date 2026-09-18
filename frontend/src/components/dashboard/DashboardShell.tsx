@@ -13,8 +13,8 @@ interface DashboardShellProps {
   notificationHref: string;
 }
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "dashboardSidebarCollapsed";
 const collapsedListeners = new Set<() => void>();
+let sidebarCollapsed = false;
 
 function subscribeCollapsed(listener: () => void) {
   collapsedListeners.add(listener);
@@ -24,11 +24,7 @@ function subscribeCollapsed(listener: () => void) {
 }
 
 function getCollapsedSnapshot(): boolean {
-  try {
-    return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
+  return sidebarCollapsed;
 }
 
 function getCollapsedServerSnapshot(): boolean {
@@ -36,10 +32,7 @@ function getCollapsedServerSnapshot(): boolean {
 }
 
 function setSidebarCollapsed(next: boolean) {
-  try {
-    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(next));
-  } catch {
-  }
+  sidebarCollapsed = next;
   collapsedListeners.forEach((listener) => listener());
 }
 
