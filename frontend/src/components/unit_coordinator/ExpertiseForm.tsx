@@ -52,11 +52,11 @@ export default function ExpertiseForm() {
 
   function handleExperienceLevelClick(level: string) {
     if (experienceLevelsRequired.includes(level)) {
-      setExperienceLevelsRequired(experienceLevelsRequired.filter((selectedLevel) => selectedLevel !== level));
+      setExperienceLevelsRequired([]);
       return;
     }
 
-    setExperienceLevelsRequired([...experienceLevelsRequired, level]);
+    setExperienceLevelsRequired([level]);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -133,7 +133,7 @@ export default function ExpertiseForm() {
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Experience Level Requirement</h2>
-          <p className="mt-2 text-sm text-gray-500">Select one or more acceptable professional experience levels for the Guest Lecturer.</p>
+          <p className="mt-2 text-sm text-gray-500">Select the required professional experience level for the Guest Lecturer.</p>
           <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {experienceLevels.map((level) => {
               const isSelected = experienceLevelsRequired.includes(level.value);
