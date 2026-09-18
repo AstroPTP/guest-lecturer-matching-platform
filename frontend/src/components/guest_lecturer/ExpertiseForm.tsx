@@ -102,7 +102,7 @@ export default function ExpertiseForm() {
                   onClick={() => handleTopicClick(topic)}
                   className={
                     "rounded-full px-5 py-3 text-sm font-semibold transition-colors " +
-                    (isSelected ? "bg-[#242424] text-white" : "bg-[#e9e9e7] text-[#333333] hover:bg-gray-300")
+                    (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                   }
                 >
                   {topic}
@@ -125,12 +125,12 @@ export default function ExpertiseForm() {
                   onClick={() => setExperienceLevel(level.value)}
                   className={
                     "min-h-32 rounded-2xl p-5 text-left transition-colors " +
-                    (isSelected ? "bg-black text-white" : "bg-[#f0f0ee] text-[#1f1f1f] hover:bg-gray-200")
+                    (isSelected ? "bg-black text-white" : "bg-gray-200 text-black hover:bg-gray-300")
                   }
                 >
                   <h3 className="font-bold leading-tight">{level.title}</h3>
 
-                  <p className={"mt-2 text-sm leading-relaxed " + (isSelected ? "text-gray-100" : "text-gray-600")}>{level.description}</p>
+                  <p className={"mt-2 text-sm leading-relaxed " + (isSelected ? "text-gray-300" : "text-gray-600")}>{level.description}</p>
                 </button>
               );
             })}
