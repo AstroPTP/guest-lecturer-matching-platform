@@ -94,10 +94,14 @@ export default function LoginForm() {
           </a>
         </div>
 
-        <p className="text-center mt-10 text-sm">
-          Don&apos;t have an account?{" "}
-          <Link href={registerHref} className="font-medium text-blue-600 underline hover:text-blue-700">
-            Register here
+        <p className="text-center mt-10 text-sm text-gray-600">
+          Don&apos;t have an account? Register as{" "}
+          <Link href="/register?role=guest" className="font-medium text-blue-600 underline hover:text-blue-700">
+            Guest Lecturer
+          </Link>{" "}
+          or{" "}
+          <Link href="/register?role=coordinator" className="font-medium text-blue-600 underline hover:text-blue-700">
+            Unit Coordinator
           </Link>
         </p>
       </div>
