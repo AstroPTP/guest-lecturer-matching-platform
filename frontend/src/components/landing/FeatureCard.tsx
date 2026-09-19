@@ -15,7 +15,7 @@ interface FeatureCardProps {
 export default function FeatureCard({ title, description, items, buttonText, role }: FeatureCardProps) {
   const router = useRouter();
   function handleJoin() {
-    router.push(`/login?role=${role}`);
+    router.push(`/register?role=${role}`);
   }
   return (
     <div className="bg-white rounded-3xl p-10 shadow-sm">
@@ -31,7 +31,7 @@ export default function FeatureCard({ title, description, items, buttonText, rol
           </li>
         ))}
       </ul>
-      <button type="button" onClick={handleJoin} className="flex items-center gap-2 font-semibold transition-all hover:gap-3">
+      <button type="button" onClick={handleJoin} className="flex items-center gap-2 font-semibold transition-all hover:gap-3 cursor-pointer">
         <span>{buttonText}</span>
         <Image src={arrow} alt="Arrow" width={18} height={18} />
       </button>
