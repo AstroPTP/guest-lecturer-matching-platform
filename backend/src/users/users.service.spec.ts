@@ -40,7 +40,9 @@ describe('UsersService', () => {
 
   describe('findByAuth0Id', () => {
     it('returns null when no row matches', async () => {
-      await expect(service.findByAuth0Id('auth0|does-not-exist')).resolves.toBeNull();
+      await expect(
+        service.findByAuth0Id('auth0|does-not-exist'),
+      ).resolves.toBeNull();
     });
   });
 });
