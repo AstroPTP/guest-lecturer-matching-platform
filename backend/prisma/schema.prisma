@@ -96,7 +96,7 @@ model guests {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 model users {
   userid                BigInt         @id @default(autoincrement())
-  auth0Id               String?        @db.VarChar
+  auth0Id               String         @unique @db.VarChar
   email                 String?
   role                  String?
   consentstate          Boolean?
