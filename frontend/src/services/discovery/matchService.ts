@@ -64,13 +64,11 @@ export async function removeInterest(_targetUserId: string): Promise<void> {
 }
 
 export async function dismissProfile(_targetUserId: string): Promise<void> {
-  // Local-only for now: dismiss just needs to advance past the card in this
-  // session. Real persistence (a dismisses table) is part of the matching
-  // algorithm work, not implemented yet.
+  return notIntegrated();
 }
 
 export async function removeDismiss(_targetUserId: string): Promise<void> {
-  // Local-only for now, same as dismissProfile above.
+  return notIntegrated();
 }
 
 export async function unmatchUsers(_targetUserId: string): Promise<void> {

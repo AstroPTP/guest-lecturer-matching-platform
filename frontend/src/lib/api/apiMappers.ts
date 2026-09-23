@@ -1,5 +1,4 @@
 import type { PublicGuestLecturerProfile } from "@/types/discovery/publicGuestLecturerProfileTypes";
-import type { PublicUnitCoordinatorProfile } from "@/types/discovery/publicUnitCoordinatorProfileTypes";
 
 /**
  * Turns an API row into the shape the pages expect.
@@ -32,29 +31,6 @@ export interface GuestSpeakerRow {
   format_prerecorded?: boolean | null;
 }
 
-/** A unit coordinator row as the API returns it. */
-export interface CoordinatorRow {
-  coordinator_id: number | string;
-  first_name?: string | null;
-  last_name?: string | null;
-  faculty?: string | null;
-  role?: string | null;
-  bio?: string | null;
-  discipline?: string | null;
-  learning_objective?: string | null;
-  location?: string | null;
-  duration?: string | null;
-  audience?: string | null;
-  format_online?: boolean | null;
-  format_inperson?: boolean | null;
-  format_prerecorded?: boolean | null;
-  focus_lecture?: boolean | null;
-  focus_casestudy?: boolean | null;
-  focus_workshop?: boolean | null;
-  focus_discussion?: boolean | null;
-  focus_ama?: boolean | null;
-}
-
 function joinName(first?: string | null, last?: string | null): string {
   return [first, last].filter(Boolean).join(" ").trim();
 }
@@ -64,24 +40,6 @@ function formats(row: GuestSpeakerRow): string[] {
   if (row.format_online) chosen.push("Online");
   if (row.format_inperson) chosen.push("In person");
   if (row.format_prerecorded) chosen.push("Pre-recorded");
-  return chosen;
-}
-
-function coordinatorFormats(row: CoordinatorRow): string[] {
-  const chosen: string[] = [];
-  if (row.format_online) chosen.push("online");
-  if (row.format_inperson) chosen.push("face-to-face");
-  if (row.format_prerecorded) chosen.push("pre-recorded");
-  return chosen;
-}
-
-function coordinatorDeliveryFocus(row: CoordinatorRow): string[] {
-  const chosen: string[] = [];
-  if (row.focus_lecture) chosen.push("Seminar/Lecture");
-  if (row.focus_casestudy) chosen.push("Case Study");
-  if (row.focus_workshop) chosen.push("Interactive Workshop");
-  if (row.focus_discussion) chosen.push("Discussion Lead");
-  if (row.focus_ama) chosen.push("AMA Session");
   return chosen;
 }
 
@@ -107,54 +65,10 @@ export function toPublicGuestLecturerProfile(
       linkedin: row.linkedIn_profile ?? "",
     },
     engagementProfile: {
-    primaryLocation: row.location ?? "",
-    sessionDuration: row.duration ?? "",
-    audienceSize: row.audience ?? "",
-    format: formats(row).join(", "),
-    formats: formats(row),
-    deliveryFocus: [],
-    schedule: {
-      availableDays: [],
-      availableFrom: "",
-      availableTo: "",
-      availabilityFrequency: "",
-      availabilityNotes: "",
-    },
-    } as PublicGuestLecturerProfile["engagementProfile"],
-  };
-}
-
-export function toPublicUnitCoordinatorProfile(
-  row: CoordinatorRow,
-): PublicUnitCoordinatorProfile {
-  return {
-    id: String(row.coordinator_id),
-    basicInformation: {
-      fullName: joinName(row.first_name, row.last_name),
-      bio: row.bio ?? "",
-      photoPreview: "",
-      schoolDepartment: row.faculty ?? "",
-      academicRole: row.role ?? "",
-    },
-    expertise: {
-      selectedTopics: [],
-      experienceLevelsRequired: [],
-      industryRelevance: row.discipline ?? "",
-      learningObjective: row.learning_objective ?? "",
-    },
-    engagementProfile: {
       primaryLocation: row.location ?? "",
       sessionDuration: row.duration ?? "",
       audienceSize: row.audience ?? "",
-      formats: coordinatorFormats(row),
-      deliveryFocus: coordinatorDeliveryFocus(row),
-      schedule: {
-        preferredDays: [],
-        preferredFrom: "",
-        preferredTo: "",
-        engagementFrequency: "",
-        scheduleNotes: "",
-      },
-    },
+      formats: formats(row),
+    } as PublicGuestLecturerProfile["engagementProfile"],
   };
 }
