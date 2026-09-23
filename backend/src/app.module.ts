@@ -9,7 +9,6 @@ import { GuestSpeakersModule } from './guest-speakers/guest-speakers.module';
 import { MatchRequestsModule } from './match-requests/match-requests.module';
 import { MessagesModule } from './messages/messages.module';
 import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.module';
-import { UnitsModule } from './units/units.module';
 import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -28,7 +27,6 @@ import { NotificationsModule } from './notifications/notifications.module';
     MatchRequestsModule,
     MessagesModule,
     UnitCoordinatorsModule,
-    UnitsModule,
     UsersModule,
     EventsModule,
     NotificationsModule,

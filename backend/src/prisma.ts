@@ -2,11 +2,23 @@ import { BadRequestException } from '@nestjs/common';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
-});
+let realClient: PrismaClient | undefined;
 
-export const prisma = new PrismaClient({ adapter });
+function getClient(): PrismaClient {
+  if (!realClient) {
+    const adapter = new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+    });
+    realClient = new PrismaClient({ adapter });
+  }
+  return realClient;
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getClient(), prop, receiver);
+  },
+});
 
 /**
  * Resolves the numeric user id the schema uses from the Auth0 subject string.

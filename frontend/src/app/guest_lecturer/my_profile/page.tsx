@@ -3,6 +3,7 @@
 import { ProfileField, ProfileLabel, ProfileInput, ProfileSelect, TagList } from "@/components/profile/profileFields";
 import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
+import { useRouter } from "next/navigation";
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import Image from "next/image";
@@ -26,6 +27,7 @@ export default function GuestLecturerMyProfilePage() {
   const [engagementDraft, setEngagementDraft] = useState<GuestLecturerEngagementData | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
+  const router = useRouter();
 
   useEffect(() => {
     let cancelled = false;
@@ -35,12 +37,16 @@ export default function GuestLecturerMyProfilePage() {
         if (cancelled) {
           return;
         }
-        setProfile(savedProfile);
-        if (savedProfile) {
-          setBasicDraft(cloneData(savedProfile.basicInformation));
-          setExpertiseDraft(cloneData(savedProfile.expertise));
-          setEngagementDraft(cloneData(savedProfile.engagementProfile));
+        if (!savedProfile) {
+          // No profile yet: send them to the setup wizard instead of
+          // showing an inline blank form here.
+          router.replace("/guest_lecturer/profile");
+          return;
         }
+        setProfile(savedProfile);
+        setBasicDraft(cloneData(savedProfile.basicInformation));
+        setExpertiseDraft(cloneData(savedProfile.expertise));
+        setEngagementDraft(cloneData(savedProfile.engagementProfile));
       } catch {
         if (!cancelled) {
           setLoadError("Your profile isn't connected to a backend yet, so it can't be loaded here.");
@@ -56,8 +62,8 @@ export default function GuestLecturerMyProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
-
+  }, [router]);
+  
   function startEditing(section: EditingSection) {
     if (!profile){
       return;
@@ -299,7 +305,7 @@ export default function GuestLecturerMyProfilePage() {
     );
   }
 
-  if (!profile || !basicDraft || !expertiseDraft || !engagementDraft) {
+  if (!basicDraft || !expertiseDraft || !engagementDraft) {
     return (
       <DashboardShell
         role="guestLecturer"
@@ -329,7 +335,7 @@ export default function GuestLecturerMyProfilePage() {
         {savedMessage && <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 font-medium text-green-700">{savedMessage}</div>}
         <section className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-            {profile.basicInformation.photoPreview ? (
+            {profile?.basicInformation.photoPreview ? (
               <Image
                 src={profile.basicInformation.photoPreview}
                 alt={profile.basicInformation.fullName}
@@ -340,14 +346,14 @@ export default function GuestLecturerMyProfilePage() {
               />
             ) : (
               <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-gray-200 text-4xl font-bold text-gray-500">
-                {profile.basicInformation.fullName.charAt(0).toUpperCase() || "?"}
+                {profile?.basicInformation.fullName.charAt(0).toUpperCase() || "?"}
               </div>
             )}
             <div>
-              <h2 className="text-3xl font-bold text-[#2d2d2d]">{profile.basicInformation.fullName}</h2>
-              <p className="mt-2 text-lg text-gray-700">{profile.basicInformation.professionalRole}</p>
-              <p className="mt-1 text-gray-500">{profile.basicInformation.professionalField}</p>
-              <p className="mt-5 max-w-3xl leading-7 text-gray-600">{profile.basicInformation.bio}</p>
+              <h2 className="text-3xl font-bold text-[#2d2d2d]">{profile?.basicInformation.fullName}</h2>
+              <p className="mt-2 text-lg text-gray-700">{profile?.basicInformation.professionalRole}</p>
+              <p className="mt-1 text-gray-500">{profile?.basicInformation.professionalField}</p>
+              <p className="mt-5 max-w-3xl leading-7 text-gray-600">{profile?.basicInformation.bio}</p>
             </div>
           </div>
         </section>
@@ -363,11 +369,11 @@ export default function GuestLecturerMyProfilePage() {
               editContent={<BasicInformationEditor draft={basicDraft} setDraft={setBasicDraft} fileInputRef={fileInputRef} onPhotoChange={handlePhotoChange} />}
             >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <ProfileField label="Full Name" value={profile.basicInformation.fullName} />
-                <ProfileField label="Professional Field" value={profile.basicInformation.professionalField} />
-                <ProfileField label="Professional Role" value={profile.basicInformation.professionalRole} />
+                <ProfileField label="Full Name" value={profile?.basicInformation.fullName ?? ""} />
+                <ProfileField label="Professional Field" value={profile?.basicInformation.professionalField ?? ""} />
+                <ProfileField label="Professional Role" value={profile?.basicInformation.professionalRole ?? ""} />
                 <div className="md:col-span-2">
-                  <ProfileField label="Short Bio" value={profile.basicInformation.bio} />
+                  <ProfileField label="Short Bio" value={profile?.basicInformation.bio ?? ""} />
                 </div>
               </div>
             </EditableProfileSection>
@@ -381,17 +387,17 @@ export default function GuestLecturerMyProfilePage() {
               editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} />}
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile.expertise.selectedTopics} />
+                <TagList label="Expertise Topics" items={profile?.expertise.selectedTopics ?? []} />
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                  <ProfileField label="Experience Level" value={formatStoredValue(profile.expertise.experienceLevel)} />
-                  <ProfileField label="Speaking Experience" value={profile.expertise.hasSpeakingExperience ? "Yes" : "No"} />
-                  {profile.expertise.hasSpeakingExperience && <ProfileField label="Speaking Details" value={profile.expertise.speakingDetails} />}
-                  <ProfileField label="International Experience" value={profile.expertise.hasInternationalExperience ? "Yes" : "No"} />
-                  {profile.expertise.hasInternationalExperience && (
+                  <ProfileField label="Experience Level" value={formatStoredValue(profile?.expertise.experienceLevel ?? "")} />
+                  <ProfileField label="Speaking Experience" value={profile?.expertise.hasSpeakingExperience ? "Yes" : "No"} />
+                  {profile?.expertise.hasSpeakingExperience && <ProfileField label="Speaking Details" value={profile.expertise.speakingDetails} />}
+                  <ProfileField label="International Experience" value={profile?.expertise.hasInternationalExperience ? "Yes" : "No"} />
+                  {profile?.expertise.hasInternationalExperience && (
                     <ProfileField label="International Details" value={profile.expertise.internationalDetails} />
                   )}
 
-                  <ProfileField label="LinkedIn" value={profile.expertise.linkedin} />
+                  <ProfileField label="LinkedIn" value={profile?.expertise.linkedin ?? ""} />
                 </div>
               </div>
             </EditableProfileSection>
@@ -414,16 +420,16 @@ export default function GuestLecturerMyProfilePage() {
             >
               <div className="space-y-7">
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                  <ProfileField label="Primary Location" value={profile.engagementProfile.primaryLocation} />
-                  <ProfileField label="Session Duration" value={formatStoredValue(profile.engagementProfile.sessionDuration)} />
-                  <ProfileField label="Audience Size" value={formatAudienceSize(profile.engagementProfile.audienceSize)} />
+                  <ProfileField label="Primary Location" value={profile?.engagementProfile.primaryLocation ?? ""} />
+                  <ProfileField label="Session Duration" value={formatStoredValue(profile?.engagementProfile.sessionDuration ?? "")} />
+                  <ProfileField label="Audience Size" value={formatAudienceSize(profile?.engagementProfile.audienceSize ?? "")} />
                   <ProfileField
                     label="Delivery Format"
-                    value={getSelectedFormats(profile.engagementProfile).map((item) => formatStoredValue(item)).join(", ")}
+                    value={getSelectedFormats(profile?.engagementProfile ?? engagementDraft).map((item) => formatStoredValue(item)).join(", ")}
                   />
                 </div>
 
-                <TagList label="Delivery Focus" items={profile.engagementProfile.deliveryFocus} />
+                <TagList label="Delivery Focus" items={profile?.engagementProfile.deliveryFocus ?? []} />
               </div>
             </EditableProfileSection>
           </div>
@@ -439,14 +445,14 @@ export default function GuestLecturerMyProfilePage() {
               editContent={<AvailabilityEditor draft={engagementDraft} setDraft={setEngagementDraft} onToggleDay={toggleAvailableDay} />}
             >
               <div className="space-y-6">
-                <TagList label="Available Days" items={profile.engagementProfile.schedule.availableDays} />
+                <TagList label="Available Days" items={profile?.engagementProfile.schedule.availableDays ?? []} />
                 <ProfileField
                   label="Available Time"
-                  value={formatTimeRange(profile.engagementProfile.schedule.availableFrom, profile.engagementProfile.schedule.availableTo)}
+                  value={formatTimeRange(profile?.engagementProfile.schedule.availableFrom ?? "", profile?.engagementProfile.schedule.availableTo ?? "")}
                 />
 
-                <ProfileField label="Frequency" value={formatStoredValue(profile.engagementProfile.schedule.availabilityFrequency)} />
-                <ProfileField label="Availability Notes" value={profile.engagementProfile.schedule.availabilityNotes} />
+                <ProfileField label="Frequency" value={formatStoredValue(profile?.engagementProfile.schedule.availabilityFrequency ?? "")} />
+                <ProfileField label="Availability Notes" value={profile?.engagementProfile.schedule.availabilityNotes ?? ""} />
               </div>
             </EditableProfileSection>
           </div>
@@ -853,4 +859,16 @@ function formatAudienceSize(value: string) {
   };
 
   return labels[value] ?? formatStoredValue(value);
+}
+
+function emptyProfile(): GuestLecturerProfileData {
+  return {
+    basicInformation: { fullName: "", bio: "", photoPreview: "", professionalField: "", professionalRole: "" },
+    expertise: { selectedTopics: [], experienceLevel: "", hasSpeakingExperience: false, speakingDetails: "", hasInternationalExperience: false, internationalDetails: "", linkedin: "" },
+    engagementProfile: {
+      primaryLocation: "", audienceSize: "", deliveryFocus: [], sessionDuration: "", format: "", formats: [],
+      schedule: { availableDays: [], availableFrom: "", availableTo: "", availabilityFrequency: "", availabilityNotes: "" },
+    },
+    consentPreferences: undefined,
+  };
 }

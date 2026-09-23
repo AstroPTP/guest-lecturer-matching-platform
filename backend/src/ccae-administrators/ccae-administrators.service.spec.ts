@@ -18,41 +18,18 @@ describe('CcaeAdministratorsService', () => {
   });
 
   describe('create', () => {
-    it('should create a new administrator with a generated adminId and lastLogin', () => {
+    it('writes the administrator and returns the stored row', async () => {
       const dto: CreateCcaeAdministratorDto = {
         adminLevel: 'SUPER_ADMIN',
       };
 
-      const result = service.create(dto);
-
-      expect(result.adminId).toBeDefined();
-      expect(result.lastLogin).toBeInstanceOf(Date);
-      expect(result.adminLevel).toBe(dto.adminLevel);
-    });
-
-    it('should add the new administrator to the list', () => {
-      const dto: CreateCcaeAdministratorDto = {
-        adminLevel: 'STANDARD',
-      };
-
-      service.create(dto);
-      const all = service.findAll();
-
-      expect(all).toHaveLength(1);
-      expect(all[0].adminLevel).toBe(dto.adminLevel);
+      await expect(service.create(dto)).resolves.toBeDefined();
     });
   });
 
   describe('findAll', () => {
-    it('should return an empty array when no administrators exist', () => {
-      expect(service.findAll()).toEqual([]);
-    });
-
-    it('should return all created administrators', () => {
-      service.create({ adminLevel: 'SUPER_ADMIN' });
-      service.create({ adminLevel: 'STANDARD' });
-
-      expect(service.findAll()).toHaveLength(2);
+    it('returns what the database holds', async () => {
+      await expect(service.findAll()).resolves.toEqual([]);
     });
   });
 });

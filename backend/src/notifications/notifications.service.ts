@@ -14,10 +14,11 @@ export interface Notification extends CreateNotificationDto {
 @Injectable()
 export class NotificationsService {
   private notifications: Notification[] = [];
+  private nextId = 1;
 
   create(dto: CreateNotificationDto): Notification {
     const newNotification: Notification = {
-      id: crypto.randomUUID(),
+      id: String(this.nextId++),
       createdAt: new Date().toISOString(),
       read: false,
       ...dto,

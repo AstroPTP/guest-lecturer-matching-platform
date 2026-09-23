@@ -15,7 +15,7 @@ export default function LoginForm() {
   const searchParams = useSearchParams();
   const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
   const registerHref = `/register?role=${role}`;
-  const returnTo = role === "coordinator" ? "/unit_coordinator/profile" : "/guest_lecturer/profile";
+  const returnTo = role === "coordinator" ? "/unit_coordinator/profile" : "/guest_lecturer/my_profile";
 
   function loginUrl(connection?: string) {
     const params = new URLSearchParams({ returnTo });

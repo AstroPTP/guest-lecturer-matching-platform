@@ -28,12 +28,13 @@ const COORDINATOR_ACTIONS: EventStatus[] = ['cancelled', 'completed'];
 @Injectable()
 export class EventsService {
   private events: Event[] = [];
+  private nextId = 1;
 
   constructor(private readonly notificationsService: NotificationsService) {}
 
   create(dto: CreateEventDto, coordinatorId: string): Event {
     const newEvent: Event = {
-      id: crypto.randomUUID(),
+      id: String(this.nextId++),
       coordinatorId,
       status: 'invitation-sent',
       createdAt: new Date().toISOString(),
