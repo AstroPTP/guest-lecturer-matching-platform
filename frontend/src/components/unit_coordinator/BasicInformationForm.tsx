@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
+import { getUnitCoordinatorBasicInformation, saveUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import { academicRoleOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
 
 export default function BasicInformationForm() {
@@ -13,6 +13,8 @@ export default function BasicInformationForm() {
   const [academicRole, setAcademicRole] = useState("");
   const [bio, setBio] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -62,7 +64,22 @@ export default function BasicInformationForm() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push("/unit_coordinator/expertise");
+    setError("");
+    setIsSaving(true);
+    try {
+      await saveUnitCoordinatorBasicInformation({
+        fullName,
+        schoolDepartment,
+        academicRole,
+        bio,
+        photoPreview,
+      });
+      router.push("/unit_coordinator/expertise");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -206,12 +223,15 @@ export default function BasicInformationForm() {
           />
         </section>
 
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+
         <div className="flex justify-end">
           <button
             type="submit"
-            className="min-w-[140px] rounded-xl bg-black px-9 py-4 font-semibold text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-gray-800 hover:shadow-lg active:translate-y-0"
+            disabled={isSaving}
+            className="min-w-[140px] rounded-xl bg-black px-9 py-4 font-semibold text-white shadow-md transition-all duration-200 hover:-translate-y-0.5 hover:bg-gray-800 hover:shadow-lg active:translate-y-0 disabled:opacity-60"
           >
-            Next
+            {isSaving ? "Saving..." : "Next"}
           </button>
         </div>
       </form>

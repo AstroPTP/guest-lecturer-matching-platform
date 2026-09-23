@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import { getUnitCoordinatorEngagement } from "@/services/profile/unitCoordinatorProfileService";
+import { getUnitCoordinatorEngagement, saveUnitCoordinatorEngagement } from "@/services/profile/unitCoordinatorProfileService";
 import { deliveryFocusOptions, formatOptions, sessionDurationOptions, unitCoordinatorAudienceSizeOptions, weekDays } from "@/constants/profileOptions/shared";
 import { engagementFrequencyOptions } from "@/constants/profileOptions/unitCoordinator";
 
@@ -20,6 +20,8 @@ export default function EngagementProfileForm() {
   const [preferredTo, setPreferredTo] = useState("");
   const [engagementFrequency, setEngagementFrequency] = useState("");
   const [scheduleNotes, setScheduleNotes] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -120,7 +122,29 @@ export default function EngagementProfileForm() {
       return;
     }
 
-    router.push("/unit_coordinator/consent");
+    setError("");
+    setIsSaving(true);
+    try {
+      await saveUnitCoordinatorEngagement({
+        primaryLocation,
+        sessionDuration,
+        audienceSize,
+        formats,
+        deliveryFocus,
+        schedule: {
+          preferredDays,
+          preferredFrom,
+          preferredTo,
+          engagementFrequency,
+          scheduleNotes,
+        },
+      });
+      router.push("/unit_coordinator/consent");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -364,7 +388,9 @@ export default function EngagementProfileForm() {
           </div>
         </section>
 
-        <FormNavButtons submitLabel="Next" />
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+
+        <FormNavButtons submitLabel={isSaving ? "Saving..." : "Next"} />
       </form>
     </main>
   );
