@@ -17,8 +17,6 @@ describe('MessagesService', () => {
     expect(service).toBeDefined();
   });
 
-  // matchId is numeric because messages.match_id is a BigInt pointing at a row
-  // the database assigned, not a UUID generated in memory.
   describe('create', () => {
     it('rejects an id that is not numeric, rather than failing mid-write', async () => {
       const dto: CreateMessagesDto = {

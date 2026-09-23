@@ -2,12 +2,6 @@ import { BadRequestException } from '@nestjs/common';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-// The real client is created lazily, on first use, rather than at import
-// time. main.ts imports AppModule (and everything it pulls in, including
-// this file) before loadEnvFile() has populated process.env.DATABASE_URL,
-// so constructing PrismaPg here at the top level would capture an empty
-// connection string. Deferring construction until the first query actually
-// runs means DATABASE_URL is already set by then.
 let realClient: PrismaClient | undefined;
 
 function getClient(): PrismaClient {

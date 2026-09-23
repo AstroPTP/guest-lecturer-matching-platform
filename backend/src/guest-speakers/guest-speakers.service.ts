@@ -95,9 +95,9 @@ export class GuestSpeakersService {
       location: dto.primaryLocation,
       duration: dto.sessionDuration,
       audience: dto.audienceSize,
-      format_online: formats.includes('Online'),
-      format_inperson: formats.includes('Face-to-Face'),
-      format_prerecorded: formats.includes('Pre-recorded'),
+      format_online: formats.includes('online'),
+      format_inperson: formats.includes('face-to-face'),
+      format_prerecorded: formats.includes('pre-recorded'),
       focus_lecture: dto.deliveryFocus.includes('Seminar/Lecture'),
       focus_casestudy: dto.deliveryFocus.includes('Case Study'),
       focus_workshop: dto.deliveryFocus.includes('Interactive Workshop'),
@@ -112,18 +112,18 @@ export class GuestSpeakersService {
     });
 
     const availableFrom = dto.schedule.availableFrom
-      ? new Date(`1970-01-01T${dto.schedule.availableFrom}:00`)
+      ? new Date(`1970-01-01T${dto.schedule.availableFrom}:00Z`)
       : undefined;
     const availableTo = dto.schedule.availableTo
-      ? new Date(`1970-01-01T${dto.schedule.availableTo}:00`)
+      ? new Date(`1970-01-01T${dto.schedule.availableTo}:00Z`)
       : undefined;
 
     const availabilityData = {
-      monday: dto.schedule.availableDays.includes('Monday'),
-      tuesday: dto.schedule.availableDays.includes('Tuesday'),
-      wednesday: dto.schedule.availableDays.includes('Wednesday'),
-      thursday: dto.schedule.availableDays.includes('Thursday'),
-      friday: dto.schedule.availableDays.includes('Friday'),
+      monday: dto.schedule.availableDays.includes('monday'),
+      tuesday: dto.schedule.availableDays.includes('tuesday'),
+      wednesday: dto.schedule.availableDays.includes('wednesday'),
+      thursday: dto.schedule.availableDays.includes('thursday'),
+      friday: dto.schedule.availableDays.includes('friday'),
       available_from: availableFrom,
       available_to: availableTo,
       frequency: dto.schedule.availabilityFrequency,
@@ -170,9 +170,9 @@ export class GuestSpeakersService {
     availability: AvailabilityRow | null,
   ) {
     const formats: string[] = [];
-    if (guest.format_online) formats.push('Online');
-    if (guest.format_inperson) formats.push('Face-to-Face');
-    if (guest.format_prerecorded) formats.push('Pre-recorded');
+    if (guest.format_online) formats.push('online');
+    if (guest.format_inperson) formats.push('face-to-face');
+    if (guest.format_prerecorded) formats.push('pre-recorded');
 
     const deliveryFocus: string[] = [];
     if (guest.focus_lecture) deliveryFocus.push('Seminar/Lecture');
@@ -182,11 +182,11 @@ export class GuestSpeakersService {
     if (guest.focus_ama) deliveryFocus.push('AMA Session');
 
     const availableDays: string[] = [];
-    if (availability?.monday) availableDays.push('Monday');
-    if (availability?.tuesday) availableDays.push('Tuesday');
-    if (availability?.wednesday) availableDays.push('Wednesday');
-    if (availability?.thursday) availableDays.push('Thursday');
-    if (availability?.friday) availableDays.push('Friday');
+    if (availability?.monday) availableDays.push('monday');
+    if (availability?.tuesday) availableDays.push('tuesday');
+    if (availability?.wednesday) availableDays.push('wednesday');
+    if (availability?.thursday) availableDays.push('thursday');
+    if (availability?.friday) availableDays.push('friday');
 
     return {
       basicInformation: {

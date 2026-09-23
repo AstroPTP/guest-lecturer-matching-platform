@@ -9,12 +9,6 @@ export interface Messages extends CreateMessagesDto {
 
 @Injectable()
 export class MessagesService {
-  /**
-   * Creates a message and returns the stored row.
-   *
-   * The row comes back from the database rather than from memory, so the id is
-   * the one the database assigned.
-   */
   async create(createMessagesDto: CreateMessagesDto) {
     return this.createNewMessageInDatabase({
       messageId: '',

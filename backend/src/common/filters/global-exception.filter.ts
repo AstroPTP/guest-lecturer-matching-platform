@@ -46,12 +46,6 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         context,
         exception instanceof Error ? exception.stack : String(exception),
       );
-
-      // TEMP debugging — remove after diagnosing
-      if (exception && typeof exception === 'object' && 'code' in exception) {
-        console.error('PRISMA CODE:', (exception as any).code);
-        console.error('PRISMA META:', (exception as any).meta);
-      }
     } else {
       this.logger.warn(context);
     }

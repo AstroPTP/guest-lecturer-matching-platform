@@ -10,12 +10,6 @@ export interface CcaeAdministrator extends CreateCcaeAdministratorDto {
 
 @Injectable()
 export class CcaeAdministratorsService {
-  /**
-   * Creates an administrator and returns the stored row.
-   *
-   * The row comes back from the database rather than from memory, so the id is
-   * the one the database assigned.
-   */
   async create(createCcaeAdministratorDto: CreateCcaeAdministratorDto) {
     return this.createUnitInDatabase({
       adminId: '',
