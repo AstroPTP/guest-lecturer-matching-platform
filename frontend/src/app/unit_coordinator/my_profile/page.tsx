@@ -5,6 +5,7 @@ import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import type { ChangeEvent, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
@@ -35,6 +36,8 @@ export default function UnitCoordinatorMyProfilePage() {
   const [engagementDraft, setEngagementDraft] = useState<UnitCoordinatorEngagementData | null>(null);
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
+    const router = useRouter();
+
   useEffect(() => {
     let cancelled = false;
     async function loadProfile() {
@@ -44,13 +47,17 @@ export default function UnitCoordinatorMyProfilePage() {
           return;
         }
 
-        setProfile(savedProfile);
-
-        if (savedProfile) {
-          setBasicDraft(cloneData(savedProfile.basicInformation));
-          setExpertiseDraft(cloneData(savedProfile.expertise));
-          setEngagementDraft(cloneData(savedProfile.engagementProfile));
+        if (!savedProfile) {
+          // No profile yet: send them to the setup wizard instead of
+          // showing an inline "not found" screen here.
+          router.replace("/unit_coordinator/profile");
+          return;
         }
+
+        setProfile(savedProfile);
+        setBasicDraft(cloneData(savedProfile.basicInformation));
+        setExpertiseDraft(cloneData(savedProfile.expertise));
+        setEngagementDraft(cloneData(savedProfile.engagementProfile));
       } catch {
         if (!cancelled) {
           setLoadError("Your profile isn't connected to a backend yet, so it can't be loaded here.");
@@ -65,7 +72,7 @@ export default function UnitCoordinatorMyProfilePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [router]);
   function startEditing(section: EditingSection) {
     if (!profile) {
       return;

@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import { getUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
+import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
 export default function ExpertiseForm() {
   const router = useRouter();
@@ -11,6 +11,8 @@ export default function ExpertiseForm() {
   const [experienceLevelsRequired, setExperienceLevelsRequired] = useState<string[]>([]);
   const [industryRelevance, setIndustryRelevance] = useState("");
   const [learningObjective, setLearningObjective] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +84,21 @@ export default function ExpertiseForm() {
       return;
     }
 
-    router.push("/unit_coordinator/engagement");
+    setError("");
+    setIsSaving(true);
+    try {
+      await saveUnitCoordinatorExpertise({
+        selectedTopics,
+        experienceLevelsRequired,
+        industryRelevance,
+        learningObjective,
+      });
+      router.push("/unit_coordinator/engagement");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -201,7 +217,9 @@ export default function ExpertiseForm() {
           />
         </section>
 
-        <FormNavButtons submitLabel="Next" />
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+
+        <FormNavButtons submitLabel={isSaving ? "Saving..." : "Next"} />
       </form>
     </main>
   );

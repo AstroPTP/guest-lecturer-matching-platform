@@ -3,165 +3,229 @@ import { BasicInformationDto } from './dto/basic-information.dto';
 import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
-
 import { prisma, resolveUserId, splitName } from '../prisma';
 
-export interface UnitCoordinatorProfile {
-  userId: string;
-  basicInformation?: BasicInformationDto;
-  expertise?: ExpertiseDto;
-  engagementProfile?: EngagementDto;
-  consentPreferences?: ConsentDto;
-}
+type CoordinatorRow = NonNullable<
+  Awaited<ReturnType<typeof prisma.coordinators.findUnique>>
+>;
+type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
+type AvailabilityRow = Awaited<ReturnType<typeof prisma.availability.findFirst>>;
 
 @Injectable()
 export class UnitCoordinatorsService {
-  private profiles = new Map<string, UnitCoordinatorProfile>();
+  /**
+   * The caller's profile, assembled from the `coordinators` row plus its
+   * related `user_expertise` and `availability` rows, or null if they
+   * haven't saved anything yet.
+   */
+  async findByUserId(auth0Id: string) {
+    const userId = await resolveUserId(auth0Id);
 
-  private getOrCreate(userId: string): UnitCoordinatorProfile {
-    let profile = this.profiles.get(userId);
-    if (!profile) {
-      profile = { userId };
-      this.profiles.set(userId, profile);
+    const coordinator = await prisma.coordinators.findUnique({
+      where: { user_id: userId },
+    });
+    if (!coordinator) {
+      return null;
     }
-    return profile;
+
+    const [expertiseRows, availability] = await Promise.all([
+      prisma.user_expertise.findMany({ where: { user_id: userId } }),
+      prisma.availability.findFirst({ where: { user_id: userId } }),
+    ]);
+
+    return this.toProfileDto(coordinator, expertiseRows, availability);
   }
 
-  findByUserId(userId: string): UnitCoordinatorProfile | null {
-    return this.profiles.get(userId) ?? null;
-  }
+  async saveBasicInformation(auth0Id: string, dto: BasicInformationDto) {
+    const userId = await resolveUserId(auth0Id);
+    const name = splitName(dto.fullName);
 
-  saveBasicInformation(
-    userId: string,
-    dto: BasicInformationDto,
-  ): UnitCoordinatorProfile {
-    const profile = this.getOrCreate(userId);
-    profile.basicInformation = dto;
-    return profile;
-  }
+    // NOTE: photoPreview has no column on `coordinators` yet, so it isn't persisted.
+    const fields = {
+      first_name: name.first_name,
+      last_name: name.last_name,
+      faculty: dto.schoolDepartment,
+      role: dto.academicRole,
+      bio: dto.bio,
+    };
 
-  saveExpertise(userId: string, dto: ExpertiseDto): UnitCoordinatorProfile {
-    const profile = this.getOrCreate(userId);
-    profile.expertise = dto;
-    return profile;
-  }
-
-  saveEngagement(userId: string, dto: EngagementDto): UnitCoordinatorProfile {
-    const profile = this.getOrCreate(userId);
-    profile.engagementProfile = dto;
-    return profile;
-  }
-
-  saveConsent(userId: string, dto: ConsentDto): UnitCoordinatorProfile {
-    const profile = this.getOrCreate(userId);
-    profile.consentPreferences = dto;
-    return profile;
-  }
-
-  findAll(): UnitCoordinatorProfile[] {
-    return [...this.profiles.values()];
-  }
-
-  private async createNewCoordinatorInDatabase(
-    coordinatorDTO: UnitCoordinatorProfile,
-  ) {
-    const userId = await resolveUserId(coordinatorDTO.userId);
-    const name = splitName(coordinatorDTO.basicInformation?.fullName);
-
-    await prisma.coordinators.create({
-      data: {
-        user_id: userId,
-        first_name: name.first_name,
-        last_name: name.last_name,
-        faculty: coordinatorDTO.basicInformation?.schoolDepartment,
-        role: coordinatorDTO.basicInformation?.academicRole,
-        bio: coordinatorDTO.basicInformation?.bio,
-        learning_objective: coordinatorDTO.expertise?.learningObjective,
-        discipline: coordinatorDTO.expertise?.industryRelevance,
-        // experience is Int? in the schema but the form collects a list of
-        // experience levels. Left unwritten rather than guessing at a number.
-        // Raised for whoever owns the schema to settle.
-        location: coordinatorDTO.engagementProfile?.primaryLocation,
-        duration: coordinatorDTO.engagementProfile?.sessionDuration,
-        audience: coordinatorDTO.engagementProfile?.audienceSize,
-        format_online:
-          coordinatorDTO.engagementProfile?.formats?.includes('Online'),
-        format_inperson:
-          coordinatorDTO.engagementProfile?.formats?.includes('Face-to-Face'),
-        format_prerecorded:
-          coordinatorDTO.engagementProfile?.formats?.includes('Pre-recorded'),
-        focus_lecture:
-          coordinatorDTO.engagementProfile?.deliveryFocus.includes(
-            'Seminar/Lecture',
-          ),
-        focus_casestudy:
-          coordinatorDTO.engagementProfile?.deliveryFocus.includes(
-            'Case Study',
-          ),
-        focus_workshop:
-          coordinatorDTO.engagementProfile?.deliveryFocus.includes(
-            'Interactive Workshop',
-          ),
-        focus_discussion:
-          coordinatorDTO.engagementProfile?.deliveryFocus.includes(
-            'Discussion Lead',
-          ),
-        focus_ama:
-          coordinatorDTO.engagementProfile?.deliveryFocus.includes(
-            'AMA Session',
-          ),
-      },
+    await prisma.coordinators.upsert({
+      where: { user_id: userId },
+      update: fields,
+      create: { user_id: userId, ...fields },
     });
 
-    for (const topic of coordinatorDTO.expertise?.selectedTopics ?? []) {
-      await prisma.user_expertise.create({
-        data: {
+    return this.findByUserId(auth0Id);
+  }
+
+  async saveExpertise(auth0Id: string, dto: ExpertiseDto) {
+    const userId = await resolveUserId(auth0Id);
+
+    // NOTE: experienceLevelsRequired has no matching column on `coordinators`
+    // (`experience` is a single Int?, the form collects a string list), so
+    // only discipline and learning_objective persist.
+    const fields = {
+      discipline: dto.industryRelevance,
+      learning_objective: dto.learningObjective,
+    };
+
+    await prisma.coordinators.upsert({
+      where: { user_id: userId },
+      update: fields,
+      create: { user_id: userId, ...fields },
+    });
+
+    // Replace the topic list wholesale rather than diffing it.
+    await prisma.user_expertise.deleteMany({ where: { user_id: userId } });
+    if (dto.selectedTopics.length > 0) {
+      await prisma.user_expertise.createMany({
+        data: dto.selectedTopics.map((expertise) => ({
           user_id: userId,
-          expertise: topic,
-        },
+          expertise,
+        })),
       });
     }
 
-    const availability = {
-      monday:
-        coordinatorDTO.engagementProfile?.schedule.preferredDays.includes(
-          'Monday',
-        ),
-      tuesday:
-        coordinatorDTO.engagementProfile?.schedule.preferredDays.includes(
-          'Tuesday',
-        ),
-      wednesday:
-        coordinatorDTO.engagementProfile?.schedule.preferredDays.includes(
-          'Wednesday',
-        ),
-      thursday:
-        coordinatorDTO.engagementProfile?.schedule.preferredDays.includes(
-          'Thursday',
-        ),
-      friday:
-        coordinatorDTO.engagementProfile?.schedule.preferredDays.includes(
-          'Friday',
-        ),
+    return this.findByUserId(auth0Id);
+  }
+
+  async saveEngagement(auth0Id: string, dto: EngagementDto) {
+    const userId = await resolveUserId(auth0Id);
+    const formats = dto.formats ?? [];
+
+    const coordinatorFields = {
+      location: dto.primaryLocation,
+      duration: dto.sessionDuration,
+      audience: dto.audienceSize,
+      format_online: formats.includes('online'),
+      format_inperson: formats.includes('face-to-face'),
+      format_prerecorded: formats.includes('pre-recorded'),
+      focus_lecture: dto.deliveryFocus.includes('Seminar/Lecture'),
+      focus_casestudy: dto.deliveryFocus.includes('Case Study'),
+      focus_workshop: dto.deliveryFocus.includes('Interactive Workshop'),
+      focus_discussion: dto.deliveryFocus.includes('Discussion Lead'),
+      focus_ama: dto.deliveryFocus.includes('AMA Session'),
     };
 
-    const availableFrom = new Date(
-      `1970-01-01T${coordinatorDTO.engagementProfile?.schedule.preferredFrom}:00`,
-    );
-    const availableTo = new Date(
-      `1970-01-01T${coordinatorDTO.engagementProfile?.schedule.preferredTo}:00`,
-    );
-
-    await prisma.availability.create({
-      data: {
-        user_id: userId,
-        ...availability,
-        available_from: availableFrom,
-        available_to: availableTo,
-        frequency:
-          coordinatorDTO.engagementProfile?.schedule.engagementFrequency,
-        notes: coordinatorDTO.engagementProfile?.schedule.scheduleNotes,
-      },
+    await prisma.coordinators.upsert({
+      where: { user_id: userId },
+      update: coordinatorFields,
+      create: { user_id: userId, ...coordinatorFields },
     });
+
+    const availableFrom = dto.schedule.preferredFrom
+      ? new Date(`1970-01-01T${dto.schedule.preferredFrom}:00Z`)
+      : undefined;
+    const availableTo = dto.schedule.preferredTo
+      ? new Date(`1970-01-01T${dto.schedule.preferredTo}:00Z`)
+      : undefined;
+
+    const availabilityData = {
+      monday: dto.schedule.preferredDays.includes('monday'),
+      tuesday: dto.schedule.preferredDays.includes('tuesday'),
+      wednesday: dto.schedule.preferredDays.includes('wednesday'),
+      thursday: dto.schedule.preferredDays.includes('thursday'),
+      friday: dto.schedule.preferredDays.includes('friday'),
+      available_from: availableFrom,
+      available_to: availableTo,
+      frequency: dto.schedule.engagementFrequency,
+      notes: dto.schedule.scheduleNotes,
+    };
+
+    const existingAvailability = await prisma.availability.findFirst({
+      where: { user_id: userId },
+    });
+
+    if (existingAvailability) {
+      await prisma.availability.update({
+        where: { id: existingAvailability.id },
+        data: availabilityData,
+      });
+    } else {
+      await prisma.availability.create({
+        data: { user_id: userId, ...availabilityData },
+      });
+    }
+
+    return this.findByUserId(auth0Id);
   }
+
+  /**
+   * Consent has no table of its own yet (schema gap), so this doesn't
+   * persist anything beyond what the earlier steps already saved. Kept as
+   * its own endpoint so the frontend's four-step flow doesn't change shape.
+   */
+  async saveConsent(auth0Id: string, _dto: ConsentDto) {
+    return this.findByUserId(auth0Id);
+  }
+
+  /**
+   * Every unit coordinator, from the database. What the discovery page lists.
+   */
+  async findAll() {
+    return prisma.coordinators.findMany({ orderBy: { coordinator_id: 'asc' } });
+  }
+
+  private toProfileDto(
+    coordinator: CoordinatorRow,
+    expertiseRows: ExpertiseRows,
+    availability: AvailabilityRow | null,
+  ) {
+    const formats: string[] = [];
+    if (coordinator.format_online) formats.push('online');
+    if (coordinator.format_inperson) formats.push('face-to-face');
+    if (coordinator.format_prerecorded) formats.push('pre-recorded');
+
+    const deliveryFocus: string[] = [];
+    if (coordinator.focus_lecture) deliveryFocus.push('Seminar/Lecture');
+    if (coordinator.focus_casestudy) deliveryFocus.push('Case Study');
+    if (coordinator.focus_workshop) deliveryFocus.push('Interactive Workshop');
+    if (coordinator.focus_discussion) deliveryFocus.push('Discussion Lead');
+    if (coordinator.focus_ama) deliveryFocus.push('AMA Session');
+
+    const preferredDays: string[] = [];
+    if (availability?.monday) preferredDays.push('monday');
+    if (availability?.tuesday) preferredDays.push('tuesday');
+    if (availability?.wednesday) preferredDays.push('wednesday');
+    if (availability?.thursday) preferredDays.push('thursday');
+    if (availability?.friday) preferredDays.push('friday');
+
+    return {
+      basicInformation: {
+        fullName: [coordinator.first_name, coordinator.last_name]
+          .filter(Boolean)
+          .join(' '),
+        bio: coordinator.bio ?? '',
+        photoPreview: '', // not persisted yet (schema gap)
+        schoolDepartment: coordinator.faculty ?? '',
+        academicRole: coordinator.role ?? '',
+      },
+      expertise: {
+        selectedTopics: expertiseRows.map((row) => row.expertise),
+        experienceLevelsRequired: [], // not persisted yet (schema gap)
+        industryRelevance: coordinator.discipline ?? '',
+        learningObjective: coordinator.learning_objective ?? '',
+      },
+      engagementProfile: {
+        primaryLocation: coordinator.location ?? '',
+        audienceSize: coordinator.audience ?? '',
+        deliveryFocus,
+        sessionDuration: coordinator.duration ?? '',
+        formats,
+        schedule: {
+          preferredDays,
+          preferredFrom: formatTime(availability?.available_from),
+          preferredTo: formatTime(availability?.available_to),
+          engagementFrequency: availability?.frequency ?? '',
+          scheduleNotes: availability?.notes ?? '',
+        },
+      },
+      consentPreferences: undefined, // not persisted yet (schema gap)
+    };
+  }
+}
+
+function formatTime(value: Date | null | undefined): string {
+  if (!value) return '';
+  return value.toISOString().slice(11, 16); // "HH:MM"
 }
