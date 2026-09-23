@@ -2,11 +2,29 @@ import { BadRequestException } from '@nestjs/common';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL,
-});
+// The real client is created lazily, on first use, rather than at import
+// time. main.ts imports AppModule (and everything it pulls in, including
+// this file) before loadEnvFile() has populated process.env.DATABASE_URL,
+// so constructing PrismaPg here at the top level would capture an empty
+// connection string. Deferring construction until the first query actually
+// runs means DATABASE_URL is already set by then.
+let realClient: PrismaClient | undefined;
 
-export const prisma = new PrismaClient({ adapter });
+function getClient(): PrismaClient {
+  if (!realClient) {
+    const adapter = new PrismaPg({
+      connectionString: process.env.DATABASE_URL,
+    });
+    realClient = new PrismaClient({ adapter });
+  }
+  return realClient;
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getClient(), prop, receiver);
+  },
+});
 
 /**
  * Resolves the numeric user id the schema uses from the Auth0 subject string.

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -17,7 +16,7 @@ export default function VerificationSuccess() {
     }, 1000);
 
     const redirect = setTimeout(() => {
-      router.replace("/login");
+      router.replace("/guest_lecturer/profile");
     }, 5000);
 
     return () => {
@@ -30,40 +29,22 @@ export default function VerificationSuccess() {
     <main className="w-full max-w-md px-8 flex flex-col items-center justify-center text-center">
       <div className="mb-12 flex justify-center">
         <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-gray-100">
-          <Image
-            src={check}
-            alt="Success"
-            width={52}
-            height={52}
-            className="object-contain"
-          />
+          <Image src={check} alt="Success" width={52} height={52} className="object-contain" />
         </div>
       </div>
-      <h1 className="text-5xl font-bold tracking-tight text-[#2d2d2d] mb-4">
-        Done
-      </h1>
-      <p className="text-lg text-gray-600 mb-12">
-        Email verified successfully!
-      </p>
+      <h1 className="text-5xl font-bold tracking-tight text-[#2d2d2d] mb-4">Done</h1>
+      <p className="text-lg text-gray-600 mb-12">Email verified successfully!</p>
       <div className="w-full space-y-6">
-        <Link
-          href="/login"
+        <button
+          type="button"
+          onClick={() => router.push("/guest_lecturer/profile")}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2d2d2d] px-6 py-4 text-lg font-medium text-white transition-colors hover:bg-black"
         >
-          <span>Log in</span>
-          <Image
-            src={arrow}
-            alt=""
-            width={18}
-            height={18}
-            className="object-contain"
-          />
-        </Link>
-        <p className="text-sm text-gray-500 tracking-wide">
-          Auto-redirecting in {seconds}s...
-        </p>
+          <span>Fill in profile information</span>
+          <Image src={arrow} alt="" width={18} height={18} className="object-contain" />
+        </button>
+        <p className="text-sm text-gray-500 tracking-wide">Auto-redirecting in {seconds}s...</p>
       </div>
-
     </main>
   );
 }

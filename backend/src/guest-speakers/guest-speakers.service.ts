@@ -3,161 +3,231 @@ import { BasicInformationDto } from './dto/basic-information.dto';
 import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
-
 import { prisma, resolveUserId, splitName } from '../prisma';
 
-export interface GuestSpeakerProfile {
-  userId: string;
-  basicInformation?: BasicInformationDto;
-  expertise?: ExpertiseDto;
-  engagementProfile?: EngagementDto;
-  consentPreferences?: ConsentDto;
-}
-
+type GuestRow = NonNullable<Awaited<ReturnType<typeof prisma.guests.findUnique>>>;
+type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
+type AvailabilityRow = Awaited<ReturnType<typeof prisma.availability.findFirst>>;
 @Injectable()
 export class GuestSpeakersService {
-  private profiles = new Map<string, GuestSpeakerProfile>();
-
-  private getOrCreate(userId: string): GuestSpeakerProfile {
-    let profile = this.profiles.get(userId);
-    if (!profile) {
-      profile = { userId };
-      this.profiles.set(userId, profile);
-    }
-    return profile;
-  }
-
-  findByUserId(userId: string): GuestSpeakerProfile | null {
-    return this.profiles.get(userId) ?? null;
-  }
-
-  saveBasicInformation(
-    userId: string,
-    dto: BasicInformationDto,
-  ): GuestSpeakerProfile {
-    const profile = this.getOrCreate(userId);
-    profile.basicInformation = dto;
-    return profile;
-  }
-
-  saveExpertise(userId: string, dto: ExpertiseDto): GuestSpeakerProfile {
-    const profile = this.getOrCreate(userId);
-    profile.expertise = dto;
-    return profile;
-  }
-
-  saveEngagement(userId: string, dto: EngagementDto): GuestSpeakerProfile {
-    const profile = this.getOrCreate(userId);
-    profile.engagementProfile = dto;
-    return profile;
-  }
-
   /**
-   * Saves consent, which is the last step of the profile form, and persists the
-   * assembled profile.
-   *
-   * The earlier steps collect into memory because the form is filled in over
-   * several requests. Consent is the point the person has finished and agreed,
-   * so it is the point the profile becomes a row.
+   * The caller's profile, assembled from the `guests` row plus its related
+   * `user_expertise` and `availability` rows, or null if they haven't saved
+   * anything yet.
    */
-  async saveConsent(
-    userId: string,
-    dto: ConsentDto,
-  ): Promise<GuestSpeakerProfile> {
-    const profile = this.getOrCreate(userId);
-    profile.consentPreferences = dto;
-    await this.createNewGuestInDatabase(profile);
-    return profile;
+  async findByUserId(auth0Id: string) {
+    const userId = await resolveUserId(auth0Id);
+
+    const guest = await prisma.guests.findUnique({
+      where: { user_id: userId },
+    });
+    if (!guest) {
+      return null;
+    }
+
+    const [expertiseRows, availability] = await Promise.all([
+      prisma.user_expertise.findMany({ where: { user_id: userId } }),
+      prisma.availability.findFirst({ where: { user_id: userId } }),
+    ]);
+
+    return this.toProfileDto(guest, expertiseRows, availability);
+  }
+
+  async saveBasicInformation(auth0Id: string, dto: BasicInformationDto) {
+    const userId = await resolveUserId(auth0Id);
+    const name = splitName(dto.fullName);
+
+    // NOTE: photoPreview has no column on `guests` yet, so it isn't persisted.
+    const fields = {
+      first_name: name.first_name,
+      last_name: name.last_name,
+      field: dto.professionalField,
+      role: dto.professionalRole,
+      bio: dto.bio,
+    };
+
+    await prisma.guests.upsert({
+      where: { user_id: userId },
+      update: fields,
+      create: { user_id: userId, ...fields },
+    });
+
+    return this.findByUserId(auth0Id);
+  }
+
+  async saveExpertise(auth0Id: string, dto: ExpertiseDto) {
+    const userId = await resolveUserId(auth0Id);
+
+    // NOTE: experienceLevel, hasSpeakingExperience and
+    // hasInternationalExperience have no columns on `guests` yet, so only
+    // prior_details, international_details and linkedIn_profile persist.
+    const fields = {
+      prior_details: dto.speakingDetails,
+      international_details: dto.internationalDetails,
+      linkedIn_profile: dto.linkedin,
+    };
+
+    await prisma.guests.upsert({
+      where: { user_id: userId },
+      update: fields,
+      create: { user_id: userId, ...fields },
+    });
+
+    // Replace the topic list wholesale rather than diffing it.
+    await prisma.user_expertise.deleteMany({ where: { user_id: userId } });
+    if (dto.selectedTopics.length > 0) {
+      await prisma.user_expertise.createMany({
+        data: dto.selectedTopics.map((expertise) => ({
+          user_id: userId,
+          expertise,
+        })),
+      });
+    }
+
+    return this.findByUserId(auth0Id);
+  }
+
+  async saveEngagement(auth0Id: string, dto: EngagementDto) {
+    const userId = await resolveUserId(auth0Id);
+    const formats = dto.formats ?? [];
+
+    const guestFields = {
+      location: dto.primaryLocation,
+      duration: dto.sessionDuration,
+      audience: dto.audienceSize,
+      format_online: formats.includes('Online'),
+      format_inperson: formats.includes('Face-to-Face'),
+      format_prerecorded: formats.includes('Pre-recorded'),
+      focus_lecture: dto.deliveryFocus.includes('Seminar/Lecture'),
+      focus_casestudy: dto.deliveryFocus.includes('Case Study'),
+      focus_workshop: dto.deliveryFocus.includes('Interactive Workshop'),
+      focus_discussion: dto.deliveryFocus.includes('Discussion Lead'),
+      focus_ama: dto.deliveryFocus.includes('AMA Session'),
+    };
+
+    await prisma.guests.upsert({
+      where: { user_id: userId },
+      update: guestFields,
+      create: { user_id: userId, ...guestFields },
+    });
+
+    const availableFrom = dto.schedule.availableFrom
+      ? new Date(`1970-01-01T${dto.schedule.availableFrom}:00`)
+      : undefined;
+    const availableTo = dto.schedule.availableTo
+      ? new Date(`1970-01-01T${dto.schedule.availableTo}:00`)
+      : undefined;
+
+    const availabilityData = {
+      monday: dto.schedule.availableDays.includes('Monday'),
+      tuesday: dto.schedule.availableDays.includes('Tuesday'),
+      wednesday: dto.schedule.availableDays.includes('Wednesday'),
+      thursday: dto.schedule.availableDays.includes('Thursday'),
+      friday: dto.schedule.availableDays.includes('Friday'),
+      available_from: availableFrom,
+      available_to: availableTo,
+      frequency: dto.schedule.availabilityFrequency,
+      notes: dto.schedule.availabilityNotes,
+    };
+
+    const existingAvailability = await prisma.availability.findFirst({
+      where: { user_id: userId },
+    });
+
+    if (existingAvailability) {
+      await prisma.availability.update({
+        where: { id: existingAvailability.id },
+        data: availabilityData,
+      });
+    } else {
+      await prisma.availability.create({
+        data: { user_id: userId, ...availabilityData },
+      });
+    }
+
+    return this.findByUserId(auth0Id);
   }
 
   /**
-   * Every guest speaker, from the database.
-   *
-   * This is what the discovery page lists, so it has to be the stored rows
-   * rather than whatever happens to be in this process's memory. Retrieving
-   * from the database was the step the client was told was outstanding.
+   * Consent has no table of its own yet (schema gap), so this doesn't
+   * persist anything beyond what the earlier steps already saved. Kept as
+   * its own endpoint so the frontend's four-step flow doesn't change shape.
+   */
+  async saveConsent(auth0Id: string, _dto: ConsentDto) {
+    return this.findByUserId(auth0Id);
+  }
+
+  /**
+   * Every guest speaker, from the database. What the discovery page lists.
    */
   async findAll() {
     return prisma.guests.findMany({ orderBy: { guest_id: 'asc' } });
   }
 
-  private async createNewGuestInDatabase(guestDTO: GuestSpeakerProfile) {
-    const userId = await resolveUserId(guestDTO.userId);
-    const name = splitName(guestDTO.basicInformation?.fullName);
+  private toProfileDto(
+    guest: GuestRow,
+    expertiseRows: ExpertiseRows,
+    availability: AvailabilityRow | null,
+  ) {
+    const formats: string[] = [];
+    if (guest.format_online) formats.push('Online');
+    if (guest.format_inperson) formats.push('Face-to-Face');
+    if (guest.format_prerecorded) formats.push('Pre-recorded');
 
-    await prisma.guests.create({
-      data: {
-        user_id: userId,
-        first_name: name.first_name,
-        last_name: name.last_name,
-        field: guestDTO.basicInformation?.professionalField,
-        role: guestDTO.basicInformation?.professionalRole,
-        bio: guestDTO.basicInformation?.bio,
-        prior_details: guestDTO.expertise?.speakingDetails,
-        international_details: guestDTO.expertise?.internationalDetails,
-        linkedIn_profile: guestDTO.expertise?.linkedin,
-        location: guestDTO.engagementProfile?.primaryLocation,
-        duration: guestDTO.engagementProfile?.sessionDuration,
-        audience: guestDTO.engagementProfile?.audienceSize,
-        format_online: guestDTO.engagementProfile?.formats?.includes('Online'),
-        format_inperson:
-          guestDTO.engagementProfile?.formats?.includes('Face-to-Face'),
-        format_prerecorded:
-          guestDTO.engagementProfile?.formats?.includes('Pre-recorded'),
-        focus_lecture:
-          guestDTO.engagementProfile?.deliveryFocus.includes('Seminar/Lecture'),
-        focus_casestudy:
-          guestDTO.engagementProfile?.deliveryFocus.includes('Case Study'),
-        focus_workshop: guestDTO.engagementProfile?.deliveryFocus.includes(
-          'Interactive Workshop',
-        ),
-        focus_discussion:
-          guestDTO.engagementProfile?.deliveryFocus.includes('Discussion Lead'),
-        focus_ama:
-          guestDTO.engagementProfile?.deliveryFocus.includes('AMA Session'),
+    const deliveryFocus: string[] = [];
+    if (guest.focus_lecture) deliveryFocus.push('Seminar/Lecture');
+    if (guest.focus_casestudy) deliveryFocus.push('Case Study');
+    if (guest.focus_workshop) deliveryFocus.push('Interactive Workshop');
+    if (guest.focus_discussion) deliveryFocus.push('Discussion Lead');
+    if (guest.focus_ama) deliveryFocus.push('AMA Session');
+
+    const availableDays: string[] = [];
+    if (availability?.monday) availableDays.push('Monday');
+    if (availability?.tuesday) availableDays.push('Tuesday');
+    if (availability?.wednesday) availableDays.push('Wednesday');
+    if (availability?.thursday) availableDays.push('Thursday');
+    if (availability?.friday) availableDays.push('Friday');
+
+    return {
+      basicInformation: {
+        fullName: [guest.first_name, guest.last_name]
+          .filter(Boolean)
+          .join(' '),
+        bio: guest.bio ?? '',
+        photoPreview: '', // not persisted yet (schema gap)
+        professionalField: guest.field ?? '',
+        professionalRole: guest.role ?? '',
       },
-    });
-
-    for (const topic of guestDTO.expertise?.selectedTopics ?? []) {
-      await prisma.user_expertise.create({
-        data: {
-          user_id: userId,
-          expertise: topic,
+      expertise: {
+        selectedTopics: expertiseRows.map((row) => row.expertise),
+        experienceLevel: '', // not persisted yet (schema gap)
+        hasSpeakingExperience: Boolean(guest.prior_details),
+        speakingDetails: guest.prior_details ?? '',
+        hasInternationalExperience: Boolean(guest.international_details),
+        internationalDetails: guest.international_details ?? '',
+        linkedin: guest.linkedIn_profile ?? '',
+      },
+      engagementProfile: {
+        primaryLocation: guest.location ?? '',
+        audienceSize: guest.audience ?? '',
+        deliveryFocus,
+        sessionDuration: guest.duration ?? '',
+        format: formats.join(', '),
+        formats,
+        schedule: {
+          availableDays,
+          availableFrom: formatTime(availability?.available_from),
+          availableTo: formatTime(availability?.available_to),
+          availabilityFrequency: availability?.frequency ?? '',
+          availabilityNotes: availability?.notes ?? '',
         },
-      });
-    }
-
-    const availability = {
-      monday:
-        guestDTO.engagementProfile?.schedule.availableDays.includes('Monday'),
-      tuesday:
-        guestDTO.engagementProfile?.schedule.availableDays.includes('Tuesday'),
-      wednesday:
-        guestDTO.engagementProfile?.schedule.availableDays.includes(
-          'Wednesday',
-        ),
-      thursday:
-        guestDTO.engagementProfile?.schedule.availableDays.includes('Thursday'),
-      friday:
-        guestDTO.engagementProfile?.schedule.availableDays.includes('Friday'),
-    };
-
-    const availableFrom = new Date(
-      `1970-01-01T${guestDTO.engagementProfile?.schedule.availableFrom}:00`,
-    );
-    const availableTo = new Date(
-      `1970-01-01T${guestDTO.engagementProfile?.schedule.availableTo}:00`,
-    );
-
-    await prisma.availability.create({
-      data: {
-        user_id: userId,
-        ...availability,
-        available_from: availableFrom,
-        available_to: availableTo,
-        frequency: guestDTO.engagementProfile?.schedule.availabilityFrequency,
-        notes: guestDTO.engagementProfile?.schedule.availabilityNotes,
       },
-    });
+      consentPreferences: undefined, // not persisted yet (schema gap)
+    };
   }
+}
+
+function formatTime(value: Date | null | undefined): string {
+  if (!value) return '';
+  return value.toISOString().slice(11, 16); // "HH:MM"
 }

@@ -9,24 +9,28 @@ export interface Messages extends CreateMessagesDto {
 
 @Injectable()
 export class MessagesService {
-  private messages: Messages[] = [];
-
-  create(createMessagesDto: CreateMessagesDto) {
-    const newMessage: Messages = {
-      messageId: crypto.randomUUID(),
+  /**
+   * Creates a message and returns the stored row.
+   *
+   * The row comes back from the database rather than from memory, so the id is
+   * the one the database assigned.
+   */
+  async create(createMessagesDto: CreateMessagesDto) {
+    return this.createNewMessageInDatabase({
+      messageId: '',
       sentAt: new Date(),
       ...createMessagesDto,
-    };
-    this.messages.push(newMessage);
-    return newMessage;
+    });
   }
 
-  findAll() {
-    return this.messages;
+  async findAll() {
+    return prisma.messages.findMany({
+      orderBy: { sent_at: 'desc' },
+    });
   }
 
   private async createNewMessageInDatabase(dto: Messages) {
-    await prisma.messages.create({
+    return prisma.messages.create({
       data: {
         match_id: toId(dto.matchId, 'matchId'),
         content: dto.content,

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerBasicInformation, saveGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 
 export default function BasicInformationForm() {
@@ -14,6 +14,9 @@ export default function BasicInformationForm() {
   const [professionalRole, setProfessionalRole] = useState("");
   const [bio, setBio] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
   useEffect(() => {
     let cancelled = false;
     async function loadDraft() {
@@ -57,7 +60,22 @@ export default function BasicInformationForm() {
   }
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push("/guest_lecturer/expertise");
+    setError("");
+    setIsSaving(true);
+    try {
+      await saveGuestLecturerBasicInformation({
+        fullName,
+        professionalField,
+        professionalRole,
+        bio,
+        photoPreview,
+      });
+      router.push("/guest_lecturer/expertise");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
   return (
     <main className="mx-auto w-full max-w-6xl">
@@ -162,12 +180,15 @@ export default function BasicInformationForm() {
           />
         </section>
 
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+
         <div className="flex justify-end">
           <button
             type="submit"
-            className="rounded-xl bg-black px-10 py-4 font-semibold text-white shadow-sm transition-all duration-200 hover:bg-gray-800 hover:shadow-md active:scale-[0.98]"
+            disabled={isSaving}
+            className="rounded-xl bg-black px-10 py-4 font-semibold text-white shadow-sm transition-all duration-200 hover:bg-gray-800 hover:shadow-md active:scale-[0.98] disabled:opacity-60"
           >
-            Next
+            {isSaving ? "Saving..." : "Next"}
           </button>
         </div>
       </form>

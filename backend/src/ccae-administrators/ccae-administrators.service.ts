@@ -10,24 +10,28 @@ export interface CcaeAdministrator extends CreateCcaeAdministratorDto {
 
 @Injectable()
 export class CcaeAdministratorsService {
-  private administrators: CcaeAdministrator[] = [];
-
-  create(createCcaeAdministratorDto: CreateCcaeAdministratorDto) {
-    const newAdministrator: CcaeAdministrator = {
-      adminId: crypto.randomUUID(),
+  /**
+   * Creates an administrator and returns the stored row.
+   *
+   * The row comes back from the database rather than from memory, so the id is
+   * the one the database assigned.
+   */
+  async create(createCcaeAdministratorDto: CreateCcaeAdministratorDto) {
+    return this.createUnitInDatabase({
+      adminId: '',
       lastLogin: new Date(),
       ...createCcaeAdministratorDto,
-    };
-    this.administrators.push(newAdministrator);
-    return newAdministrator;
+    });
   }
 
-  findAll() {
-    return this.administrators;
+  async findAll() {
+    return prisma.admins.findMany({
+      orderBy: { admin_id: 'desc' },
+    });
   }
 
   private async createUnitInDatabase(dto: CcaeAdministrator) {
-    await prisma.admins.create({
+    return prisma.admins.create({
       data: {
         admin_level: dto.adminLevel,
         last_login: dto.lastLogin,
