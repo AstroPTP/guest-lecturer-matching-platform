@@ -46,7 +46,7 @@ import { parseEnv } from 'node:util';
  * loaded, or null if there was no file to load.
  *
  * Variables already present in the real environment win. A value exported in
- * the shell, set by CircleCI or injected by the host must not be silently
+ * the shell, set by CI or injected by the host must not be silently
  * replaced by a stale line in a developer's local file.
  */
 export function loadEnvFile(directory: string = process.cwd()): string | null {
