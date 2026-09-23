@@ -49,7 +49,7 @@ describe('loadEnvFile', () => {
   });
 
   it('leaves a variable already set in the real environment alone', () => {
-    // A value exported in the shell, set by CircleCI or injected by the host
+    // A value exported in the shell, set by CI or injected by the host
     // must win over a stale line in someone's local file.
     process.env.GLMA_SPEC_PRESET = 'from the environment';
     const directory = directoryContaining('GLMA_SPEC_PRESET=from the file\n');
