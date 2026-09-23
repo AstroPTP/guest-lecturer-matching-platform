@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import { getGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerExpertise, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
 export default function ExpertiseForm() {
   const router = useRouter();
@@ -14,6 +14,9 @@ export default function ExpertiseForm() {
   const [hasInternationalExperience, setHasInternationalExperience] = useState(false);
   const [internationalDetails, setInternationalDetails] = useState("");
   const [linkedin, setLinkedin] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState("");
+
   useEffect(() => {
     let cancelled = false;
     async function loadDraft() {
@@ -62,7 +65,24 @@ export default function ExpertiseForm() {
       return;
     }
 
-    router.push("/guest_lecturer/engagement");
+    setError("");
+    setIsSaving(true);
+    try {
+      await saveGuestLecturerExpertise({
+        selectedTopics,
+        experienceLevel,
+        hasSpeakingExperience,
+        speakingDetails: hasSpeakingExperience ? speakingDetails : "",
+        hasInternationalExperience,
+        internationalDetails: hasInternationalExperience ? internationalDetails : "",
+        linkedin,
+      });
+      router.push("/guest_lecturer/engagement");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
   return (
     <main className="mx-auto w-full max-w-6xl">
@@ -240,7 +260,9 @@ export default function ExpertiseForm() {
           <p className="mt-2 text-sm text-gray-500">Optional, but highly recommended for verification.</p>
         </section>
 
-        <FormNavButtons submitLabel="Next" />
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+
+        <FormNavButtons submitLabel={isSaving ? "Saving..." : "Next"} />
       </form>
     </main>
   );
