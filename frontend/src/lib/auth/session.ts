@@ -34,12 +34,25 @@ const ROLES_CLAIM = 'https://glmp.curtin.edu.au/roles';
 /**
  * The raw access token, for attaching to a backend call server-side.
  *
- * Returns null rather than throwing when there is no session, so a caller can
- * treat signed-out as an ordinary case.
+ * Goes through getAccessToken() rather than reading the session directly, so
+ * an expired token is refreshed (when a refresh token exists) instead of being
+ * sent and rejected. Call this from a route handler, where the SDK can write
+ * the updated session cookie; a Server Component cannot.
+ *
+ * Returns null rather than throwing when there is no session, or the token
+ * cannot be refreshed, so a caller can treat signed-out as an ordinary case.
  */
 export async function readAccessToken(): Promise<string | null> {
   const session = await auth0.getSession();
-  return session?.tokenSet?.accessToken ?? null;
+  if (!session) {
+    return null;
+  }
+  try {
+    const { token } = await auth0.getAccessToken();
+    return token ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
