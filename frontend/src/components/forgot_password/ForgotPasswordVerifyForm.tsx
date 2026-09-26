@@ -24,7 +24,8 @@ export default function ForgotPasswordVerifyForm({ email }: ForgotPasswordVerify
           body: JSON.stringify({ email, verificationCode: code }),
         });
         if (!response.ok) {
-          throw new Error("Invalid or expired code.");
+          const failure = await response.json().catch(() => null);
+          throw new Error(failure?.error || "Invalid verification code. Please try again.");
         }
         router.push("/reset_password");
       }}

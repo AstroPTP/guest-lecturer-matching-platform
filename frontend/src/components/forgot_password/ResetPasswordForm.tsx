@@ -1,6 +1,7 @@
 "use client";
 
 import { getPasswordRequirements } from "@/lib/validation";
+import { resetPassword } from "@/services/settings/settingsService";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,8 @@ export default function ResetPasswordForm() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const {hasMinLength,hasUppercase, hasNumber,  hasSpecialCharacter, strength: passwordStrength, isValid: isPasswordValid} = getPasswordRequirements(newPassword);
   const passwordsMatch = newPassword === confirmPassword && confirmPassword !== "";
   const strengthState = newPassword.length === 0  ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1  ? { label: "Weak", color: "#EF4444" }: passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" }: { label: "Strong", color: "#10B981" };
@@ -29,6 +32,17 @@ export default function ResetPasswordForm() {
 
     if (!passwordsMatch) {
       alert("Passwords do not match.");
+      return;
+    }
+
+    // The forgot-password OTP signed the user in; the backend sets the new
+    // password on the account that shares the verified email.
+    setSubmitError(null);
+    setIsSubmitting(true);
+    const result = await resetPassword(newPassword);
+    setIsSubmitting(false);
+    if (!result.success) {
+      setSubmitError(result.error ?? "Could not set your new password. Try again.");
       return;
     }
 
@@ -150,14 +164,17 @@ export default function ResetPasswordForm() {
               {passwordsMatch ? "Passwords match." : "Passwords do not match."}
             </p>
           )}
+
+          {submitError && <p className="text-sm font-medium text-[#EF4444]">{submitError}</p>}
         </div>
 
         <div className="pt-8">
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors"
+            disabled={isSubmitting}
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors disabled:opacity-60"
           >
-            Set new password
+            {isSubmitting ? "Setting…" : "Set new password"}
           </button>
         </div>
       </form>

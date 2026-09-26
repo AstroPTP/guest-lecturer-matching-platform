@@ -3,7 +3,7 @@ import { auth0 } from "@/lib/auth0";
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
-  const email = typeof body?.email === "string" ? body.email.trim() : "";
+  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
 
   if (!email) {
     return NextResponse.json({ error: "Email is required." }, { status: 400 });
