@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { AppRole } from '../auth/roles';
+import { ErrorCode } from '../common/error-codes';
 import { prisma, resolveUserId } from '../prisma';
 
 type Identity = { provider: string; connection: string; user_id: string };
@@ -354,36 +356,43 @@ export class SettingsService {
   }
 
   /**
-   * Copies roles from the caller's other verified sign-ins onto their password
-   * account. `changed: true` tells the login route to request a new token,
-   * because the one it holds was issued before the roles were written.
+   * Gives a password account with no role the role held by the same person's
+   * other verified sign-in. `changed: true` tells the login route to request a
+   * new token, because the one it holds was issued before the role was written.
+   *
+   * One email holds one role, so an account that already has a role is never
+   * given another, and an ambiguous source (two different roles) is ignored.
    */
   async syncRoles(id: string) {
     const caller = await this.management<AuthUser>(this.userPath(id));
     if (!isDatabaseUser(caller) || !caller.email || !caller.email_verified) {
       return { changed: false };
     }
+    if (rolesOf(caller).length > 0) {
+      return { changed: false };
+    }
 
-    const current = rolesOf(caller);
-    const roles = [
-      ...new Set([
-        ...current,
-        ...carriedRoles(await this.findByEmail(caller.email)),
-      ]),
+    const carried = [
+      ...new Set(carriedRoles(await this.findByEmail(caller.email))),
     ];
-    if (roles.length === current.length) {
+    if (carried.length !== 1) {
       return { changed: false };
     }
 
     await this.management(this.userPath(id), 'PATCH', {
-      app_metadata: { roles },
+      app_metadata: { roles: carried },
     });
     return { changed: true };
   }
 
   /**
-   * Creates the password account for a caller whose email the registration
-   * OTP has just verified, or adds the chosen role if one already exists.
+   * Creates the password account, with its one role, for a caller whose email
+   * the registration OTP has just verified.
+   *
+   * One email holds one account and one role. An email that already has a
+   * password account is refused rather than given another role or a new
+   * password: reporting success there left users unable to sign in with the
+   * password they had just typed.
    */
   async completeRegistration(
     id: string,
@@ -395,18 +404,16 @@ export class SettingsService {
       choice === 'coordinator' ? AppRole.UnitCoordinator : AppRole.GuestSpeaker;
     const email = await this.verifiedEmail(id);
     const accounts = await this.findByEmail(email);
-    const existing = accounts.find(isDatabaseUser);
-    const current = existing ? rolesOf(existing) : [];
-    const roles = [...new Set([...current, ...carriedRoles(accounts), role])];
 
-    if (existing) {
-      if (roles.length !== current.length) {
-        await this.management(this.userPath(existing.user_id), 'PATCH', {
-          app_metadata: { roles },
-        });
-      }
-      return { success: true };
+    if (accounts.some(isDatabaseUser)) {
+      throw new ConflictException({
+        code: ErrorCode.AccountExists,
+        message:
+          'An account with this email already exists. Please log in or reset your password.',
+      });
     }
+
+    const roles = [role];
 
     await this.management('/users', 'POST', {
       connection:
