@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth0 } from "@/lib/auth0";
+import { backendUrl } from "@/lib/auth/config";
 import { storePendingRegistration } from "@/lib/auth/pendingRegistration";
 import { clientAddress, tooManyAttempts } from "@/lib/rateLimit";
 
@@ -26,6 +27,28 @@ export async function POST(req: NextRequest) {
 
   if (tooManyAttempts(`register|${clientAddress(req.headers)}`, MAX_ATTEMPTS_PER_MINUTE)) {
     return NextResponse.json({ error: "Too many attempts. Please wait a minute and try again." }, { status: 429 });
+  }
+
+  // One email holds one account. Refuse before sending a code, so the user
+  // is told straight away instead of after verifying. The backend refuses a
+  // duplicate again when the account is created.
+  const status = await fetch(`${backendUrl()}/settings/account-status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+    cache: "no-store",
+  }).catch(() => null);
+  if (!status?.ok) {
+    return NextResponse.json({ error: "We couldn't check your account. Please try again." }, { status: 502 });
+  }
+  if (((await status.json()) as { exists?: boolean }).exists === true) {
+    return NextResponse.json(
+      {
+        code: "ACCOUNT_EXISTS",
+        error: "An account with this email already exists. Please log in or reset your password.",
+      },
+      { status: 409 },
+    );
   }
 
   try {
