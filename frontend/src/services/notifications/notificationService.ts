@@ -1,8 +1,8 @@
-import { apiFetch } from "@/lib/apiClient";
+import { backendFetch } from "@/lib/api/backendClient";
 import type { AppNotification, CreateNotificationData } from "@/types/notifications/notificationTypes";
 
 export async function getNotifications(): Promise<AppNotification[]> {
-  return apiFetch("/notifications");
+  return backendFetch("/notifications");
 }
 
 export async function getUnreadNotificationCount(): Promise<number> {
@@ -11,13 +11,13 @@ export async function getUnreadNotificationCount(): Promise<number> {
 }
 
 export async function createNotification(data: CreateNotificationData): Promise<AppNotification> {
-  return apiFetch("/notifications", { method: "POST", body: JSON.stringify(data) });
+  return backendFetch("/notifications", { method: "POST", body: JSON.stringify(data) });
 }
 
 export async function markNotificationAsRead(id: string): Promise<AppNotification> {
-  return apiFetch(`/notifications/${id}/read`, { method: "PATCH" });
+  return backendFetch(`/notifications/${id}/read`, { method: "PATCH" });
 }
 
 export async function markAllNotificationsAsRead(): Promise<{ success: boolean }> {
-  return apiFetch("/notifications/read-all", { method: "PATCH" });
+  return backendFetch("/notifications/read-all", { method: "PATCH" });
 }

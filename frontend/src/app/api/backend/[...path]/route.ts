@@ -40,6 +40,16 @@ const HOP_BY_HOP = new Set([
 async function forward(request: NextRequest, path: string[]) {
   const token = await readAccessToken();
 
+  // No session, or it could not be refreshed. Answer here rather than sending
+  // an unauthenticated call the backend would refuse anyway; backendFetch
+  // turns this 401 into a redirect to /login.
+  if (!token) {
+    return NextResponse.json(
+      { code: 'AUTH_REQUIRED', message: 'Please sign in to continue.' },
+      { status: 401 },
+    );
+  }
+
   const headers = new Headers();
   request.headers.forEach((value, key) => {
     if (!HOP_BY_HOP.has(key.toLowerCase())) {
@@ -47,9 +57,7 @@ async function forward(request: NextRequest, path: string[]) {
     }
   });
 
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
+  headers.set('Authorization', `Bearer ${token}`);
 
   // Echoed back by the backend's GlobalExceptionFilter, so an id on a user's
   // error screen matches the server log line that produced it (REP-06).
@@ -60,6 +68,7 @@ async function forward(request: NextRequest, path: string[]) {
   const target = `${backendUrl()}/${path.join('/')}${request.nextUrl.search}`;
 
   const response = await fetch(target, {
+    cache: 'no-store',
     method: request.method,
     headers,
     body: ['GET', 'HEAD'].includes(request.method)
@@ -86,6 +95,8 @@ async function forward(request: NextRequest, path: string[]) {
     status: response.status,
     headers: {
       'Content-Type': response.headers.get('content-type') ?? 'application/json',
+      // Per-user data; no shared cache may keep it.
+      'Cache-Control': 'no-store',
     },
   });
 }
