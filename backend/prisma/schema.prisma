@@ -12,6 +12,7 @@ datasource db {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Availability can be one of the following: WEEKLY, FORTNIGHTLY, MONTHLY, AVAILABLE ON REQUEST
 model availability {
   id             BigInt    @id @default(autoincrement())
   user_id        BigInt?   
@@ -28,6 +29,9 @@ model availability {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Faculty can be one of the following: LAW, ACCOUNTING, MANAGEMENT, INFORMATION SYSTEMS, OTHER
+/// Role can be one of the following: UNIT COORDINATOR, COURSE COORDINATOR, LECTURER, SENIOR LECTURER, ASSOCIATE PROFESSOR, PROFESSOR, ACADEMIC LEAD
+/// Experience can be one of the following: EARLY CAREER, MID CAREER, SENIOR PROFESSIONAL, EXECUTIVE
 model coordinators {
   coordinator_id     BigInt   @id @default(autoincrement())
   user_id            BigInt?  @unique
@@ -57,6 +61,7 @@ model coordinators {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Expertise can be one of the following: ACCOUNTING, BANKING & FINANCE, BUSINESS ANALYTICS, BUSINESS ETHICS, CORORATE GOVERNANCE, CORPORATE LAW, ECONOMICS, EMPLOYMENT LAW, ENTREPRENEURSHIP, FINANCE & INVESTMENT, HUMAN RESOURCE MANAGEMENT, INTERNATIONAL BUSINESS, INTERNATIONAL TRADE LAW, MANAGEMENT, MARKETING STRATEGY, RISK MANAGEMENT, TAXATION LAW, ESG & SUSTAINABILITY
 model user_expertise {
   user_id   BigInt 
   expertise String @db.VarChar
@@ -66,6 +71,10 @@ model user_expertise {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Field can be one of the following: ACCOUNTING, BANKING & FINANCE, BUSINESS ANALYTICS, ECONOMICS, ENTREPRENEURSHIP, HUMAN RESOURCE MANAGEMENT, INTERNATIONAL BUSINESS, MANAGEMENT, MARKETING, COMMERCIAL LAW, CORPORATE LAW, EMPLOYMENT LAW, TAXATION LAW
+/// Role can be one of the following: EXECUTIVE, SENIOR MANAGER, DIRECTOR, CONSULTANT, BUSINESS OWNER, PRACTITIONER, SOLICITOR, BARRISTER, JUDGE, GOVERNMENT OFFICER
+// Duration can be one of the following: 30 MINUTES, 60 MINUTES, 90 MINUTES, 120 MINUTES, FLEXIBLE
+// Audience can be one of the following: SMALL, MEDIUM, LARGE, NO PREFERENCE
 model guests {
   guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
   user_id               BigInt?  @unique
@@ -94,6 +103,7 @@ model guests {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+///
 model users {
   userid                BigInt         @id @default(autoincrement())
   auth0Id               String         @unique @db.VarChar
@@ -121,6 +131,8 @@ model units{
   unit_name String @db.VarChar
 }
 
+///
+///Status can be either: "PENDING," "ACCEPTED" or "REJECTED"
 model match_requests{
   match_id        BigInt    @id @default(autoincrement())
   coordinator_id  BigInt
