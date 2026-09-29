@@ -35,6 +35,7 @@ model availability {
 model coordinators {
   coordinator_id     BigInt   @id @default(autoincrement())
   user_id            BigInt?  @unique
+  profile_image_id   BigInt?
   first_name         String?  @db.VarChar
   last_name          String?  @db.VarChar
   faculty            String?  @db.VarChar
@@ -57,7 +58,7 @@ model coordinators {
   location           String?  @db.VarChar
   users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
   match_requests match_requests[]
-
+  image                 images?  @relation(fields: [profile_image_id], references: [image_id])
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -78,6 +79,7 @@ model user_expertise {
 model guests {
   guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
   user_id               BigInt?  @unique
+  profile_image_id      BigInt?
   first_name            String?  @db.VarChar
   last_name             String?  @db.VarChar
   field                 String?  @db.VarChar
@@ -99,6 +101,7 @@ model guests {
   focus_ama             Boolean? @default(false)
   created_at            DateTime @default(now()) @db.Timestamptz(6)
   users                 users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "Guest_user_id_fkey")
+  image                 images?  @relation(fields: [profile_image_id], references: [image_id])
   match_requests match_requests[]
 }
 
@@ -147,13 +150,27 @@ model match_requests{
   message messages[]
 
   @@unique([coordinator_id, guest_id])
-}
+} 
 
 model messages{
   message_id BigInt     @id @default(autoincrement())
   match_id BigInt       
   content String        @db.VarChar
+  image_id BigInt
   sent_at DateTime?     @db.Timestamp(6)
 
-  match match_requests @relation(fields: [match_id], references: [match_id], onDelete: Cascade)
+  image                 images?  @relation(fields: [image_id], references: [image_id])
+  match match_requests  @relation(fields: [match_id], references: [match_id], onDelete: Cascade)
+}
+
+model images{
+  image_id BigInt       @id @default(autoincrement())
+  image_data Bytes      
+  mime_type String
+  filename String
+  uploaded_at DateTime @default(now())
+
+  guests guests[]
+  coordinators coordinators[]
+  messages messages[]
 }
