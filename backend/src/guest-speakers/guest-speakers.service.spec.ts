@@ -4,11 +4,13 @@ import { BasicInformationDto } from './dto/basic-information.dto';
 import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
+import { prisma } from '../prisma';
 
 describe('GuestSpeakersService', () => {
   let service: GuestSpeakersService;
 
-  const userId = 'user-123';
+  // Auth0 subject; the double's resolveUserId maps every subject to 1n.
+  const userId = 'auth0|user-123';
 
   const basicInformation: BasicInformationDto = {
     fullName: 'Jane Doe',
@@ -61,89 +63,103 @@ describe('GuestSpeakersService', () => {
     service = module.get<GuestSpeakersService>(GuestSpeakersService);
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('should be defined', () => {
     expect(service).toBeDefined();
   });
 
+  // The service writes through Prisma now rather than an in-memory map, so
+  // these tests assert what it sends to the database. The real round trip is
+  // covered by running the application.
   describe('findByUserId', () => {
-    it('should return null when no profile exists for the user', () => {
-      expect(service.findByUserId(userId)).toBeNull();
+    it('returns null when no guest row exists', async () => {
+      await expect(service.findByUserId(userId)).resolves.toBeNull();
     });
   });
 
   describe('saveBasicInformation', () => {
-    it('should create a profile and set basicInformation', () => {
-      const result = service.saveBasicInformation(userId, basicInformation);
+    it('saves the guest row with the split name and profile fields', async () => {
+      const upsert = jest.spyOn(prisma.guests, 'upsert');
 
-      expect(result.userId).toBe(userId);
-      expect(result.basicInformation).toEqual(basicInformation);
-    });
+      await service.saveBasicInformation(userId, basicInformation);
 
-    it('should update basicInformation on an existing profile without overwriting other sections', () => {
-      service.saveExpertise(userId, expertise);
-      const result = service.saveBasicInformation(userId, basicInformation);
-
-      expect(result.basicInformation).toEqual(basicInformation);
-      expect(result.expertise).toEqual(expertise);
+      const fields = {
+        first_name: 'Jane',
+        last_name: 'Doe',
+        field: 'Cybersecurity',
+        role: 'Principal Consultant',
+        bio: 'Security researcher and educator.',
+      };
+      expect(upsert).toHaveBeenCalledWith({
+        where: { user_id: 1n },
+        update: fields,
+        create: { user_id: 1n, ...fields },
+      });
     });
   });
 
   describe('saveExpertise', () => {
-    it('should set expertise on the profile', () => {
-      const result = service.saveExpertise(userId, expertise);
+    it('replaces the topic list wholesale', async () => {
+      const deleteMany = jest.spyOn(prisma.user_expertise, 'deleteMany');
+      const createMany = jest.spyOn(prisma.user_expertise, 'createMany');
 
-      expect(result.expertise).toEqual(expertise);
+      await service.saveExpertise(userId, expertise);
+
+      expect(deleteMany).toHaveBeenCalledWith({ where: { user_id: 1n } });
+      expect(createMany).toHaveBeenCalledWith({
+        data: [
+          { user_id: 1n, expertise: 'Zero Trust' },
+          { user_id: 1n, expertise: 'Cloud Security' },
+        ],
+      });
+    });
+
+    it('does not insert topics when none are selected', async () => {
+      const createMany = jest.spyOn(prisma.user_expertise, 'createMany');
+
+      await service.saveExpertise(userId, { ...expertise, selectedTopics: [] });
+
+      expect(createMany).not.toHaveBeenCalled();
     });
   });
 
   describe('saveEngagement', () => {
-    it('should set engagementProfile on the profile', () => {
-      const result = service.saveEngagement(userId, engagement);
+    it('creates an availability row when none exists', async () => {
+      const create = jest.spyOn(prisma.availability, 'create');
 
-      expect(result.engagementProfile).toEqual(engagement);
+      await service.saveEngagement(userId, engagement);
+
+      expect(create).toHaveBeenCalledTimes(1);
+    });
+
+    it('updates the existing availability row instead of adding another', async () => {
+      jest
+        .spyOn(prisma.availability, 'findFirst')
+        .mockResolvedValue({ id: 7n } as never);
+      const update = jest.spyOn(prisma.availability, 'update');
+      const create = jest.spyOn(prisma.availability, 'create');
+
+      await service.saveEngagement(userId, engagement);
+
+      expect(update).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 7n } }),
+      );
+      expect(create).not.toHaveBeenCalled();
     });
   });
 
   describe('saveConsent', () => {
-    it('should set consentPreferences on the profile', async () => {
-      const result = await service.saveConsent(userId, consent);
-
-      expect(result.consentPreferences).toEqual(consent);
+    it('persists nothing and returns the current profile', async () => {
+      await expect(service.saveConsent(userId, consent)).resolves.toBeNull();
     });
   });
 
-  // findAll now reads the database rather than this process's memory, which is
-  // the point of the change: the discovery page has to show stored rows, not
-  // whatever one server happens to be holding. Against the test double that is
-  // an empty list, so what is asserted here is the contract, and the real
-  // retrieval is covered by running the application.
   describe('findAll', () => {
     it('returns what the database holds', async () => {
       await expect(service.findAll()).resolves.toEqual([]);
-    });
-
-    it('does not return unsaved in-memory profiles', async () => {
-      service.saveBasicInformation('user-1', basicInformation);
-      service.saveBasicInformation('user-2', basicInformation);
-
-      await expect(service.findAll()).resolves.toEqual([]);
-    });
-
-    it('assembles the sections for one user into a single profile', async () => {
-      service.saveBasicInformation(userId, basicInformation);
-      service.saveExpertise(userId, expertise);
-      service.saveEngagement(userId, engagement);
-      await service.saveConsent(userId, consent);
-
-      // findByUserId still reads the in-progress profile, which is what the
-      // form needs while it is being filled in over several requests.
-      expect(service.findByUserId(userId)).toEqual({
-        userId,
-        basicInformation,
-        expertise,
-        engagementProfile: engagement,
-        consentPreferences: consent,
-      });
     });
   });
 });

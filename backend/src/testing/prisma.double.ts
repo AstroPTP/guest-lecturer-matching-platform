@@ -17,7 +17,10 @@ function model(): Record<string, AnyFn> {
     findFirst: () => Promise.resolve(null),
     findUnique: () => Promise.resolve(null),
     update: () => Promise.resolve({}),
+    upsert: () => Promise.resolve({}),
     delete: () => Promise.resolve({}),
+    createMany: () => Promise.resolve({ count: 0 }),
+    deleteMany: () => Promise.resolve({ count: 0 }),
   };
 }
 
