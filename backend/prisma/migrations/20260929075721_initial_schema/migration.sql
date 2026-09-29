@@ -19,12 +19,13 @@ CREATE TABLE "availability" (
 CREATE TABLE "coordinators" (
     "coordinator_id" BIGSERIAL NOT NULL,
     "user_id" BIGINT,
+    "profile_image_id" BIGINT,
     "first_name" VARCHAR,
     "last_name" VARCHAR,
     "faculty" VARCHAR,
     "role" VARCHAR,
     "bio" VARCHAR,
-    "experience" INTEGER,
+    "required_experience" VARCHAR,
     "discipline" VARCHAR,
     "learning_objective" VARCHAR,
     "duration" TEXT,
@@ -55,10 +56,12 @@ CREATE TABLE "user_expertise" (
 CREATE TABLE "guests" (
     "guest_id" BIGSERIAL NOT NULL,
     "user_id" BIGINT,
+    "profile_image_id" BIGINT,
     "first_name" VARCHAR,
     "last_name" VARCHAR,
     "field" VARCHAR,
     "role" VARCHAR,
+    "experience" VARCHAR,
     "bio" VARCHAR,
     "prior_details" VARCHAR,
     "international_details" VARCHAR,
@@ -82,7 +85,7 @@ CREATE TABLE "guests" (
 -- CreateTable
 CREATE TABLE "users" (
     "userid" BIGSERIAL NOT NULL,
-    "auth0Id" VARCHAR,
+    "auth0Id" VARCHAR NOT NULL,
     "email" TEXT,
     "role" TEXT,
     "consentstate" BOOLEAN,
@@ -127,9 +130,21 @@ CREATE TABLE "messages" (
     "message_id" BIGSERIAL NOT NULL,
     "match_id" BIGINT NOT NULL,
     "content" VARCHAR NOT NULL,
+    "image_id" BIGINT NOT NULL,
     "sent_at" TIMESTAMP(6),
 
     CONSTRAINT "messages_pkey" PRIMARY KEY ("message_id")
+);
+
+-- CreateTable
+CREATE TABLE "images" (
+    "image_id" BIGSERIAL NOT NULL,
+    "image_data" BYTEA NOT NULL,
+    "mime_type" TEXT NOT NULL,
+    "filename" TEXT NOT NULL,
+    "uploaded_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "images_pkey" PRIMARY KEY ("image_id")
 );
 
 -- CreateIndex
@@ -137,6 +152,9 @@ CREATE UNIQUE INDEX "coordinators_user_id_key" ON "coordinators"("user_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "guests_user_id_key" ON "guests"("user_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_auth0Id_key" ON "users"("auth0Id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "match_requests_coordinator_id_guest_id_key" ON "match_requests"("coordinator_id", "guest_id");
@@ -148,16 +166,25 @@ ALTER TABLE "availability" ADD CONSTRAINT "availability_user_id_fkey" FOREIGN KE
 ALTER TABLE "coordinators" ADD CONSTRAINT "cooridnator_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("userid") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "coordinators" ADD CONSTRAINT "coordinators_profile_image_id_fkey" FOREIGN KEY ("profile_image_id") REFERENCES "images"("image_id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "user_expertise" ADD CONSTRAINT "user_expertise_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("userid") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "guests" ADD CONSTRAINT "Guest_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("userid") ON DELETE NO ACTION ON UPDATE NO ACTION;
 
 -- AddForeignKey
+ALTER TABLE "guests" ADD CONSTRAINT "guests_profile_image_id_fkey" FOREIGN KEY ("profile_image_id") REFERENCES "images"("image_id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "match_requests" ADD CONSTRAINT "match_requests_coordinator_id_fkey" FOREIGN KEY ("coordinator_id") REFERENCES "coordinators"("coordinator_id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "match_requests" ADD CONSTRAINT "match_requests_guest_id_fkey" FOREIGN KEY ("guest_id") REFERENCES "guests"("guest_id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "messages" ADD CONSTRAINT "messages_image_id_fkey" FOREIGN KEY ("image_id") REFERENCES "images"("image_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "messages" ADD CONSTRAINT "messages_match_id_fkey" FOREIGN KEY ("match_id") REFERENCES "match_requests"("match_id") ON DELETE CASCADE ON UPDATE CASCADE;
