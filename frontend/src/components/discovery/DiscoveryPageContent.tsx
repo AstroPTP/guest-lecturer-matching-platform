@@ -28,6 +28,10 @@ import { normalizeOptionValue } from "@/utils/displayFormatters";
 
 const CURRENT_USER_PLACEHOLDER_ID = "";
 
+// Audience sizes that don't rule any size out, so a coordinator with one of
+// these matches whichever audience size a guest lecturer filters on.
+const OPEN_AUDIENCE_SIZES = ["no-preference", "unknown"];
+
 type DiscoveryAction = "interest" | "dismiss";
 interface DiscoveryHistoryItem {
   action: DiscoveryAction;
@@ -497,7 +501,10 @@ function applyGuestLecturerFilters(items: DiscoveryItem[], filters: GuestLecture
     const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => includesOption(expertise.selectedTopics, topic));
     const matchesFormats = filters.formats.length === 0 || filters.formats.some((format) => includesOption(engagementProfile.formats, format));
     const matchesDurations = filters.sessionDurations.length === 0 || includesOption(filters.sessionDurations, engagementProfile.sessionDuration);
-    const matchesAudience = filters.audienceSizes.length === 0 || includesOption(filters.audienceSizes, engagementProfile.audienceSize);
+    const matchesAudience =
+      filters.audienceSizes.length === 0 ||
+      includesOption(OPEN_AUDIENCE_SIZES, engagementProfile.audienceSize) ||
+      includesOption(filters.audienceSizes, engagementProfile.audienceSize);
     const matchesDays = filters.preferredDays.length === 0 || filters.preferredDays.some((day) => includesOption(engagementProfile.schedule.preferredDays, day));
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
     return matchesTopics && matchesFormats && matchesDurations && matchesAudience && matchesDays && matchesLocation;
