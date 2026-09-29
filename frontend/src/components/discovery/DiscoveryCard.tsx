@@ -8,10 +8,13 @@ import {
   experienceLevels,
   expertiseTopics,
   formatOptions,
+  guestLecturerAudienceSizeOptions,
+  guestLecturerAvailabilityFrequencyOptions,
   sessionDurationOptions,
   unitCoordinatorAudienceSizeOptions,
   weekDays,
 } from "@/constants/profileOptions/shared";
+import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 import { academicRoleOptions, engagementFrequencyOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
 import { formatOptionLabel } from "@/utils/displayFormatters";
 import DiscoverySection from "./DiscoverySection";
@@ -35,8 +38,8 @@ export default function DiscoveryCard({
   let role = "";
  let organisation = "";
   if (item.profileType === "guestLecturer") {
-    role = item.profile.basicInformation.professionalRole;
-    organisation = item.profile.basicInformation.professionalField;
+    role = formatOptionLabel(item.profile.basicInformation.professionalRole, professionalRoleOptions);
+    organisation = formatOptionLabel(item.profile.basicInformation.professionalField, professionalFieldOptions);
   } else {
     role = formatOptionLabel(item.profile.basicInformation.academicRole, academicRoleOptions);
     organisation = formatOptionLabel(item.profile.basicInformation.schoolDepartment, schoolDepartmentOptions);
@@ -105,24 +108,24 @@ function GuestLecturerDetails({ profile }: { profile: PublicGuestLecturerProfile
       <div className="grid grid-cols-1 border-t border-gray-200 md:grid-cols-2">
         <DiscoverySection title="Engagement Requirements">
           <DiscoveryValue label="Primary location" value={engagementProfile.primaryLocation} />
-          <DiscoveryValue label="Audience size" value={engagementProfile.audienceSize} />
-          <DiscoveryValue label="Session duration" value={engagementProfile.sessionDuration} />
-          <DiscoveryValue label="Format" value={engagementProfile.format} />
+          <DiscoveryValue label="Audience size" value={formatOptionLabel(engagementProfile.audienceSize, guestLecturerAudienceSizeOptions)} />
+          <DiscoveryValue label="Session duration" value={formatOptionLabel(engagementProfile.sessionDuration, sessionDurationOptions)} />
+          <DiscoveryTagGroup label="Formats" items={getGuestLecturerFormats(engagementProfile).map((format) => formatOptionLabel(format, formatOptions))} />
           <DiscoveryTagGroup label="Delivery focus" items={engagementProfile.deliveryFocus} />
         </DiscoverySection>
 
         <DiscoverySection title="Preferred Schedule" className="border-t border-gray-200 md:border-l md:border-t-0">
-          <DiscoveryTagGroup label="Available days" items={schedule.availableDays} />
+          <DiscoveryTagGroup label="Available days" items={schedule.availableDays.map((day) => formatOptionLabel(day, weekDays))} />
           <DiscoveryValue label="Available time" value={availableTime} />
-          <DiscoveryValue label="Frequency" value={schedule.availabilityFrequency} />
+          <DiscoveryValue label="Frequency" value={formatOptionLabel(schedule.availabilityFrequency, guestLecturerAvailabilityFrequencyOptions)} />
           <DiscoveryValue label="Schedule notes" value={schedule.availabilityNotes} />
         </DiscoverySection>
       </div>
 
       <DiscoverySection title="Guest Lecturer Experience" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
-          <DiscoveryValue label="Experience level" value={expertise.experienceLevel} />
+          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics.map((topic) => formatOptionLabel(topic, topicOptions))} />
+          <DiscoveryValue label="Experience level" value={formatOptionLabel(expertise.experienceLevel, experienceLevelOptions)} />
           <DiscoveryValue label="Speaking experience" value={expertise.hasSpeakingExperience ? expertise.speakingDetails || "Yes" : "No"} />
           <DiscoveryValue label="International experience" value={expertise.hasInternationalExperience ? expertise.internationalDetails || "Yes" : "No"} />
           <DiscoveryValue label="LinkedIn" value={expertise.linkedin} />
@@ -169,3 +172,13 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
 
 const topicOptions = expertiseTopics.map((topic) => ({ value: topic, label: topic }));
 const experienceLevelOptions = experienceLevels.map((level) => ({ value: level.value, label: level.title }));
+const professionalFieldOptions = professionalFields.map((field) => ({ value: field, label: field }));
+const professionalRoleOptions = professionalRoles.map((role) => ({ value: role, label: role }));
+
+// Older guest lecturer profiles only have the comma-joined format string, not the list.
+function getGuestLecturerFormats(engagementProfile: PublicGuestLecturerProfile["engagementProfile"]): string[] {
+  if (engagementProfile.formats) {
+    return engagementProfile.formats;
+  }
+  return engagementProfile.format.split(",").map((format) => format.trim()).filter(Boolean);
+}

@@ -145,7 +145,6 @@ export default function DiscoveryPageContent({
   // slides into the same slot, and removing the last card loops back to the first.
   const safeIndex = items.length > 0 ? currentIndex % items.length : 0;
   const currentItem = items[safeIndex];
-  const isGuestLecturer = currentUserType === "guestLecturer";
   const canBrowse = items.length > 1;
   // Only when filters removed every profile on load. Once the user has worked
   // through the matching cards, "No more profiles" is the accurate message.
@@ -170,7 +169,7 @@ export default function DiscoveryPageContent({
     const dismissedItem = items.find((item) => item.profile.id === profileId);
     removeCurrentItem(profileId, "dismiss");
     setDismissedProfilesExist(true);
-    if (isGuestLecturer && dismissedItem) {
+    if (dismissedItem) {
       setDismissToast({ name: dismissedItem.profile.basicInformation.fullName, shownAt: Date.now() });
     }
   }
@@ -341,26 +340,14 @@ export default function DiscoveryPageContent({
               </button>
             )}
 
-            {/* Guest lecturers undo a dismiss from its toast, so this spot opens their dismissed profiles instead. */}
-            {isGuestLecturer ? (
-              !isReviewingDismissed && (
-                <button
-                  type="button"
-                  onClick={handleReviewDismissed}
-                  className="flex min-w-36 items-center justify-center rounded-xl bg-gray-200 px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-300"
-                >
-                  Dismissed profiles
-                </button>
-              )
-            ) : (
+            {/* A dismiss is undone from its toast, so this spot opens the dismissed profiles instead. */}
+            {!isReviewingDismissed && (
               <button
                 type="button"
-                onClick={handleUndo}
-                disabled={actionHistory.length === 0}
-                className="flex min-w-36 items-center justify-center gap-3 rounded-xl bg-gray-200 px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
+                onClick={handleReviewDismissed}
+                className="flex min-w-36 items-center justify-center rounded-xl bg-gray-200 px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-300"
               >
-                <Image src={undoIcon} alt="" width={18} height={18} aria-hidden="true" />
-                Undo
+                Dismissed profiles
               </button>
             )}
           </div>
@@ -378,15 +365,13 @@ export default function DiscoveryPageContent({
           <>
             {/* Sits above the card rather than beside it, so the buttons stay put however tall the card is. */}
             {/* The count stays visible with a single card; the buttons are just disabled. */}
-            {isGuestLecturer && (
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <CarouselButton direction="previous" onClick={handleShowPrevious} disabled={!canBrowse} />
-                <p className="text-sm font-semibold text-gray-500">
-                  {safeIndex + 1} of {items.length}
-                </p>
-                <CarouselButton direction="next" onClick={handleShowNext} disabled={!canBrowse} />
-              </div>
-            )}
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <CarouselButton direction="previous" onClick={handleShowPrevious} disabled={!canBrowse} />
+              <p className="text-sm font-semibold text-gray-500">
+                {safeIndex + 1} of {items.length}
+              </p>
+              <CarouselButton direction="next" onClick={handleShowNext} disabled={!canBrowse} />
+            </div>
             <DiscoveryCard
               item={currentItem}
               onExpressInterest={handleExpressInterest}
