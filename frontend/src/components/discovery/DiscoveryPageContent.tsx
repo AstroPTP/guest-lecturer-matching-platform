@@ -33,6 +33,8 @@ import {
   getDismissedDiscoveryItems,
 } from "@/utils/discoveryFilters";
 
+const DISMISS_TOAST_DURATION_MS = 5000;
+
 type DiscoveryAction = "interest" | "dismiss";
 interface DiscoveryHistoryItem {
   action: DiscoveryAction;
@@ -74,6 +76,17 @@ export default function DiscoveryPageContent({
   // Bumped to reload the list after filters are cleared from this page.
   const [filterVersion, setFilterVersion] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
+  // shownAt makes each dismiss a new value, so dismissing twice in a row
+  // restarts the hide timer.
+  const [dismissToast, setDismissToast] = useState<{ name: string; shownAt: number } | null>(null);
+
+  useEffect(() => {
+    if (!dismissToast) {
+      return;
+    }
+    const timer = setTimeout(() => setDismissToast(null), DISMISS_TOAST_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [dismissToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +122,7 @@ export default function DiscoveryPageContent({
         }
         setActionHistory([]);
         setMatchModalData(null);
+        setDismissToast(null);
         setCurrentIndex(0);
       } catch (error) {
         if (!cancelled) {
@@ -131,7 +145,7 @@ export default function DiscoveryPageContent({
   // slides into the same slot, and removing the last card loops back to the first.
   const safeIndex = items.length > 0 ? currentIndex % items.length : 0;
   const currentItem = items[safeIndex];
-  const showCarousel = currentUserType === "guestLecturer";
+  const isGuestLecturer = currentUserType === "guestLecturer";
   const canBrowse = items.length > 1;
   // Only when filters removed every profile on load. Once the user has worked
   // through the matching cards, "No more profiles" is the accurate message.
@@ -153,7 +167,19 @@ export default function DiscoveryPageContent({
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
     }
+    const dismissedItem = items.find((item) => item.profile.id === profileId);
     removeCurrentItem(profileId, "dismiss");
+    setDismissedProfilesExist(true);
+    if (isGuestLecturer && dismissedItem) {
+      setDismissToast({ name: dismissedItem.profile.basicInformation.fullName, shownAt: Date.now() });
+    }
+  }
+
+  // The toast's Undo always reverses the dismiss it announced, because any
+  // other action clears the toast first.
+  function handleToastUndo() {
+    setDismissToast(null);
+    void handleUndo();
   }
 
   async function handleRestore(profileId: string) {
@@ -172,6 +198,7 @@ export default function DiscoveryPageContent({
       return;
     }
     setActionError(null);
+    setDismissToast(null);
     try {
       if (isReviewingDismissed) {
         await removeDismiss(profileId);
@@ -314,15 +341,28 @@ export default function DiscoveryPageContent({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={handleUndo}
-              disabled={actionHistory.length === 0}
-              className="flex min-w-36 items-center justify-center gap-3 rounded-xl bg-gray-200 px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Image src={undoIcon} alt="" width={18} height={18} aria-hidden="true" />
-              Undo
-            </button>
+            {/* Guest lecturers undo a dismiss from its toast, so this spot opens their dismissed profiles instead. */}
+            {isGuestLecturer ? (
+              !isReviewingDismissed && (
+                <button
+                  type="button"
+                  onClick={handleReviewDismissed}
+                  className="flex min-w-36 items-center justify-center rounded-xl bg-gray-200 px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-300"
+                >
+                  Dismissed profiles
+                </button>
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={actionHistory.length === 0}
+                className="flex min-w-36 items-center justify-center gap-3 rounded-xl bg-gray-200 px-6 py-3 font-semibold text-gray-800 transition hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Image src={undoIcon} alt="" width={18} height={18} aria-hidden="true" />
+                Undo
+              </button>
+            )}
           </div>
         </div>
 
@@ -338,7 +378,7 @@ export default function DiscoveryPageContent({
           <>
             {/* Sits above the card rather than beside it, so the buttons stay put however tall the card is. */}
             {/* The count stays visible with a single card; the buttons are just disabled. */}
-            {showCarousel && (
+            {isGuestLecturer && (
               <div className="mb-4 flex items-center justify-between gap-3">
                 <CarouselButton direction="previous" onClick={handleShowPrevious} disabled={!canBrowse} />
                 <p className="text-sm font-semibold text-gray-500">
@@ -380,6 +420,29 @@ export default function DiscoveryPageContent({
           onKeepBrowsing={() => setMatchModalData(null)}
         />
       )}
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4" role="status" aria-live="polite">
+        {dismissToast && (
+          <div className="pointer-events-auto flex w-full max-w-md items-center justify-between gap-4 rounded-2xl bg-[#2d2d2d] px-5 py-4 text-white shadow-lg">
+            <p className="min-w-0 text-sm">
+              Dismissed <span className="font-semibold">{dismissToast.name}</span>
+            </p>
+            <div className="flex shrink-0 items-center gap-1">
+              <button type="button" onClick={handleToastUndo} className="rounded-lg bg-white px-4 py-1.5 text-sm font-bold text-[#2d2d2d] transition hover:bg-gray-200">
+                Undo
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissToast(null)}
+                aria-label="Close"
+                className="rounded-lg px-2 py-1.5 text-lg leading-none text-white/70 transition hover:bg-white/10 hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </>
   );
 }
