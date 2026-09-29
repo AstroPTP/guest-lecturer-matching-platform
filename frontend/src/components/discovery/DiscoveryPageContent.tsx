@@ -131,7 +131,8 @@ export default function DiscoveryPageContent({
   // slides into the same slot, and removing the last card loops back to the first.
   const safeIndex = items.length > 0 ? currentIndex % items.length : 0;
   const currentItem = items[safeIndex];
-  const canBrowse = currentUserType === "guestLecturer" && items.length > 1;
+  const showCarousel = currentUserType === "guestLecturer";
+  const canBrowse = items.length > 1;
   // Only when filters removed every profile on load. Once the user has worked
   // through the matching cards, "No more profiles" is the accurate message.
   const filtersHideAllProfiles = activeFilterCount > 0 && unfilteredCount > 0 && actionHistory.length === 0;
@@ -336,13 +337,14 @@ export default function DiscoveryPageContent({
         {currentItem ? (
           <>
             {/* Sits above the card rather than beside it, so the buttons stay put however tall the card is. */}
-            {canBrowse && (
+            {/* The count stays visible with a single card; the buttons are just disabled. */}
+            {showCarousel && (
               <div className="mb-4 flex items-center justify-between gap-3">
-                <CarouselButton direction="previous" onClick={handleShowPrevious} />
+                <CarouselButton direction="previous" onClick={handleShowPrevious} disabled={!canBrowse} />
                 <p className="text-sm font-semibold text-gray-500">
                   {safeIndex + 1} of {items.length}
                 </p>
-                <CarouselButton direction="next" onClick={handleShowNext} />
+                <CarouselButton direction="next" onClick={handleShowNext} disabled={!canBrowse} />
               </div>
             )}
             <DiscoveryCard
@@ -382,13 +384,14 @@ export default function DiscoveryPageContent({
   );
 }
 
-function CarouselButton({ direction, onClick }: { direction: "previous" | "next"; onClick: () => void }) {
+function CarouselButton({ direction, onClick, disabled }: { direction: "previous" | "next"; onClick: () => void; disabled: boolean }) {
   const isPrevious = direction === "previous";
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 font-semibold text-gray-800 shadow-sm transition hover:bg-gray-100 sm:px-5"
+      disabled={disabled}
+      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 font-semibold text-gray-800 shadow-sm transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white sm:px-5"
     >
       {isPrevious && <Image src={arrowBackIcon} alt="" width={18} height={18} aria-hidden="true" />}
       {isPrevious ? "Previous" : "Next"}
