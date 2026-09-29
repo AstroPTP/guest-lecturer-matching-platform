@@ -54,6 +54,8 @@ export default function DiscoveryPageContent({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeFilterCount, setActiveFilterCount] = useState(0);
+  const [unfilteredCount, setUnfilteredCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,15 +75,18 @@ export default function DiscoveryPageContent({
           return;
         }
         setDismissedProfilesExist(getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks).length > 0);
+        setActiveFilterCount(countActiveFilters(filters));
         if (isReviewingDismissed) {
           setItems(getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks));
         } else if (currentUserType === "guestLecturer") {
           const baseItems = getAvailableDiscoveryItems(initialItems, interests, dismisses, matches, blocks);
           const guestLecturerFilters = filters as GuestLecturerDiscoveryFilters;
+          setUnfilteredCount(baseItems.length);
           setItems(applyGuestLecturerFilters(baseItems, guestLecturerFilters));
         } else {
           const baseItems = getAvailableDiscoveryItems(initialItems, interests, dismisses, matches, blocks);
           const unitCoordinatorFilters = filters as UnitCoordinatorDiscoveryFilters;
+          setUnfilteredCount(baseItems.length);
           setItems(applyUnitCoordinatorFilters(baseItems, unitCoordinatorFilters));
         }
         setActionHistory([]);
@@ -239,6 +244,12 @@ export default function DiscoveryPageContent({
             <p className="mt-3 max-w-3xl leading-7 text-gray-500">
               {isReviewingDismissed ? "Review profiles you previously dismissed. Matched profiles are not included." : description}
             </p>
+            {!isReviewingDismissed && (
+              <p className="mt-2 text-sm font-semibold text-gray-700">
+                {items.length} {items.length === 1 ? "profile" : "profiles"} to review
+                {activeFilterCount > 0 && <span className="font-normal text-gray-500"> · filtered from {unfilteredCount}</span>}
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -258,6 +269,11 @@ export default function DiscoveryPageContent({
               >
                 <Image src={filterIcon} alt="" width={18} height={18} aria-hidden="true" />
                 Filters
+                {activeFilterCount > 0 && (
+                  <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[#2d2d2d] px-2 text-xs font-bold text-white">
+                    {activeFilterCount}
+                  </span>
+                )}
               </button>
             )}
 
@@ -414,6 +430,20 @@ function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: UnitCoordi
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
     return matchesTopics && matchesExperience && matchesField && matchesFormats && matchesDurations && matchesDays && matchesSpeaking && matchesInternational && matchesLocation;
   });
+}
+
+// Counts filter categories in use, not individual selections, so picking three
+// topics still reads as one active filter.
+function countActiveFilters(filters: GuestLecturerDiscoveryFilters | UnitCoordinatorDiscoveryFilters): number {
+  return Object.values(filters).filter((value) => {
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+    if (typeof value === "string") {
+      return value.trim() !== "";
+    }
+    return value === true;
+  }).length;
 }
 
 function getAvailableDiscoveryItems(
