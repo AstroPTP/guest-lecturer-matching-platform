@@ -403,11 +403,11 @@ function applyGuestLecturerFilters(items: DiscoveryItem[], filters: GuestLecture
     }
 
     const { expertise, engagementProfile } = item.profile;
-    const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => expertise.selectedTopics.includes(topic));
-    const matchesFormats = filters.formats.length === 0 || filters.formats.some((format) => engagementProfile.formats.includes(format));
-    const matchesDurations = filters.sessionDurations.length === 0 || filters.sessionDurations.includes(engagementProfile.sessionDuration);
-    const matchesAudience = filters.audienceSizes.length === 0 || filters.audienceSizes.includes(engagementProfile.audienceSize);
-    const matchesDays = filters.preferredDays.length === 0 || filters.preferredDays.some((day) => engagementProfile.schedule.preferredDays.includes(day));
+    const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => includesOption(expertise.selectedTopics, topic));
+    const matchesFormats = filters.formats.length === 0 || filters.formats.some((format) => includesOption(engagementProfile.formats, format));
+    const matchesDurations = filters.sessionDurations.length === 0 || includesOption(filters.sessionDurations, engagementProfile.sessionDuration);
+    const matchesAudience = filters.audienceSizes.length === 0 || includesOption(filters.audienceSizes, engagementProfile.audienceSize);
+    const matchesDays = filters.preferredDays.length === 0 || filters.preferredDays.some((day) => includesOption(engagementProfile.schedule.preferredDays, day));
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
     return matchesTopics && matchesFormats && matchesDurations && matchesAudience && matchesDays && matchesLocation;
   });
@@ -430,6 +430,18 @@ function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: UnitCoordi
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
     return matchesTopics && matchesExperience && matchesField && matchesFormats && matchesDurations && matchesDays && matchesSpeaking && matchesInternational && matchesLocation;
   });
+}
+
+// Stored profile values don't always use the option value's form: the database
+// can hold "60 MINUTES" where the filter option is "60-minutes". Comparing on a
+// normalized form (lowercase, whitespace as hyphens) lets both match.
+function normalizeOptionValue(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+function includesOption(values: string[], value: string): boolean {
+  const target = normalizeOptionValue(value);
+  return values.some((item) => normalizeOptionValue(item) === target);
 }
 
 // Counts filter categories in use, not individual selections, so picking three
