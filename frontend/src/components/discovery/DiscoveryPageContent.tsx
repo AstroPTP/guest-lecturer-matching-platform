@@ -7,6 +7,8 @@ import DiscoveryCard from "./DiscoveryCard";
 import MatchModal from "./MatchModal";
 import infoIcon from "@/assets/info.png";
 import undoIcon from "@/assets/undo.png";
+import arrowIcon from "@/assets/arrow.png";
+import arrowBackIcon from "@/assets/arrow_back.png";
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchModalData, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
@@ -65,6 +67,7 @@ export default function DiscoveryPageContent({
   const [unfilteredCount, setUnfilteredCount] = useState(0);
   // Bumped to reload the list after filters are cleared from this page.
   const [filterVersion, setFilterVersion] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +103,7 @@ export default function DiscoveryPageContent({
         }
         setActionHistory([]);
         setMatchModalData(null);
+        setCurrentIndex(0);
       } catch (error) {
         if (!cancelled) {
           console.error("Unable to load discovery data:", error);
@@ -117,7 +121,11 @@ export default function DiscoveryPageContent({
       cancelled = true;
     };
   }, [initialItems, currentUserType, isReviewingDismissed, filterVersion]);
-  const currentItem = items[0];
+  // Wrapping the index keeps it valid after a card is removed: the next card
+  // slides into the same slot, and removing the last card loops back to the first.
+  const safeIndex = items.length > 0 ? currentIndex % items.length : 0;
+  const currentItem = items[safeIndex];
+  const canBrowse = currentUserType === "guestLecturer" && items.length > 1;
   // Only when filters removed every profile on load. Once the user has worked
   // through the matching cards, "No more profiles" is the accurate message.
   const filtersHideAllProfiles = activeFilterCount > 0 && unfilteredCount > 0 && actionHistory.length === 0;
@@ -223,6 +231,14 @@ export default function DiscoveryPageContent({
     });
 
     setActionHistory((currentHistory) => currentHistory.slice(0, -1));
+    // The restored card goes back to the front, so show it.
+    setCurrentIndex(0);
+  }
+  function handleShowPrevious() {
+    setCurrentIndex((safeIndex - 1 + items.length) % items.length);
+  }
+  function handleShowNext() {
+    setCurrentIndex((safeIndex + 1) % items.length);
   }
   function handleReviewDismissed() {
     setIsReviewingDismissed(true);
@@ -264,12 +280,6 @@ export default function DiscoveryPageContent({
             <p className="mt-3 max-w-3xl leading-7 text-gray-500">
               {isReviewingDismissed ? "Review profiles you previously dismissed. Matched profiles are not included." : description}
             </p>
-            {!isReviewingDismissed && (
-              <p className="mt-2 text-sm font-semibold text-gray-700">
-                {items.length} {items.length === 1 ? "profile" : "profiles"} to review
-                {activeFilterCount > 0 && <span className="font-normal text-gray-500"> · filtered from {unfilteredCount}</span>}
-              </p>
-            )}
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -318,13 +328,25 @@ export default function DiscoveryPageContent({
         )}
 
         {currentItem ? (
-          <DiscoveryCard
-            item={currentItem}
-            onExpressInterest={handleExpressInterest}
-            onDismiss={handleDismiss}
-            isReviewingDismissed={isReviewingDismissed}
-            onRestore={handleRestore}
-          />
+          <>
+            {/* Sits above the card rather than beside it, so the buttons stay put however tall the card is. */}
+            {canBrowse && (
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <CarouselButton direction="previous" onClick={handleShowPrevious} />
+                <p className="text-sm font-semibold text-gray-500">
+                  {safeIndex + 1} of {items.length}
+                </p>
+                <CarouselButton direction="next" onClick={handleShowNext} />
+              </div>
+            )}
+            <DiscoveryCard
+              item={currentItem}
+              onExpressInterest={handleExpressInterest}
+              onDismiss={handleDismiss}
+              isReviewingDismissed={isReviewingDismissed}
+              onRestore={handleRestore}
+            />
+          </>
         ) : (
           <EmptyDiscoveryState
             isReviewingDismissed={isReviewingDismissed}
@@ -351,6 +373,21 @@ export default function DiscoveryPageContent({
         />
       )}
     </>
+  );
+}
+
+function CarouselButton({ direction, onClick }: { direction: "previous" | "next"; onClick: () => void }) {
+  const isPrevious = direction === "previous";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-gray-300 bg-white px-4 py-2.5 font-semibold text-gray-800 shadow-sm transition hover:bg-gray-100 sm:px-5"
+    >
+      {isPrevious && <Image src={arrowBackIcon} alt="" width={18} height={18} aria-hidden="true" />}
+      {isPrevious ? "Previous" : "Next"}
+      {!isPrevious && <Image src={arrowIcon} alt="" width={18} height={18} aria-hidden="true" />}
+    </button>
   );
 }
 
