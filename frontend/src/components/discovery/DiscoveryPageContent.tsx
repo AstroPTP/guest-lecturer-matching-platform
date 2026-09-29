@@ -12,7 +12,14 @@ import type { BlockRecord, DismissRecord, InterestRecord, MatchModalData, MatchR
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
 import filterIcon from "@/assets/filter.png";
-import { getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters } from "@/services/filter/discoveryFilterService";
+import {
+  emptyGuestLecturerFilters,
+  emptyUnitCoordinatorFilters,
+  getGuestLecturerDiscoveryFilters,
+  getUnitCoordinatorDiscoveryFilters,
+  saveGuestLecturerDiscoveryFilters,
+  saveUnitCoordinatorDiscoveryFilters,
+} from "@/services/filter/discoveryFilterService";
 import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import { createNotification } from "@/services/notifications/notificationService";
 
@@ -56,6 +63,8 @@ export default function DiscoveryPageContent({
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeFilterCount, setActiveFilterCount] = useState(0);
   const [unfilteredCount, setUnfilteredCount] = useState(0);
+  // Bumped to reload the list after filters are cleared from this page.
+  const [filterVersion, setFilterVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,8 +116,11 @@ export default function DiscoveryPageContent({
     return () => {
       cancelled = true;
     };
-  }, [initialItems, currentUserType, isReviewingDismissed]);
+  }, [initialItems, currentUserType, isReviewingDismissed, filterVersion]);
   const currentItem = items[0];
+  // Only when filters removed every profile on load. Once the user has worked
+  // through the matching cards, "No more profiles" is the accurate message.
+  const filtersHideAllProfiles = activeFilterCount > 0 && unfilteredCount > 0 && actionHistory.length === 0;
   function removeCurrentItem(profileId: string, action: DiscoveryAction) {
     const selectedItem = items.find((item) => item.profile.id === profileId);
     if (!selectedItem) {
@@ -218,6 +230,14 @@ export default function DiscoveryPageContent({
   function handleBackToDiscovery() {
     setIsReviewingDismissed(false);
   }
+  async function handleClearFilters() {
+    if (currentUserType === "guestLecturer") {
+      await saveGuestLecturerDiscoveryFilters({ ...emptyGuestLecturerFilters });
+    } else {
+      await saveUnitCoordinatorDiscoveryFilters({ ...emptyUnitCoordinatorFilters });
+    }
+    setFilterVersion((version) => version + 1);
+  }
   if (isLoading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -313,6 +333,9 @@ export default function DiscoveryPageContent({
             onUndo={handleUndo}
             onReviewDismissed={handleReviewDismissed}
             onBackToDiscovery={handleBackToDiscovery}
+            filtersHideAllProfiles={filtersHideAllProfiles}
+            onClearFilters={handleClearFilters}
+            onEditFilters={() => router.push(filterHref)}
           />
         )}
       </div>
@@ -338,6 +361,9 @@ function EmptyDiscoveryState({
   onUndo,
   onReviewDismissed,
   onBackToDiscovery,
+  filtersHideAllProfiles,
+  onClearFilters,
+  onEditFilters,
 }: {
   isReviewingDismissed: boolean;
   hasDismissedProfiles: boolean;
@@ -345,6 +371,9 @@ function EmptyDiscoveryState({
   onUndo: () => void;
   onReviewDismissed: () => void;
   onBackToDiscovery: () => void;
+  filtersHideAllProfiles: boolean;
+  onClearFilters: () => void;
+  onEditFilters: () => void;
 }) {
   if (isReviewingDismissed) {
     return (
@@ -358,6 +387,30 @@ function EmptyDiscoveryState({
         <button type="button" onClick={onBackToDiscovery} className="mt-7 rounded-xl bg-[#2d2d2d] px-7 py-3 font-semibold text-white transition hover:bg-black">
           Back to Discovery
         </button>
+      </section>
+    );
+  }
+
+  if (filtersHideAllProfiles) {
+    return (
+      <section className="rounded-3xl border border-gray-200 bg-white px-6 py-20 text-center shadow-sm">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-200">
+          <Image src={filterIcon} alt="" width={28} height={28} aria-hidden="true" />
+        </div>
+        <h2 className="mt-6 text-2xl font-bold text-gray-900">No profiles match your filters</h2>
+        <p className="mx-auto mt-3 max-w-lg leading-7 text-gray-500">Try removing some filters to see more profiles.</p>
+        <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+          <button type="button" onClick={onClearFilters} className="rounded-xl bg-[#2d2d2d] px-6 py-3 font-semibold text-white transition hover:bg-black">
+            Clear filters
+          </button>
+          <button
+            type="button"
+            onClick={onEditFilters}
+            className="rounded-xl border border-[#2d2d2d] px-6 py-3 font-semibold text-[#2d2d2d] transition hover:bg-gray-100"
+          >
+            Edit filters
+          </button>
+        </div>
       </section>
     );
   }
