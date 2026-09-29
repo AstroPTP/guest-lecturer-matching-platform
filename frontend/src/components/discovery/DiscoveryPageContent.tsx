@@ -24,6 +24,7 @@ import {
 } from "@/services/filter/discoveryFilterService";
 import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import { createNotification } from "@/services/notifications/notificationService";
+import { normalizeOptionValue } from "@/utils/displayFormatters";
 
 const CURRENT_USER_PLACEHOLDER_ID = "";
 
@@ -520,13 +521,6 @@ function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: UnitCoordi
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
     return matchesTopics && matchesExperience && matchesField && matchesFormats && matchesDurations && matchesDays && matchesSpeaking && matchesInternational && matchesLocation;
   });
-}
-
-// Stored profile values don't always use the option value's form: the database
-// can hold "60 MINUTES" where the filter option is "60-minutes". Comparing on a
-// normalized form (lowercase, whitespace as hyphens) lets both match.
-function normalizeOptionValue(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, "-");
 }
 
 function includesOption(values: string[], value: string): boolean {
