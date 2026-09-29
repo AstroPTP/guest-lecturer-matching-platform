@@ -12,19 +12,69 @@ export default function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
   const searchParams = useSearchParams();
   const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
-  const registerHref = `/register?role=${role}`;
-  const returnTo = role === "coordinator" ? "/unit_coordinator/my_profile" : "/guest_lecturer/my_profile";
+  // Every sign-in starts at Basic information. Returning users find their
+  // saved answers pre-filled; the last step leads on to My Profile.
+  const fallbackReturnTo = role === "coordinator" ? "/unit_coordinator/profile" : "/guest_lecturer/profile";
+
+  // The middleware sends signed-out visitors here with ?redirectTo=. Only a
+  // path inside one of the two dashboards is honoured, so the parameter cannot
+  // be used to bounce a user to another site after signing in.
+  const requestedReturnTo = searchParams.get("redirectTo");
+  const returnTo =
+    requestedReturnTo &&
+    /^\/(guest_lecturer|unit_coordinator)(\/|\?|$)/.test(requestedReturnTo) &&
+    !/[\\\x00-\x20]/.test(requestedReturnTo)
+      ? requestedReturnTo
+      : fallbackReturnTo;
+
   function loginUrl(connection?: string) {
     const params = new URLSearchParams({ returnTo });
     if (connection) params.set("connection", connection);
     return `/auth/login?${params.toString()}`;
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    window.location.href = returnTo;
+    const normalizedEmail = email.trim().toLowerCase();
+    setError(null);
+    setIsChecking(true);
+    try {
+      const status = await fetch("/api/auth/account-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+      if (!status.ok) {
+        const body = await status.json().catch(() => null);
+        throw new Error(body?.error || "We couldn't check your account. Please try again.");
+      }
+      const result = (await status.json()) as { exists: boolean };
+      if (!result.exists) {
+        setError("The account does not exist. Please register first.");
+        return;
+      }
+
+      const login = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail, password }),
+      });
+      if (!login.ok) {
+        const body = await login.json().catch(() => null);
+        throw new Error(body?.error || "We couldn't sign you in right now. Please try again.");
+      }
+
+      // A full navigation, so the new session cookie is what the route gate sees.
+      window.location.assign(returnTo);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "We couldn't sign you in right now. Please try again.");
+    } finally {
+      setIsChecking(false);
+    }
   }
 
   return (
@@ -61,11 +111,13 @@ export default function LoginForm() {
               Forgot password?
             </Link>
           </div>
+          {error && <p className="text-sm text-red-600">{error}</p>}
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
+            disabled={isChecking}
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:opacity-60"
           >
-            Log in
+            {isChecking ? "Signing in…" : "Log in"}
           </button>
         </form>
 

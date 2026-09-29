@@ -163,7 +163,36 @@ export class UnitCoordinatorsService {
    * Every unit coordinator, from the database. What the discovery page lists.
    */
   async findAll() {
-    return prisma.coordinators.findMany({ orderBy: { coordinator_id: 'asc' } });
+    const coordinators = await prisma.coordinators.findMany({
+      orderBy: { coordinator_id: 'asc' },
+    });
+    const userIds = coordinators.flatMap((coordinator) =>
+      coordinator.user_id === null ? [] : [coordinator.user_id],
+    );
+
+    // Two batched reads rather than one pair per coordinator.
+    const [expertiseRows, availabilityRows] = await Promise.all([
+      prisma.user_expertise.findMany({ where: { user_id: { in: userIds } } }),
+      prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
+    ]);
+
+    return coordinators.map((coordinator) => {
+      const hasUser = coordinator.user_id !== null;
+      return {
+        id: String(coordinator.coordinator_id),
+        ...this.toProfileDto(
+          coordinator,
+          hasUser
+            ? expertiseRows.filter((row) => row.user_id === coordinator.user_id)
+            : [],
+          hasUser
+            ? (availabilityRows.find(
+                (row) => row.user_id === coordinator.user_id,
+              ) ?? null)
+            : null,
+        ),
+      };
+    });
   }
 
   private toProfileDto(

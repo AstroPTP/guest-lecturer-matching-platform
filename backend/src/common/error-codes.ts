@@ -19,6 +19,8 @@ export const ErrorCode = {
   PayloadTooLarge: 'PAYLOAD_TOO_LARGE',
   /** Token is valid, but no user row exists for this Auth0 subject yet. */
   UserProfileNotFound: 'USER_PROFILE_NOT_FOUND',
+  /** Registration for an email that already has an account. */
+  AccountExists: 'ACCOUNT_EXISTS',
   /** Anything unhandled. Never carries detail to the client. */
   InternalError: 'INTERNAL_ERROR',
 } as const;

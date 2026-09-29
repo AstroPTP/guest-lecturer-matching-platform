@@ -29,20 +29,24 @@ export default function RegisterForm() {
       return;
     }
 
-    const registerEmail = String(new FormData(event.currentTarget).get("email") || "").trim();
+    const formData = new FormData(event.currentTarget);
+    const registerEmail = String(formData.get("email") || "").trim().toLowerCase();
+    const fullName = String(formData.get("fullName") || "").trim();
     setError(null);
     setIsSubmitting(true);
     try {
-      const response = await fetch("/api/auth/passwordless/start", {
+      // Sends the code and keeps the details server-side until /verify, where
+      // the account is created. The password is not stored in this tab.
+      const response = await fetch("/api/auth/register/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: registerEmail }),
+        body: JSON.stringify({ email: registerEmail, fullName, password, role }),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error || "Could not send the verification code. Try again.");
       }
-      router.push(`/verify?email=${encodeURIComponent(registerEmail)}`);
+      router.push(`/verify?email=${encodeURIComponent(registerEmail)}&role=${role}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not send the verification code. Try again.");
     } finally {

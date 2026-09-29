@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
+import { firstValueFrom, isObservable } from 'rxjs';
 import { ErrorCode } from '../common/error-codes';
+import { prisma } from '../prisma';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { attachDemoUser, demoBypassEnabled } from './demo-user';
 
@@ -22,7 +24,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     super();
   }
 
-  canActivate(context: ExecutionContext) {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     // Method-level @Public() beats class-level, which is what getAllAndOverride
     // gives us.
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -43,7 +45,32 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       return true;
     }
 
-    return super.canActivate(context);
+    const result = super.canActivate(context);
+    const allowed = isObservable(result)
+      ? await firstValueFrom(result)
+      : await result;
+    if (!allowed) {
+      return false;
+    }
+
+    // DELETE /settings keeps a users row with deletedat set. A token issued
+    // before the deletion is still validly signed until it expires, so without
+    // this check it could keep calling the API and recreate data.
+    const user = context
+      .switchToHttp()
+      .getRequest<{ user: { id: string } }>().user;
+    const deleted = await prisma.users.findFirst({
+      where: { auth0Id: user.id, deletedat: { not: null } },
+      select: { userid: true },
+    });
+    if (deleted) {
+      throw new UnauthorizedException({
+        code: ErrorCode.AuthInvalidToken,
+        message: 'This account has been deleted.',
+      });
+    }
+
+    return true;
   }
 
   /**

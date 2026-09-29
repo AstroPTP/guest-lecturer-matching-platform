@@ -161,7 +161,35 @@ export class GuestSpeakersService {
    * Every guest speaker, from the database. What the discovery page lists.
    */
   async findAll() {
-    return prisma.guests.findMany({ orderBy: { guest_id: 'asc' } });
+    const guests = await prisma.guests.findMany({
+      orderBy: { guest_id: 'asc' },
+    });
+    const userIds = guests.flatMap((guest) =>
+      guest.user_id === null ? [] : [guest.user_id],
+    );
+
+    // Two batched reads rather than one pair per guest.
+    const [expertiseRows, availabilityRows] = await Promise.all([
+      prisma.user_expertise.findMany({ where: { user_id: { in: userIds } } }),
+      prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
+    ]);
+
+    return guests.map((guest) => {
+      const hasUser = guest.user_id !== null;
+      return {
+        id: String(guest.guest_id),
+        ...this.toProfileDto(
+          guest,
+          hasUser
+            ? expertiseRows.filter((row) => row.user_id === guest.user_id)
+            : [],
+          hasUser
+            ? (availabilityRows.find((row) => row.user_id === guest.user_id) ??
+                null)
+            : null,
+        ),
+      };
+    });
   }
 
   private toProfileDto(

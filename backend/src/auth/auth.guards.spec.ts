@@ -10,6 +10,7 @@ import { APP_ENV } from '../config/app-env.token';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter';
 import type { ErrorEnvelope } from '../common/error-codes';
 import type { AppEnv } from '../config/env.validation';
+import { prisma } from '../prisma';
 import { JwtAuthGuard } from './jwt.guard';
 import { JwtStrategy } from './jwt.strategy';
 import { Public } from './public.decorator';
@@ -251,6 +252,24 @@ describe('Auth guards', () => {
       const res = await withToken('/test/protected', token).expect(200);
 
       expect(res.text).toBe('protected');
+    });
+
+    it('rejects a valid token whose account has been deleted', async () => {
+      const lookup = jest
+        .spyOn(prisma.users, 'findFirst')
+        // The guard selects only userid; the full row type is not needed.
+        .mockResolvedValueOnce({ userid: 1n } as never);
+      const token = mint({ privateKey: keys.privateKey, subject: 'user-123' });
+
+      const res = await withToken('/test/protected', token).expect(401);
+
+      expect(envelopeOf(res).code).toBe('AUTH_INVALID_TOKEN');
+      expect(lookup).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { auth0Id: 'user-123', deletedat: { not: null } },
+        }),
+      );
+      lookup.mockRestore();
     });
   });
 

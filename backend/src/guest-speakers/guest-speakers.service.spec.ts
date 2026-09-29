@@ -51,7 +51,6 @@ describe('GuestSpeakersService', () => {
     otherUnitsReuse: false,
     timeLimitedUse: true,
     termsAccepted: true,
-    verificationStatus: 'pending',
   };
 
   beforeEach(async () => {

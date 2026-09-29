@@ -197,19 +197,6 @@ export default function UnitCoordinatorConsentForm() {
           </div>
         </section>
 
-        <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-2xl font-bold text-[#1f1f1f]">Request Status</h2>
-
-            <span className="rounded-full bg-[#faecd9] px-4 py-2 text-sm font-semibold text-[#98611e]">Pending match</span>
-          </div>
-
-          <p className="mt-3 text-sm leading-relaxed text-gray-500">
-            CCAE reviews new requests within 3 business days and will begin identifying suitable Guest Lecturers. You&apos;ll be notified by email once a{" "}
-            <span className="font-semibold text-gray-700">match</span> is found.
-          </p>
-        </section>
-
         <FormNavButtons submitLabel="Complete Profile" isFinalStep />
       </form>
     </main>

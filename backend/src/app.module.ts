@@ -12,6 +12,7 @@ import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.mo
 import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     UsersModule,
     EventsModule,
     NotificationsModule,
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [

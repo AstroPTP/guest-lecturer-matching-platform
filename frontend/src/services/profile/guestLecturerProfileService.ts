@@ -1,4 +1,4 @@
-import { apiFetch } from "@/lib/apiClient";
+import { backendFetch } from "@/lib/api/backendClient";
 import type {
   GuestLecturerBasicInformationData,
   GuestLecturerConsentData,
@@ -8,7 +8,7 @@ import type {
 } from "@/types/profile/guestLecturerProfileTypes";
 
 export async function getGuestLecturerProfile(): Promise<GuestLecturerProfileData | null> {
-  return apiFetch("/guest-speakers/me");
+  return backendFetch("/guest-speakers/me");
 }
 
 export async function getGuestLecturerBasicInformation(): Promise<GuestLecturerBasicInformationData | null> {
@@ -17,7 +17,7 @@ export async function getGuestLecturerBasicInformation(): Promise<GuestLecturerB
 }
 
 export async function saveGuestLecturerBasicInformation(data: GuestLecturerBasicInformationData): Promise<void> {
-  await apiFetch("/guest-speakers/me/basic-information", { method: "PATCH", body: JSON.stringify(data) });
+  await backendFetch("/guest-speakers/me/basic-information", { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export async function getGuestLecturerExpertise(): Promise<GuestLecturerExpertiseData | null> {
@@ -26,7 +26,7 @@ export async function getGuestLecturerExpertise(): Promise<GuestLecturerExpertis
 }
 
 export async function saveGuestLecturerExpertise(data: GuestLecturerExpertiseData): Promise<void> {
-  await apiFetch("/guest-speakers/me/expertise", { method: "PATCH", body: JSON.stringify(data) });
+  await backendFetch("/guest-speakers/me/expertise", { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export async function getGuestLecturerEngagement(): Promise<GuestLecturerEngagementData | null> {
@@ -35,7 +35,7 @@ export async function getGuestLecturerEngagement(): Promise<GuestLecturerEngagem
 }
 
 export async function saveGuestLecturerEngagement(data: GuestLecturerEngagementData): Promise<void> {
-  await apiFetch("/guest-speakers/me/engagement", { method: "PATCH", body: JSON.stringify(data) });
+  await backendFetch("/guest-speakers/me/engagement", { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export async function getGuestLecturerConsent(): Promise<GuestLecturerConsentData | null> {
@@ -44,5 +44,5 @@ export async function getGuestLecturerConsent(): Promise<GuestLecturerConsentDat
 }
 
 export async function saveGuestLecturerConsent(data: GuestLecturerConsentData): Promise<void> {
-  await apiFetch("/guest-speakers/me/consent", { method: "PATCH", body: JSON.stringify(data) });
+  await backendFetch("/guest-speakers/me/consent", { method: "PATCH", body: JSON.stringify(data) });
 }

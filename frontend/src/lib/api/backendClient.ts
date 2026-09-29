@@ -65,7 +65,10 @@ export async function backendFetch<TResponse>(
     return undefined as TResponse;
   }
 
-  return (await response.json()) as TResponse;
+  // A route that returns null, such as a profile that does not exist yet,
+  // answers 200 with no body at all, and parsing that as JSON throws.
+  const text = await response.text();
+  return (text ? JSON.parse(text) : null) as TResponse;
 }
 
 /**

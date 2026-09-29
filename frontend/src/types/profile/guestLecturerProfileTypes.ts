@@ -37,7 +37,6 @@ export interface GuestLecturerConsentData {
   otherUnitsReuse: boolean;
   timeLimitedUse: boolean;
   termsAccepted: boolean;
-  verificationStatus: string;
 }
 
 export interface GuestLecturerProfileData {

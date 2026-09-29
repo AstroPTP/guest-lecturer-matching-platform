@@ -16,6 +16,10 @@ interface OtpFormProps {
 export default function OtpForm({ title, description, submitLabel, onVerify, onResendCode }: OtpFormProps) {
   const [code, setCode] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // A ref as well as state: two Enter presses in quick succession both run
+  // before the state update re-renders, and only the ref stops the second.
+  const submittingRef = useRef(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   function handleChange(event: ChangeEvent<HTMLInputElement>, index: number) {
@@ -48,13 +52,29 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
     }, 0);
   }
   async function handleSubmit() {
+    // A code can be used once. Submitting it again while the first request is
+    // still running (a second click, or Enter) always fails with 400.
+    if (submittingRef.current) {
+      return;
+    }
     const verificationCode = code.join("");
+    if (verificationCode.length !== code.length) {
+      setError("Please enter the 6-digit code.");
+      return;
+    }
+    submittingRef.current = true;
+    setIsSubmitting(true);
     try {
       setError("");
       await onVerify(verificationCode);
-    } catch {
-      setError("Invalid verification code. Please try again.");
+      // On success the parent navigates away, so the form stays locked.
+    } catch (err) {
+      // onVerify can fail after the code was accepted, e.g. while creating the
+      // account, so show its own message rather than always blaming the code.
+      setError(err instanceof Error && err.message ? err.message : "Invalid verification code. Please try again.");
       clearCode();
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   }
 
@@ -100,9 +120,10 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
         </div>
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors"
+          disabled={isSubmitting}
+          className="w-full bg-blue-600 text-white py-4 rounded-xl font-semibold shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {submitLabel}
+          {isSubmitting ? "Verifying…" : submitLabel}
         </button>
       </form>
 
