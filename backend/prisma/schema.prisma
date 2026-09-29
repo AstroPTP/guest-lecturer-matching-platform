@@ -76,6 +76,7 @@ model user_expertise {
 /// Role can be one of the following: EXECUTIVE, SENIOR MANAGER, DIRECTOR, CONSULTANT, BUSINESS OWNER, PRACTITIONER, SOLICITOR, BARRISTER, JUDGE, GOVERNMENT OFFICER
 // Duration can be one of the following: 30 MINUTES, 60 MINUTES, 90 MINUTES, 120 MINUTES, FLEXIBLE
 // Audience can be one of the following: SMALL, MEDIUM, LARGE, NO PREFERENCE
+/// experience can be one of the following: EARLY CAREER, MID CAREER, SENIOR PROFESSIONAL, EXECUTIVE
 model guests {
   guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
   user_id               BigInt?  @unique
