@@ -1,4 +1,4 @@
-import { IsBoolean, IsString, IsNotEmpty } from 'class-validator';
+import { IsBoolean } from 'class-validator';
 
 export class ConsentDto {
   @IsBoolean()
@@ -21,8 +21,4 @@ export class ConsentDto {
 
   @IsBoolean()
   termsAccepted: boolean;
-
-  @IsString()
-  @IsNotEmpty()
-  verificationStatus: string;
 }
