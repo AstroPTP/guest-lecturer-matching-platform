@@ -58,6 +58,7 @@ model coordinators {
   location                    String?  @db.VarChar
   users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
   match_requests match_requests[]
+  dismissals     dismissals[]
   image                 images?  @relation(fields: [profile_image_id], references: [image_id])
 }
 
@@ -105,6 +106,7 @@ model guests {
   users                 users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "Guest_user_id_fkey")
   image                 images?  @relation(fields: [profile_image_id], references: [image_id])
   match_requests match_requests[]
+  dismissals     dismissals[]
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
@@ -152,13 +154,29 @@ model match_requests{
   message messages[]
 
   @@unique([coordinator_id, guest_id])
-} 
+}
+
+/// A profile someone hid from their Discovery list.
+/// dismissed_by says which side did the dismissing: "coordinator" (hid the guest) or "guest" (hid the coordinator),
+/// so a coordinator dismissing a guest stays separate from that guest dismissing the coordinator.
+model dismissals{
+  dismissal_id    BigInt    @id @default(autoincrement())
+  coordinator_id  BigInt
+  guest_id        BigInt
+  dismissed_by    String    @db.VarChar
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  coordinator coordinators @relation(fields: [coordinator_id], references: [coordinator_id], onDelete: Cascade)
+  guest guests @relation(fields: [guest_id], references: [guest_id], onDelete: Cascade)
+
+  @@unique([coordinator_id, guest_id, dismissed_by])
+}
 
 model messages{
   message_id BigInt     @id @default(autoincrement())
   match_id BigInt       
   content String        @db.VarChar
-  image_id BigInt
+  image_id BigInt?
   sent_at DateTime?     @db.Timestamp(6)
 
   image                 images?  @relation(fields: [image_id], references: [image_id])
