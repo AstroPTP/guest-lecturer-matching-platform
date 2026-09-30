@@ -16,10 +16,17 @@ export class UnitCoordinatorsService {
   /**
    * The caller's profile, assembled from the `coordinators` row plus its
    * related `user_expertise` and `availability` rows, or null if they
-   * haven't saved anything yet.
+   * haven't saved anything yet. A read only: it never creates the user row.
    */
   async findByUserId(auth0Id: string) {
-    const userId = await resolveUserId(auth0Id);
+    const user = await prisma.users.findUnique({
+      where: { auth0Id },
+      select: { userid: true },
+    });
+    if (!user) {
+      return null;
+    }
+    const userId = user.userid;
 
     const coordinator = await prisma.coordinators.findUnique({
       where: { user_id: userId },
@@ -151,11 +158,19 @@ export class UnitCoordinatorsService {
   }
 
   /**
-   * Consent has no table of its own yet (schema gap), so this doesn't
-   * persist anything beyond what the earlier steps already saved. Kept as
-   * its own endpoint so the frontend's four-step flow doesn't change shape.
+   * The last step of the setup wizard. Consent has no table of its own yet
+   * (schema gap), so the individual answers aren't stored; what is stored is
+   * `users.consentstate`, which marks the profile as complete so a returning
+   * user is sent to the dashboard instead of back through the wizard.
    */
   async saveConsent(auth0Id: string, _dto: ConsentDto) {
+    const userId = await resolveUserId(auth0Id);
+
+    await prisma.users.update({
+      where: { userid: userId },
+      data: { consentstate: true },
+    });
+
     return this.findByUserId(auth0Id);
   }
 
