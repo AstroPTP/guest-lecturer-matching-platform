@@ -4,9 +4,11 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import { getGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
+import { getGuestLecturerConsent, saveGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
 export default function ConsentPreferencesForm() {
   const router = useRouter();
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
   const [profileMatchingConsent, setProfileMatchingConsent] = useState(false);
   const [informationAccurate, setInformationAccurate] = useState(false);
   const [receiveUpdates, setReceiveUpdates] = useState(false);
@@ -55,7 +57,27 @@ export default function ConsentPreferencesForm() {
       alert("Please read and accept the Terms and Conditions.");
       return;
     }
-    router.push("/guest_lecturer/confirmation");
+
+    setError("");
+    setIsSaving(true);
+    try {
+      // Saving consent marks the profile as complete, so the next sign-in
+      // goes straight to the dashboard.
+      await saveGuestLecturerConsent({
+        profileMatchingConsent,
+        informationAccurate,
+        receiveUpdates,
+        futureTeachingReuse,
+        otherUnitsReuse,
+        timeLimitedUse,
+        termsAccepted,
+      });
+      router.push("/guest_lecturer/confirmation");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
   return (
     <main className="mx-auto w-full max-w-6xl">
@@ -189,7 +211,8 @@ export default function ConsentPreferencesForm() {
           </div>
         </section>
 
-        <FormNavButtons submitLabel="Complete Profile" isFinalStep />
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+        <FormNavButtons submitLabel={isSaving ? "Saving..." : "Complete Profile"} isFinalStep />
       </form>
     </main>
   );
