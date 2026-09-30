@@ -9,6 +9,27 @@ export interface OnboardingStatus {
   completed: boolean;
 }
 
+// One request per page load, shared by the start page, every wizard step and
+// StrictMode's second effect run, instead of one per step. Signing in or out
+// is a full page load, which starts it afresh.
+let statusRequest: Promise<OnboardingStatus> | null = null;
+
+function fetchOnboardingStatus(): Promise<OnboardingStatus> {
+  statusRequest ??= backendFetch<{ profileCompleted?: boolean }>("/users/me")
+    .then((me) => ({ completed: me.profileCompleted === true }))
+    .catch(() => {
+      // Not cached, so the next check asks the backend again.
+      statusRequest = null;
+      return { completed: false };
+    });
+  return statusRequest;
+}
+
+/** Forgets the cached status. Call once the wizard has been completed. */
+export function resetOnboardingStatus() {
+  statusRequest = null;
+}
+
 /**
  * Where the signed-in caller is in onboarding, or null while that is still
  * being checked.
@@ -25,12 +46,9 @@ export function useOnboardingStatus(): OnboardingStatus | null {
   useEffect(() => {
     let active = true;
 
-    backendFetch<{ profileCompleted?: boolean }>("/users/me")
-      .then((me) => me.profileCompleted === true)
-      .catch(() => false)
-      .then((completed) => {
-        if (active) setStatus({ completed });
-      });
+    void fetchOnboardingStatus().then((result) => {
+      if (active) setStatus(result);
+    });
 
     return () => {
       active = false;
