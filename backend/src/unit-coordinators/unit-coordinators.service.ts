@@ -68,10 +68,10 @@ export class UnitCoordinatorsService {
   async saveExpertise(auth0Id: string, dto: ExpertiseDto) {
     const userId = await resolveUserId(auth0Id);
 
-    // NOTE: experienceLevelsRequired has no matching column on `coordinators`
-    // (`experience` is a single Int?, the form collects a string list), so
-    // only discipline and learning_objective persist.
+    // required_experience is a single text column, so the list of levels is
+    // stored comma-separated. The level values contain no commas.
     const fields = {
+      required_experience: dto.experienceLevelsRequired.join(','),
       discipline: dto.industryRelevance,
       learning_objective: dto.learningObjective,
     };
@@ -246,7 +246,9 @@ export class UnitCoordinatorsService {
       },
       expertise: {
         selectedTopics: expertiseRows.map((row) => row.expertise),
-        experienceLevelsRequired: [], // not persisted yet (schema gap)
+        experienceLevelsRequired: coordinator.required_experience
+          ? coordinator.required_experience.split(',')
+          : [],
         industryRelevance: coordinator.discipline ?? '',
         learningObjective: coordinator.learning_objective ?? '',
       },

@@ -65,10 +65,11 @@ export class GuestSpeakersService {
   async saveExpertise(auth0Id: string, dto: ExpertiseDto) {
     const userId = await resolveUserId(auth0Id);
 
-    // NOTE: experienceLevel, hasSpeakingExperience and
-    // hasInternationalExperience have no columns on `guests` yet, so only
-    // prior_details, international_details and linkedIn_profile persist.
+    // NOTE: hasSpeakingExperience and hasInternationalExperience have no
+    // columns on `guests` yet; they are read back from whether the matching
+    // details field is filled in.
     const fields = {
+      experience: dto.experienceLevel,
       prior_details: dto.speakingDetails,
       international_details: dto.internationalDetails,
       linkedIn_profile: dto.linkedin,
@@ -243,7 +244,7 @@ export class GuestSpeakersService {
       },
       expertise: {
         selectedTopics: expertiseRows.map((row) => row.expertise),
-        experienceLevel: '', // not persisted yet (schema gap)
+        experienceLevel: guest.experience ?? '',
         hasSpeakingExperience: Boolean(guest.prior_details),
         speakingDetails: guest.prior_details ?? '',
         hasInternationalExperience: Boolean(guest.international_details),
