@@ -2,12 +2,15 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
+import { resetOnboardingStatus } from "@/lib/hooks/useOnboardingStatus";
 import { getGuestLecturerConsent, saveGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
 export default function ConsentPreferencesForm() {
   const router = useRouter();
   const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [profileMatchingConsent, setProfileMatchingConsent] = useState(false);
   const [informationAccurate, setInformationAccurate] = useState(false);
@@ -33,6 +36,10 @@ export default function ConsentPreferencesForm() {
         setTimeLimitedUse(data.timeLimitedUse);
         setTermsAccepted(data.termsAccepted);
       } catch {
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
 
@@ -72,6 +79,7 @@ export default function ConsentPreferencesForm() {
         timeLimitedUse,
         termsAccepted,
       });
+      resetOnboardingStatus();
       router.push("/guest_lecturer/confirmation");
     } catch {
       setError("Could not save your information. Please try again.");
@@ -79,6 +87,12 @@ export default function ConsentPreferencesForm() {
       setIsSaving(false);
     }
   }
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl">
       <div className="mb-8 flex flex-col items-center">
