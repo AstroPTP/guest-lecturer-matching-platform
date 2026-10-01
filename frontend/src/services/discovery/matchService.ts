@@ -1,6 +1,7 @@
 import { backendFetch } from "@/lib/api/backendClient";
 import { notIntegrated } from "@/lib/serviceErrors";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchRecord, MatchResult } from "@/types/discovery/matchTypes";
+import { CURRENT_USER_PLACEHOLDER_ID } from "@/utils/discoveryFilters";
 
 /** A match request row as the API returns it. */
 interface MatchRequestRow {
@@ -36,15 +37,22 @@ export async function getMatches(): Promise<MatchRecord[]> {
   return rows.map(toMatchRecord);
 }
 
-// TODO(API): No dismiss endpoint yet, so dismissals are held in memory (the
-// same approach as discovery filters) so a user can move past a card. This
-// resets on a full page reload; replace with real calls once available.
-// fromUserId is left empty to match the current-user placeholder Discovery
-// compares against.
-let currentDismisses: DismissRecord[] = [];
+/** A dismissal as the API returns it: which profile, and when. */
+interface DismissalRow {
+  targetId: string;
+  dismissedAt: string;
+}
 
+/**
+ * The profiles the signed-in user has dismissed, from the API, so they stay
+ * hidden after signing out and back in.
+ *
+ * The API only ever returns the caller's own dismissals, so each record is
+ * marked as coming from the current-user placeholder Discovery compares against.
+ */
 export async function getDismisses(): Promise<DismissRecord[]> {
-  return currentDismisses;
+  const rows = await backendFetch<DismissalRow[]>("/dismissals");
+  return rows.map((row) => ({ fromUserId: CURRENT_USER_PLACEHOLDER_ID, toUserId: row.targetId, createdAt: row.dismissedAt }));
 }
 
 export async function getBlocks(): Promise<BlockRecord[]> {
@@ -71,14 +79,14 @@ export async function removeInterest(_targetUserId: string): Promise<void> {
 }
 
 export async function dismissProfile(targetUserId: string): Promise<void> {
-  if (currentDismisses.some((dismiss) => dismiss.toUserId === targetUserId)) {
-    return;
-  }
-  currentDismisses = [...currentDismisses, { fromUserId: "", toUserId: targetUserId, createdAt: new Date().toISOString() }];
+  await backendFetch<DismissalRow>("/dismissals", {
+    method: "POST",
+    body: JSON.stringify({ targetId: targetUserId }),
+  });
 }
 
 export async function removeDismiss(targetUserId: string): Promise<void> {
-  currentDismisses = currentDismisses.filter((dismiss) => dismiss.toUserId !== targetUserId);
+  await backendFetch<void>("/dismissals/" + encodeURIComponent(targetUserId), { method: "DELETE" });
 }
 
 export async function unmatchUsers(_targetUserId: string): Promise<void> {
