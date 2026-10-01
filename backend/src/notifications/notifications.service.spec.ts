@@ -1,71 +1,117 @@
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
+import { prisma } from '../prisma';
 
 describe('NotificationsService', () => {
   let service: NotificationsService;
 
-  const baseDto = {
-    recipientId: 'user-1',
-    type: 'event' as const,
-    title: 'New event invitation',
-    description: 'Dr. Smith invited you to speak',
-    actionLabel: 'View event',
-    href: '/guest_lecturer/events',
+  // The double's resolveUserId maps every Auth0 id to user 1n.
+  const recipientId = 'auth0|recipient';
+  const createdAt = new Date('2026-10-01T02:00:00.000Z');
+  const row = {
+    notification_id: 10n,
+    user_id: 1n,
+    type: 'match',
+    title: 'New match',
+    description: 'You matched with a coordinator',
+    action_label: 'View match',
+    href: '/matches',
+    read: false,
+    created_at: createdAt,
   };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [NotificationsService],
     }).compile();
+
     service = module.get<NotificationsService>(NotificationsService);
   });
 
-  it('creates a notification as unread', () => {
-    const notification = service.create(baseDto);
-    expect(notification.read).toBe(false);
-    expect(notification.id).toBeDefined();
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
-  it('returns only notifications for the given recipient, newest first', () => {
-    service.create({ ...baseDto, recipientId: 'user-1', title: 'First' });
-    service.create({ ...baseDto, recipientId: 'user-2', title: 'Other user' });
-    service.create({ ...baseDto, recipientId: 'user-1', title: 'Second' });
+  it('stores a notification against the recipient and returns it unread', async () => {
+    const create = jest
+      .spyOn(prisma.notifications, 'create')
+      .mockResolvedValue(row);
 
-    const result = service.findByRecipient('user-1');
-    expect(result).toHaveLength(2);
-    expect(result.every((n) => n.recipientId === 'user-1')).toBe(true);
+    await expect(
+      service.create({
+        recipientId,
+        type: 'match',
+        title: 'New match',
+        description: 'You matched with a coordinator',
+        actionLabel: 'View match',
+        href: '/matches',
+      }),
+    ).resolves.toEqual({
+      id: '10',
+      recipientId,
+      type: 'match',
+      title: 'New match',
+      description: 'You matched with a coordinator',
+      actionLabel: 'View match',
+      href: '/matches',
+      read: false,
+      createdAt: createdAt.toISOString(),
+    });
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 1n,
+        action_label: 'View match',
+      }) as unknown,
+    });
   });
 
-  it('marks a notification as read when the caller is the recipient', () => {
-    const notification = service.create(baseDto);
-    const updated = service.markAsRead(notification.id, 'user-1');
-    expect(updated.read).toBe(true);
+  it("returns only the recipient's notifications, newest first", async () => {
+    const findMany = jest
+      .spyOn(prisma.notifications, 'findMany')
+      .mockResolvedValue([row] as never);
+
+    await expect(service.findByRecipient(recipientId)).resolves.toHaveLength(1);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { user_id: 1n },
+      orderBy: { created_at: 'desc' },
+    });
   });
 
-  it('throws ForbiddenException when the caller is not the recipient', () => {
-    const notification = service.create(baseDto);
-    expect(() => service.markAsRead(notification.id, 'someone-else')).toThrow(
+  it('marks a notification as read when the caller is the recipient', async () => {
+    jest.spyOn(prisma.notifications, 'findUnique').mockResolvedValue(row);
+    jest
+      .spyOn(prisma.notifications, 'update')
+      .mockResolvedValue({ ...row, read: true });
+
+    await expect(service.markAsRead('10', recipientId)).resolves.toEqual(
+      expect.objectContaining({ read: true }),
+    );
+  });
+
+  it('throws ForbiddenException when the caller is not the recipient', async () => {
+    jest
+      .spyOn(prisma.notifications, 'findUnique')
+      .mockResolvedValue({ ...row, user_id: 2n });
+
+    await expect(service.markAsRead('10', recipientId)).rejects.toThrow(
       ForbiddenException,
     );
   });
 
-  it('throws NotFoundException for an unknown id', () => {
-    expect(() => service.markAsRead('nonexistent', 'user-1')).toThrow(
+  it('throws NotFoundException for an unknown id', async () => {
+    await expect(service.markAsRead('999', recipientId)).rejects.toThrow(
       NotFoundException,
     );
   });
 
-  it('marks all of a recipient notifications as read, leaving others untouched', () => {
-    service.create({ ...baseDto, recipientId: 'user-1' });
-    service.create({ ...baseDto, recipientId: 'user-1' });
-    service.create({ ...baseDto, recipientId: 'user-2' });
+  it("marks only the caller's unread notifications as read", async () => {
+    const updateMany = jest.spyOn(prisma.notifications, 'updateMany');
 
-    service.markAllAsRead('user-1');
-
-    const user1Notifications = service.findByRecipient('user-1');
-    const user2Notifications = service.findByRecipient('user-2');
-    expect(user1Notifications.every((n) => n.read)).toBe(true);
-    expect(user2Notifications.every((n) => !n.read)).toBe(true);
+    await service.markAllAsRead(recipientId);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { user_id: 1n, read: false },
+      data: { read: true },
+    });
   });
 });

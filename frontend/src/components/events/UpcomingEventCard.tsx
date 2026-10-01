@@ -11,9 +11,11 @@ interface UpcomingEventCardProps {
   onDecline?: (eventId: string) => void;
   onCancel?: (eventId: string) => void;
   onComplete?: (eventId: string) => void;
+  /** True while an action on this event is saving, so it can't be sent twice. */
+  isBusy?: boolean;
 }
 
-export default function UpcomingEventCard({ event, currentUserType, onAccept, onDecline, onCancel, onComplete }: UpcomingEventCardProps) {
+export default function UpcomingEventCard({ event, currentUserType, onAccept, onDecline, onCancel, onComplete, isBusy = false }: UpcomingEventCardProps) {
   const canGuestRespond = currentUserType === "guestLecturer" && event.status === "invitation-sent";
   const canCoordinatorCancel = currentUserType === "unitCoordinator" && (event.status === "invitation-sent" || event.status === "accepted");
   const canCoordinatorComplete = currentUserType === "unitCoordinator" && event.status === "accepted" && isEventInPast(event);
@@ -55,7 +57,8 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
               <button
                 type="button"
                 onClick={() => onAccept?.(event.id)}
-                className="flex-1 rounded-xl bg-[#2d2d2d] px-5 py-3 font-semibold text-white shadow-md transition hover:bg-black"
+                disabled={isBusy}
+                className="flex-1 rounded-xl bg-[#2d2d2d] px-5 py-3 font-semibold text-white shadow-md transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Accept
               </button>
@@ -63,7 +66,8 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
               <button
                 type="button"
                 onClick={() => onDecline?.(event.id)}
-                className="flex-1 rounded-xl bg-gray-200 px-5 py-3 font-semibold text-[#2d2d2d] transition hover:bg-gray-300"
+                disabled={isBusy}
+                className="flex-1 rounded-xl bg-gray-200 px-5 py-3 font-semibold text-[#2d2d2d] transition hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Decline
               </button>
@@ -76,7 +80,8 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
                 <button
                   type="button"
                   onClick={() => onCancel?.(event.id)}
-                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                  disabled={isBusy}
+                  className="rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel Event
                 </button>
@@ -86,7 +91,8 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
                 <button
                   type="button"
                   onClick={() => onComplete?.(event.id)}
-                  className="rounded-xl bg-[#2d2d2d] px-4 py-2 text-sm font-semibold text-white hover:bg-black"
+                  disabled={isBusy}
+                  className="rounded-xl bg-[#2d2d2d] px-4 py-2 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Mark Completed
                 </button>

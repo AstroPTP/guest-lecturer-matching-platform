@@ -18,8 +18,8 @@ export class NotificationsController {
   }
 
   @Patch('read-all')
-  markAllAsRead(@CurrentUser() user: AuthenticatedUser) {
-    this.notificationsService.markAllAsRead(user.id);
+  async markAllAsRead(@CurrentUser() user: AuthenticatedUser) {
+    await this.notificationsService.markAllAsRead(user.id);
     return { success: true };
   }
 }
