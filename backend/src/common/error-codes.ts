@@ -19,6 +19,8 @@ export const ErrorCode = {
   PayloadTooLarge: 'PAYLOAD_TOO_LARGE',
   /** Registration for an email that already has an account. */
   AccountExists: 'ACCOUNT_EXISTS',
+  /** The current password given to confirm a settings change is wrong. */
+  InvalidCurrentPassword: 'INVALID_CURRENT_PASSWORD',
   /** Anything unhandled. Never carries detail to the client. */
   InternalError: 'INTERNAL_ERROR',
 } as const;

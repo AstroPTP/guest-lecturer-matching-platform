@@ -132,9 +132,11 @@ export class SettingsService {
           'The identity service could not complete this request. Please retry or contact support.',
         );
       }
-      throw new BadRequestException(
-        'The identity service rejected this change. Check the details and password requirements.',
-      );
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message:
+          'The identity service rejected this change. Check the details and password requirements.',
+      });
     }
 
     if (response.status === 204) {
@@ -255,7 +257,10 @@ export class SettingsService {
         error?: string;
       } | null;
       if (failure?.error === 'invalid_grant') {
-        throw new ForbiddenException('Current password is incorrect.');
+        throw new ForbiddenException({
+          code: ErrorCode.InvalidCurrentPassword,
+          message: 'Current password is incorrect.',
+        });
       }
       throw new ServiceUnavailableException(
         'Password verification could not complete. Your account may require MFA or a different sign-in method.',
@@ -292,7 +297,10 @@ export class SettingsService {
   async changeEmail(id: string, email: string, password: string) {
     const { user } = await this.verifyPassword(id, password);
     if (email.toLowerCase() === user.email?.toLowerCase()) {
-      throw new BadRequestException('Enter a different email address.');
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'Enter a different email address.',
+      });
     }
 
     await this.management(this.userPath(id), 'PATCH', {
@@ -310,7 +318,10 @@ export class SettingsService {
     newPassword: string,
   ) {
     if (currentPassword === newPassword) {
-      throw new BadRequestException('Choose a different password.');
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'Choose a different password.',
+      });
     }
 
     const { identity } = await this.verifyPassword(id, currentPassword);
