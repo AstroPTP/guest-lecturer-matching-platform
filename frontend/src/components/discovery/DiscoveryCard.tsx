@@ -4,7 +4,19 @@ import type { PublicGuestLecturerProfile } from "@/types/discovery/publicGuestLe
 import type { PublicUnitCoordinatorProfile } from "@/types/discovery/publicUnitCoordinatorProfileTypes";
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import Image from "next/image";
-import { formatOptions as unitCoordinatorFormatOptions } from "@/constants/profileOptions/shared";
+import {
+  experienceLevels,
+  expertiseTopics,
+  formatOptions,
+  guestLecturerAudienceSizeOptions,
+  guestLecturerAvailabilityFrequencyOptions,
+  sessionDurationOptions,
+  unitCoordinatorAudienceSizeOptions,
+  weekDays,
+} from "@/constants/profileOptions/shared";
+import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
+import { academicRoleOptions, engagementFrequencyOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
+import { formatOptionLabel } from "@/utils/displayFormatters";
 import DiscoverySection from "./DiscoverySection";
 import DiscoveryTagGroup from "./DiscoveryTagGroup";
 import DiscoveryValue from "./DiscoveryValue";
@@ -26,11 +38,11 @@ export default function DiscoveryCard({
   let role = "";
  let organisation = "";
   if (item.profileType === "guestLecturer") {
-    role = item.profile.basicInformation.professionalRole;
-    organisation = item.profile.basicInformation.professionalField;
+    role = formatOptionLabel(item.profile.basicInformation.professionalRole, professionalRoleOptions);
+    organisation = formatOptionLabel(item.profile.basicInformation.professionalField, professionalFieldOptions);
   } else {
-    role = item.profile.basicInformation.academicRole;
-    organisation = item.profile.basicInformation.schoolDepartment;
+    role = formatOptionLabel(item.profile.basicInformation.academicRole, academicRoleOptions);
+    organisation = formatOptionLabel(item.profile.basicInformation.schoolDepartment, schoolDepartmentOptions);
   }
   return (
     <article className="overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-[0_12px_40px_rgba(0,0,0,0.08)]">
@@ -96,24 +108,24 @@ function GuestLecturerDetails({ profile }: { profile: PublicGuestLecturerProfile
       <div className="grid grid-cols-1 border-t border-gray-200 md:grid-cols-2">
         <DiscoverySection title="Engagement Requirements">
           <DiscoveryValue label="Primary location" value={engagementProfile.primaryLocation} />
-          <DiscoveryValue label="Audience size" value={engagementProfile.audienceSize} />
-          <DiscoveryValue label="Session duration" value={engagementProfile.sessionDuration} />
-          <DiscoveryValue label="Format" value={engagementProfile.format} />
+          <DiscoveryValue label="Audience size" value={formatOptionLabel(engagementProfile.audienceSize, guestLecturerAudienceSizeOptions)} />
+          <DiscoveryValue label="Session duration" value={formatOptionLabel(engagementProfile.sessionDuration, sessionDurationOptions)} />
+          <DiscoveryTagGroup label="Formats" items={getGuestLecturerFormats(engagementProfile).map((format) => formatOptionLabel(format, formatOptions))} />
           <DiscoveryTagGroup label="Delivery focus" items={engagementProfile.deliveryFocus} />
         </DiscoverySection>
 
         <DiscoverySection title="Preferred Schedule" className="border-t border-gray-200 md:border-l md:border-t-0">
-          <DiscoveryTagGroup label="Available days" items={schedule.availableDays} />
+          <DiscoveryTagGroup label="Available days" items={schedule.availableDays.map((day) => formatOptionLabel(day, weekDays))} />
           <DiscoveryValue label="Available time" value={availableTime} />
-          <DiscoveryValue label="Frequency" value={schedule.availabilityFrequency} />
+          <DiscoveryValue label="Frequency" value={formatOptionLabel(schedule.availabilityFrequency, guestLecturerAvailabilityFrequencyOptions)} />
           <DiscoveryValue label="Schedule notes" value={schedule.availabilityNotes} />
         </DiscoverySection>
       </div>
 
       <DiscoverySection title="Guest Lecturer Experience" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
-          <DiscoveryValue label="Experience level" value={expertise.experienceLevel} />
+          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics.map((topic) => formatOptionLabel(topic, topicOptions))} />
+          <DiscoveryValue label="Experience level" value={formatOptionLabel(expertise.experienceLevel, experienceLevelOptions)} />
           <DiscoveryValue label="Speaking experience" value={expertise.hasSpeakingExperience ? expertise.speakingDetails || "Yes" : "No"} />
           <DiscoveryValue label="International experience" value={expertise.hasInternationalExperience ? expertise.internationalDetails || "Yes" : "No"} />
           <DiscoveryValue label="LinkedIn" value={expertise.linkedin} />
@@ -132,24 +144,24 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
       <div className="grid grid-cols-1 border-t border-gray-200 md:grid-cols-2">
         <DiscoverySection title="Engagement Requirements">
           <DiscoveryValue label="Primary location" value={engagementProfile.primaryLocation} />
-          <DiscoveryValue label="Audience size" value={engagementProfile.audienceSize} />
-          <DiscoveryValue label="Session duration" value={engagementProfile.sessionDuration} />
-          <DiscoveryTagGroup label="Formats" items={engagementProfile.formats.map(formatDeliveryFormat)} />
+          <DiscoveryValue label="Audience size" value={formatOptionLabel(engagementProfile.audienceSize, unitCoordinatorAudienceSizeOptions)} />
+          <DiscoveryValue label="Session duration" value={formatOptionLabel(engagementProfile.sessionDuration, sessionDurationOptions)} />
+          <DiscoveryTagGroup label="Formats" items={engagementProfile.formats.map((format) => formatOptionLabel(format, formatOptions))} />
           <DiscoveryTagGroup label="Delivery focus" items={engagementProfile.deliveryFocus} />
         </DiscoverySection>
 
         <DiscoverySection title="Preferred Schedule" className="border-t border-gray-200 md:border-l md:border-t-0">
-          <DiscoveryTagGroup label="Preferred days" items={schedule.preferredDays} />
+          <DiscoveryTagGroup label="Preferred days" items={schedule.preferredDays.map((day) => formatOptionLabel(day, weekDays))} />
           <DiscoveryValue label="Preferred time" value={preferredTime} />
-          <DiscoveryValue label="Frequency" value={schedule.engagementFrequency} />
+          <DiscoveryValue label="Frequency" value={formatOptionLabel(schedule.engagementFrequency, engagementFrequencyOptions)} />
           <DiscoveryValue label="Schedule notes" value={schedule.scheduleNotes} />
         </DiscoverySection>
       </div>
 
       <DiscoverySection title="Guest Lecturer Requirements" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
-          <DiscoveryTagGroup label="Experience required" items={expertise.experienceLevelsRequired} />
+          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics.map((topic) => formatOptionLabel(topic, topicOptions))} />
+          <DiscoveryTagGroup label="Experience required" items={expertise.experienceLevelsRequired.map((level) => formatOptionLabel(level, experienceLevelOptions))} />
           <DiscoveryValue label="Learning objective" value={expertise.learningObjective} />
           <DiscoveryValue label="Industry relevance" value={expertise.industryRelevance} />
         </div>
@@ -158,6 +170,15 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
   );
 }
 
-function formatDeliveryFormat(value: string): string {
-  return unitCoordinatorFormatOptions.find((option) => option.value === value)?.label ?? value;
+const topicOptions = expertiseTopics.map((topic) => ({ value: topic, label: topic }));
+const experienceLevelOptions = experienceLevels.map((level) => ({ value: level.value, label: level.title }));
+const professionalFieldOptions = professionalFields.map((field) => ({ value: field, label: field }));
+const professionalRoleOptions = professionalRoles.map((role) => ({ value: role, label: role }));
+
+// Older guest lecturer profiles only have the comma-joined format string, not the list.
+function getGuestLecturerFormats(engagementProfile: PublicGuestLecturerProfile["engagementProfile"]): string[] {
+  if (engagementProfile.formats) {
+    return engagementProfile.formats;
+  }
+  return engagementProfile.format.split(",").map((format) => format.trim()).filter(Boolean);
 }

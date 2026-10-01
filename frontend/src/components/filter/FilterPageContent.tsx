@@ -7,6 +7,11 @@ import { useRouter } from "next/navigation";
 import arrowBackIcon from "@/assets/arrow_back.png";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import type { UserRole } from "@/types/shared/userRole";
+import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
+import { getPublicUnitCoordinatorProfiles } from "@/services/discovery/guestLecturerDiscoveryService";
+import { getPublicGuestLecturerProfiles } from "@/services/discovery/unitCoordinatorDiscoveryService";
+import { getBlocks, getDismisses, getInterests, getMatches } from "@/services/discovery/matchService";
+import { applyGuestLecturerFilters, applyUnitCoordinatorFilters, getAvailableDiscoveryItems } from "@/utils/discoveryFilters";
 import { emptyGuestLecturerFilters, emptyUnitCoordinatorFilters,getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters, saveGuestLecturerDiscoveryFilters, saveUnitCoordinatorDiscoveryFilters,} from "@/services/filter/discoveryFilterService";
 import { professionalFields } from "@/constants/profileOptions/guestLecturer";
 import { experienceLevels, expertiseTopics, formatOptions,sessionDurationOptions, unitCoordinatorAudienceSizeOptions,weekDays} from "@/constants/profileOptions/shared";
@@ -21,6 +26,43 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
   const [guestLecturerFilters, setGuestLecturerFilters] = useState<GuestLecturerDiscoveryFilters>({...emptyGuestLecturerFilters});
   const [unitCoordinatorFilters, setUnitCoordinatorFilters] = useState<UnitCoordinatorDiscoveryFilters>({ ...emptyUnitCoordinatorFilters});
   const [loadError, setLoadError] = useState("");
+  // Profiles Discovery would show before filtering, so the Apply button can say
+  // how many the current selection leaves. Stays null if they can't be loaded.
+  const [availableItems, setAvailableItems] = useState<DiscoveryItem[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadAvailableItems() {
+      try {
+        const [items, interests, dismisses, matches, blocks] = await Promise.all([
+          role === "guestLecturer" ? loadUnitCoordinatorItems() : loadGuestLecturerItems(),
+          getInterests(),
+          getDismisses(),
+          getMatches(),
+          getBlocks(),
+        ]);
+        if (!cancelled) {
+          setAvailableItems(getAvailableDiscoveryItems(items, interests, dismisses, matches, blocks));
+        }
+      } catch (error) {
+        console.error("Unable to load profiles for the filter count:", error);
+      }
+    }
+    void loadAvailableItems();
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
+
+  let matchCount: number | null = null;
+  if (availableItems) {
+    matchCount =
+      role === "guestLecturer"
+        ? applyGuestLecturerFilters(availableItems, guestLecturerFilters).length
+        : applyUnitCoordinatorFilters(availableItems, unitCoordinatorFilters).length;
+  }
+  const profileNoun = role === "guestLecturer" ? "coordinator" : "guest lecturer";
+
   useEffect(() => {
     let cancelled = false;
     async function loadFilters() {
@@ -95,8 +137,9 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
       )}
 
       <div className="sticky bottom-0 mt-10 border-t border-gray-200 bg-[#f8f8f8] py-5">
+        {matchCount === 0 && <p className="mb-3 text-center text-sm text-gray-500">No {profileNoun}s match these filters. Try removing some.</p>}
         <button type="button" onClick={handleApply} className="w-full rounded-xl bg-[#2d2d2d] px-6 py-4 text-lg font-semibold text-white hover:bg-black">
-          Apply Filters
+          {matchCount === null ? "Apply Filters" : "Show " + matchCount + " " + profileNoun + (matchCount === 1 ? "" : "s")}
         </button>
       </div>
     </div>
@@ -396,6 +439,16 @@ function ToggleOption({ label, checked, onChange }: { label: string; checked: bo
       </span>
     </button>
   );
+}
+
+async function loadUnitCoordinatorItems(): Promise<DiscoveryItem[]> {
+  const profiles = await getPublicUnitCoordinatorProfiles();
+  return profiles.map((profile) => ({ profileType: "unitCoordinator", profile }));
+}
+
+async function loadGuestLecturerItems(): Promise<DiscoveryItem[]> {
+  const profiles = await getPublicGuestLecturerProfiles();
+  return profiles.map((profile) => ({ profileType: "guestLecturer", profile }));
 }
 
 function toggleValue(values: string[], value: string): string[] {
