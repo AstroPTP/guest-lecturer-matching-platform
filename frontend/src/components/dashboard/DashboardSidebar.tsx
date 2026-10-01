@@ -51,6 +51,12 @@ export default function DashboardSidebar({ items, theme, collapsed, onToggleColl
 
         <a
           href="/auth/logout"
+          // Replaces the dashboard in the history, so Back after logging out
+          // does not return to this signed-in page.
+          onClick={(event) => {
+            event.preventDefault();
+            window.location.replace("/auth/logout");
+          }}
           title="Logout"
           className={"flex w-full items-center gap-3 px-3 py-3 text-left text-sm text-gray-600 hover:text-black " + (collapsed ? "justify-center px-0" : "")}
         >

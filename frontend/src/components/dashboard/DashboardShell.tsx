@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useSyncExternalStore } from "react";
+import { ReactNode, useEffect, useSyncExternalStore } from "react";
 import DashboardHeader from "./DashboardHeader";
 import DashboardSidebar from "./DashboardSidebar";
 import { DashboardMenuItem } from "./dashboardTypes";
@@ -36,9 +36,44 @@ function setSidebarCollapsed(next: boolean) {
   collapsedListeners.forEach((listener) => listener());
 }
 
+/**
+ * Sends the user to login when the browser shows this page from its
+ * back/forward cache after they logged out. That restore never reaches the
+ * server, so the proxy's sign-in check does not run; ask for the session here.
+ */
+function useLeaveWhenSignedOut() {
+  useEffect(() => {
+    async function handlePageShow(event: PageTransitionEvent) {
+      if (!event.persisted) {
+        return;
+      }
+      // Hide the restored page until the session is confirmed, so a signed-out
+      // user never sees the old dashboard while the check runs.
+      const page = document.documentElement;
+      page.style.visibility = "hidden";
+      try {
+        const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
+        const body = (await response.json()) as { user: unknown };
+        if (!body.user) {
+          window.location.replace("/login");
+          return;
+        }
+      } catch {
+        // Offline or the check failed: show the page; its API calls still
+        // send a signed-out user to login.
+      }
+      page.style.visibility = "";
+    }
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+}
+
 export default function DashboardShell({ children, menuItems, role, notificationHref }: DashboardShellProps) {
   const theme = role === "unitCoordinator" ? "coordinator" : "guest";
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
+  useLeaveWhenSignedOut();
 
   function toggleCollapsed() {
     setSidebarCollapsed(!collapsed);
