@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { ActionResult } from "@/types/settings/settingsTypes";
 import { Field, SectionHeader } from "@/components/settings/settingsShared";
@@ -34,7 +33,6 @@ export default function DeleteAccountSection({ onDeleteAccount }: { onDeleteAcco
 }
 
 function DeleteAccountModal({ onClose, onDeleteAccount }: { onClose: () => void; onDeleteAccount: () => Promise<ActionResult> }) {
-  const router = useRouter();
   const [confirmText, setConfirmText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +56,8 @@ function DeleteAccountModal({ onClose, onDeleteAccount }: { onClose: () => void;
     }
 
     onClose();
-    router.replace("/login");
+    // The account is gone, so end the session too rather than leaving a dead one behind.
+    window.location.assign("/auth/logout");
   }
 
   return (
