@@ -16,9 +16,9 @@ export default function LoginForm() {
   const [isChecking, setIsChecking] = useState(false);
   const searchParams = useSearchParams();
   const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
-  // Every sign-in starts at Basic information. Returning users find their
-  // saved answers pre-filled; the last step leads on to My Profile.
-  const fallbackReturnTo = role === "coordinator" ? "/unit_coordinator/profile" : "/guest_lecturer/profile";
+  // The start page sends a user who has finished the setup wizard to the
+  // dashboard, and everyone else to Basic information.
+  const fallbackReturnTo = role === "coordinator" ? "/unit_coordinator/start" : "/guest_lecturer/start";
 
   // The middleware sends signed-out visitors here with ?redirectTo=. Only a
   // path inside one of the two dashboards is honoured, so the parameter cannot

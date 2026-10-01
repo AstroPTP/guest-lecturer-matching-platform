@@ -2,6 +2,7 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import Image from "next/image";
 import { getUnitCoordinatorBasicInformation, saveUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import { academicRoleOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
@@ -15,6 +16,7 @@ export default function BasicInformationForm() {
   const [photoPreview, setPhotoPreview] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -32,6 +34,10 @@ export default function BasicInformationForm() {
         setPhotoPreview(data.photoPreview);
       } catch {
     
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
 
@@ -80,6 +86,12 @@ export default function BasicInformationForm() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
   }
 
   return (
