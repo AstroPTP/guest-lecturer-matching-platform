@@ -107,6 +107,24 @@ describe('DismissalsService', () => {
       });
     });
 
+    it('reads the row a simultaneous dismiss wrote instead of failing', async () => {
+      signInAsGuest(7n);
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValueOnce({ coordinator_id: 2001n } as never);
+      jest
+        .spyOn(prisma.dismissals, 'upsert')
+        .mockRejectedValue(Object.assign(new Error('dup'), { code: 'P2002' }));
+      jest
+        .spyOn(prisma.dismissals, 'findUniqueOrThrow')
+        .mockResolvedValue({ created_at: dismissedAt } as never);
+
+      await expect(service.dismiss(userId, '2001')).resolves.toEqual({
+        targetId: '2001',
+        dismissedAt: dismissedAt.toISOString(),
+      });
+    });
+
     it('rejects a profile that does not exist', async () => {
       signInAsCoordinator(5n);
       const upsert = jest.spyOn(prisma.dismissals, 'upsert');

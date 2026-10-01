@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { isUniqueViolation } from '../common/prisma-errors';
 import { prisma, resolveUserId, toId } from '../prisma';
 
 type DismissedBy = 'coordinator' | 'guest';
@@ -55,11 +56,17 @@ export class DismissalsService {
     await this.assertTargetExists(side.dismissedBy, target);
 
     const pair = this.toPair(side, target);
-    const row = await prisma.dismissals.upsert({
-      where: { coordinator_id_guest_id_dismissed_by: pair },
-      update: {},
-      create: pair,
-    });
+    const where = { coordinator_id_guest_id_dismissed_by: pair };
+    // Upsert on a compound key is a read then a write, so a second click that
+    // lands at the same time can lose the race; it then reads the first one's row.
+    const row = await prisma.dismissals
+      .upsert({ where, update: {}, create: pair })
+      .catch(async (error: unknown) => {
+        if (!isUniqueViolation(error)) {
+          throw error;
+        }
+        return prisma.dismissals.findUniqueOrThrow({ where });
+      });
 
     return { targetId, dismissedAt: row.created_at.toISOString() };
   }
