@@ -38,6 +38,8 @@ export const prisma = {
   messages: model(),
   events: model(),
   notifications: model(),
+  audit_entries: model(),
+  admin_settings: model(),
   availability: model(),
   user_expertise: model(),
 };

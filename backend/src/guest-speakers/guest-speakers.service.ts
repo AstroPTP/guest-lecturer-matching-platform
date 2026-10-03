@@ -4,6 +4,7 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
+import { visibleGuestsWhere } from '../admin/platform-rules';
 
 type GuestRow = NonNullable<Awaited<ReturnType<typeof prisma.guests.findUnique>>>;
 type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
@@ -176,14 +177,12 @@ export class GuestSpeakersService {
   /**
    * Every guest speaker, from the database. What the discovery page lists.
    *
-   * A guest whose account an administrator has deactivated is left out, so
-   * removing someone takes them out of discovery as well as signing them out.
+   * Deactivated accounts are left out, and so are unapproved profiles while
+   * an administrator requires approval.
    */
   async findAll() {
     const guests = await prisma.guests.findMany({
-      where: {
-        OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
-      },
+      where: await visibleGuestsWhere(),
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, toId } from '../prisma';
+import { recordAudit } from './platform-rules';
 
 /** Eight weekly buckets ending now, oldest first, for the registrations chart. */
 function lastWeeks(count: number): { label: string; start: Date; end: Date }[] {
@@ -192,7 +193,11 @@ export class AdminService {
    * already refuses, so a deactivated user is locked out on their next request
    * without a second mechanism. Reactivating clears it.
    */
-  async setStatus(id: string, status: 'active' | 'deactivated') {
+  async setStatus(
+    id: string,
+    status: 'active' | 'deactivated',
+    actor: string | null = null,
+  ) {
     const userid = toId(id, 'id');
     const exists = await prisma.users.findUnique({
       where: { userid },
@@ -206,6 +211,11 @@ export class AdminService {
       data: { deletedat: status === 'deactivated' ? new Date() : null },
       select: { userid: true, deletedat: true },
     });
+    await recordAudit(
+      actor,
+      status === 'deactivated' ? 'user.deactivated' : 'user.reactivated',
+      { type: 'user', id: updated.userid.toString() },
+    );
     return {
       id: updated.userid.toString(),
       status: updated.deletedat ? 'deactivated' : 'active',
