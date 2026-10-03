@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
+import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
 import { AppService } from './app.service';
 import { CcaeAdministratorsModule } from './ccae-administrators/ccae-administrators.module';
@@ -16,6 +17,7 @@ import { SettingsModule } from './settings/settings.module';
 
 @Module({
   imports: [
+    AdminModule,
     AuthModule,
     ThrottlerModule.forRoot([
       {
