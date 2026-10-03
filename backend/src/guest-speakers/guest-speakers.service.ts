@@ -159,9 +159,15 @@ export class GuestSpeakersService {
 
   /**
    * Every guest speaker, from the database. What the discovery page lists.
+   *
+   * A guest whose account an administrator has deactivated is left out, so
+   * removing someone takes them out of discovery as well as signing them out.
    */
   async findAll() {
     const guests = await prisma.guests.findMany({
+      where: {
+        OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+      },
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>
