@@ -1,5 +1,4 @@
 import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
-import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -20,13 +19,13 @@ export class EventsController {
   @Get('coordinator')
   @Roles(AppRole.UnitCoordinator)
   findForCoordinator(@CurrentUser() user: AuthenticatedUser) {
-    return this.eventsService.findByCoordinator(user.id);
+    return this.eventsService.findMine(user.id);
   }
 
   @Get('guest-lecturer')
   @Roles(AppRole.GuestSpeaker)
   findForGuestLecturer(@CurrentUser() user: AuthenticatedUser) {
-    return this.eventsService.findByGuestLecturer(user.id);
+    return this.eventsService.findMine(user.id);
   }
 
   @Patch(':id/accept')
@@ -51,11 +50,5 @@ export class EventsController {
   @Roles(AppRole.UnitCoordinator)
   complete(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.eventsService.updateStatus(id, 'completed', user.id);
-  }
-
-  @Get()
-  @Public()
-  findAll() {
-    return this.eventsService.findAll();
   }
 }

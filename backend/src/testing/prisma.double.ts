@@ -34,7 +34,10 @@ export const prisma = {
   admins: model(),
   units: model(),
   match_requests: model(),
+  dismissals: model(),
   messages: model(),
+  events: model(),
+  notifications: model(),
   availability: model(),
   user_expertise: model(),
 };

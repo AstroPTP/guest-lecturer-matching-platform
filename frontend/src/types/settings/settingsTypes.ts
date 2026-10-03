@@ -1,7 +1,6 @@
 export interface AccountSettings {
   userId: string;
   email: string;
-  password: string; 
 }
 
 export type ActionResult = {

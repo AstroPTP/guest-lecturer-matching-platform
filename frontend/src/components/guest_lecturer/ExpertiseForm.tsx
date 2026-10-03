@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getGuestLecturerExpertise, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
@@ -16,6 +17,7 @@ export default function ExpertiseForm() {
   const [linkedin, setLinkedin] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +35,10 @@ export default function ExpertiseForm() {
         setInternationalDetails(data.internationalDetails);
         setLinkedin(data.linkedin);
       } catch {
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
     void loadDraft();
@@ -84,6 +90,12 @@ export default function ExpertiseForm() {
       setIsSaving(false);
     }
   }
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl">
       <div className="mb-8 flex flex-col items-center">

@@ -2,12 +2,17 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import { getUnitCoordinatorConsent } from "@/services/profile/unitCoordinatorProfileService";
+import { resetOnboardingStatus } from "@/lib/hooks/useOnboardingStatus";
+import { getUnitCoordinatorConsent, saveUnitCoordinatorConsent } from "@/services/profile/unitCoordinatorProfileService";
 
 export default function UnitCoordinatorConsentForm() {
   const router = useRouter();
+  const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [detailsMatchingConsent, setDetailsMatchingConsent] = useState(false);
   const [informationAccurate, setInformationAccurate] = useState(false);
   const [receiveUpdates, setReceiveUpdates] = useState(false);
@@ -36,6 +41,10 @@ export default function UnitCoordinatorConsentForm() {
         setTermsAccepted(data.termsAccepted);
       } catch {
         
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
 
@@ -63,7 +72,33 @@ export default function UnitCoordinatorConsentForm() {
       return;
     }
 
-    router.push("/unit_coordinator/confirmation");
+    setError("");
+    setIsSaving(true);
+    try {
+      // Saving consent marks the profile as complete, so the next sign-in
+      // goes straight to the dashboard.
+      await saveUnitCoordinatorConsent({
+        detailsMatchingConsent,
+        informationAccurate,
+        receiveUpdates,
+        useWithinAgreedScope,
+        noExternalRedistribution,
+        studentPrivacyCompliance,
+        termsAccepted,
+      });
+      resetOnboardingStatus();
+      router.push("/unit_coordinator/confirmation");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
   }
 
   return (
@@ -197,7 +232,8 @@ export default function UnitCoordinatorConsentForm() {
           </div>
         </section>
 
-        <FormNavButtons submitLabel="Complete Profile" isFinalStep />
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+        <FormNavButtons submitLabel={isSaving ? "Saving..." : "Complete Profile"} isFinalStep />
       </form>
     </main>
   );

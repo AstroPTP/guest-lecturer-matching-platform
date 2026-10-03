@@ -19,7 +19,8 @@ export default function PasswordSection({
     message: string;
   } | null>(null);
 
-  const {hasMinLength: meetsLength, hasUppercase,hasNumber, hasSpecialCharacter,  strength: passwordStrength,   strengthLabel, isValid: isPasswordValid } = getPasswordRequirements(newPassword);
+  const {hasMinLength: meetsLength, hasUppercase,hasNumber, hasSpecialCharacter,  strength: passwordStrength, isValid: isPasswordValid } = getPasswordRequirements(newPassword);
+  const strengthState = newPassword.length === 0 ? { label: "", color: "#E5E7EB" } : passwordStrength <= 1 ? { label: "Weak", color: "#EF4444" } : passwordStrength <= 3 ? { label: "Medium", color: "#F59E0B" } : { label: "Strong", color: "#10B981" };
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,11 +90,11 @@ export default function PasswordSection({
           <div>
             <div className="flex items-center gap-2">
               {[1, 2, 3, 4].map((level) => (
-                <div key={level} className={"h-1 flex-1 rounded-full " + (passwordStrength >= level ? "bg-black" : "bg-gray-300")} />
+                <div key={level} className="h-1 flex-1 rounded-full transition-colors" style={{ backgroundColor: passwordStrength >= level ? strengthState.color : "#E5E7EB" }} />
               ))}
             </div>
 
-            <p className="mt-2 min-h-5 text-right text-sm font-medium text-gray-700">{strengthLabel}</p>
+            <p className="mt-2 min-h-5 text-right text-sm font-medium transition-colors" style={{ color: strengthState.color }}>{strengthState.label}</p>
           </div>
 
           <div>

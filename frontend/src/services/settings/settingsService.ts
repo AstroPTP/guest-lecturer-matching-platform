@@ -1,5 +1,4 @@
 import { backendFetch } from "@/lib/api/backendClient";
-import { NOT_INTEGRATED_MESSAGE, notIntegrated } from "@/lib/serviceErrors";
 import type { AccountSettings, ActionResult, RequestEmailChangeResult } from "@/types/settings/settingsTypes";
 
 /** Calls a settings endpoint and turns any failure into an ActionResult. */
@@ -16,22 +15,19 @@ export function resetPassword(newPassword: string): Promise<ActionResult> {
   return action("/settings/reset-password", "PATCH", { newPassword });
 }
 
-export async function getAccountSettings(_seedEmail: string): Promise<AccountSettings> {
-  return notIntegrated();
-}
-export async function requestEmailChange(_newEmail: string, _currentPassword: string): Promise<RequestEmailChangeResult> {
-  return { success: false, error: NOT_INTEGRATED_MESSAGE };
+export function getAccountSettings(): Promise<AccountSettings> {
+  return backendFetch<AccountSettings>("/settings");
 }
 
-export async function confirmEmailChange(_code: string): Promise<ActionResult> {
-  return { success: false, error: NOT_INTEGRATED_MESSAGE };
+/** Auth0 changes the email straight away and emails a verification link. */
+export function requestEmailChange(newEmail: string, currentPassword: string): Promise<RequestEmailChangeResult> {
+  return action("/settings/email", "PATCH", { newEmail, currentPassword });
 }
 
-export function cancelEmailChange(): void {}
-export async function changePassword(_currentPassword: string, _newPassword: string): Promise<ActionResult> {
-  return { success: false, error: NOT_INTEGRATED_MESSAGE };
+export function changePassword(currentPassword: string, newPassword: string): Promise<ActionResult> {
+  return action("/settings/password", "PATCH", { currentPassword, newPassword });
 }
 
-export async function deleteAccount(): Promise<ActionResult> {
-  return { success: false, error: NOT_INTEGRATED_MESSAGE };
+export function deleteAccount(): Promise<ActionResult> {
+  return action("/settings", "DELETE");
 }

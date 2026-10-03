@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
@@ -15,10 +15,24 @@ export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const searchParams = useSearchParams();
+
+  // The browser can bring this page back from its back/forward cache with the
+  // email and password still typed in. Empty the form when that happens.
+  useEffect(() => {
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) {
+        setEmail("");
+        setPassword("");
+        setError(null);
+      }
+    }
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
   const role = searchParams.get("role") === "coordinator"  ? "coordinator" : "guest";
-  // Every sign-in starts at Basic information. Returning users find their
-  // saved answers pre-filled; the last step leads on to My Profile.
-  const fallbackReturnTo = role === "coordinator" ? "/unit_coordinator/profile" : "/guest_lecturer/profile";
+  // The start page sends a user who has finished the setup wizard to the
+  // dashboard, and everyone else to Basic information.
+  const fallbackReturnTo = role === "coordinator" ? "/unit_coordinator/start" : "/guest_lecturer/start";
 
   // The middleware sends signed-out visitors here with ?redirectTo=. Only a
   // path inside one of the two dashboards is honoured, so the parameter cannot
@@ -69,7 +83,9 @@ export default function LoginForm() {
       }
 
       // A full navigation, so the new session cookie is what the route gate sees.
-      window.location.assign(returnTo);
+      // It replaces this page in the history, so Back never returns to a login
+      // form with the credentials still filled in.
+      window.location.replace(returnTo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "We couldn't sign you in right now. Please try again.");
     } finally {

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getGuestLecturerEngagement, saveGuestLecturerEngagement } from "@/services/profile/guestLecturerProfileService";
 import {
@@ -28,6 +29,7 @@ export default function EngagementProfileForm() {
   const [availabilityNotes, setAvailabilityNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +50,10 @@ export default function EngagementProfileForm() {
         setAvailabilityFrequency(data.schedule.availabilityFrequency);
         setAvailabilityNotes(data.schedule.availabilityNotes);
       } catch {
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
     void loadDraft();
@@ -128,6 +134,12 @@ export default function EngagementProfileForm() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
   }
 
   return (

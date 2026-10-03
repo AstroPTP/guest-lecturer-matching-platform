@@ -152,8 +152,15 @@ describe('GuestSpeakersService', () => {
   });
 
   describe('saveConsent', () => {
-    it('persists nothing and returns the current profile', async () => {
+    it('marks the profile as complete and returns the current profile', async () => {
+      const update = jest.spyOn(prisma.users, 'update');
+
       await expect(service.saveConsent(userId, consent)).resolves.toBeNull();
+
+      expect(update).toHaveBeenCalledWith({
+        where: { userid: 1n },
+        data: { consentstate: true },
+      });
     });
   });
 
