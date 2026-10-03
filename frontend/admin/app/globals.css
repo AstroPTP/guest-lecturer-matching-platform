@@ -1360,3 +1360,267 @@ a { color: inherit; text-decoration: none; }
 .activity-copy p { font-size: 13px; line-height: 1.55; }
 .activity-copy time { font-size: 11px; }
 .activity-group article > a { font-size: 12px; }
+
+/* ---------------------------------------------------------------------------
+   Sections added when the portal moved onto real data.
+   Written in the same idiom as the rest of this sheet: plain class names, the
+   same white card on a cream page, the same muted small print. Nothing here
+   restyles anything that already existed.
+--------------------------------------------------------------------------- */
+
+.control-empty {
+  color: #85858c;
+  font-size: 13px;
+  padding: 36px 4px;
+  text-align: center;
+}
+
+/* Fairness ---------------------------------------------------------------- */
+
+.fairness-card {
+  background: #fff;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  margin-top: 20px;
+  padding: 22px;
+}
+.fairness-figures {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin-top: 18px;
+}
+.fairness-figures > div {
+  background: var(--cream);
+  border-radius: 6px;
+  padding: 16px;
+}
+.fairness-figures strong {
+  display: block;
+  font-size: 27px;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.fairness-figures small { color: #85858c; font-size: 11px; line-height: 1.45; }
+
+/* Request-to-engagement funnel -------------------------------------------- */
+
+.funnel-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 130px 1fr 34px;
+  margin-bottom: 14px;
+}
+.funnel-label { color: #73737a; font-size: 11px; }
+.funnel-bar { border-radius: 4px; display: block; height: 10px; min-width: 3px; }
+.funnel-row strong { font-size: 14px; text-align: right; }
+
+/* Leaderboards ------------------------------------------------------------ */
+
+.directory-grid {
+  display: grid;
+  gap: 17px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  margin-top: 20px;
+}
+.directory-card {
+  background: #fff;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  padding: 20px;
+}
+.directory-list { list-style: none; margin: 14px 0 0; padding: 0; }
+.directory-list li {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr auto auto;
+  padding: 11px 0;
+}
+.directory-list li:last-child { border-bottom: 0; }
+.directory-list li span { font-size: 13px; }
+.directory-list li strong { font-size: 15px; }
+.directory-list li a { color: #2563eb; font-size: 12px; font-weight: 700; }
+.directory-list li a:hover { text-decoration: underline; }
+
+/* Verification queue ------------------------------------------------------ */
+
+.review-list { display: grid; gap: 14px; list-style: none; margin: 22px 0 0; padding: 0; }
+.review-item {
+  align-items: start;
+  background: #fff;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 1fr auto;
+  padding: 20px;
+}
+.review-item strong { display: block; font-size: 16px; }
+.review-item > div > span { color: #73737a; display: block; font-size: 12px; margin-top: 3px; }
+.review-item p { color: #4b5563; font-size: 13px; line-height: 1.5; margin: 10px 0; }
+.review-item small { color: #9b9ba0; font-size: 11px; }
+.review-actions { align-items: center; display: flex; flex-direction: column; gap: 8px; }
+.review-actions button {
+  background: #17231f;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 18px;
+  white-space: nowrap;
+}
+.review-actions button:disabled { opacity: .5; }
+.review-actions button.text-action {
+  background: transparent;
+  color: #dc2626;
+}
+.review-actions a { color: #2563eb; font-size: 12px; font-weight: 600; }
+.review-actions a:hover { text-decoration: underline; }
+
+/* One person's engagement history ----------------------------------------- */
+
+.lecturer-event-sections {
+  display: grid;
+  gap: 17px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-top: 22px;
+}
+.lecturer-event-card {
+  background: #fff;
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  padding: 20px;
+}
+.lecturer-event-card h2 { font-size: 14px; margin: 0 0 12px; }
+.lecturer-event-list { list-style: none; margin: 0; padding: 0; }
+.lecturer-event-list li { border-bottom: 1px solid var(--line); padding: 11px 0; }
+.lecturer-event-list li:last-child { border-bottom: 0; }
+.lecturer-event-list strong { display: block; font-size: 13px; }
+.lecturer-event-list span { color: #85858c; font-size: 11px; }
+
+/* One person's record ----------------------------------------------------- */
+
+.profile-page { max-width: 760px; }
+.profile-heading { margin: 18px 0 22px; }
+.profile-heading h1 { font-size: 26px; margin: 0; }
+.profile-heading p { color: #85858c; font-size: 13px; margin: 6px 0 0; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.profile-actions button {
+  background: #17231f;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 20px;
+}
+.profile-actions button:disabled { opacity: .5; }
+.profile-notice {
+  background: #ecfdf5;
+  border-radius: 6px;
+  color: #15803d;
+  font-size: 13px;
+  margin-top: 16px;
+  padding: 12px 14px;
+}
+.profile-notice.error { background: #fef2f2; color: #dc2626; }
+.back-link, .profile-back-link {
+  align-items: center;
+  color: #73737a;
+  display: inline-flex;
+  font-size: 12px;
+  gap: 6px;
+}
+.back-link:hover, .profile-back-link:hover { color: var(--ink); }
+
+/* Filters on the engagements table ---------------------------------------- */
+
+.audit-filters { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 20px; }
+
+/* Errors beside the configuration save button ----------------------------- */
+
+.settings-actions .error, span.error { color: #dc2626; font-size: 12px; }
+
+/* Single-account management page (Users → profile). */
+.profile-page { max-width: 760px; }
+.back-link { align-items: center; color: #55555b; display: inline-flex; font-size: 13px; gap: 8px; margin-bottom: 24px; }
+.back-link img { height: 16px; width: 16px; object-fit: contain; }
+.profile-heading h1 { font-family: Georgia, serif; font-size: clamp(28px, 3vw, 38px); font-weight: 500; margin: 0 0 6px; }
+.profile-heading p { color: #77777d; margin: 0 0 26px; }
+.profile-details { background: #fff; border: 1px solid #e4e7e3; border-radius: 14px; display: grid; gap: 18px 24px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin: 0 0 24px; padding: 22px 24px; }
+.profile-details dt { color: #85858c; font-size: 11px; font-weight: 700; letter-spacing: .06em; margin-bottom: 6px; text-transform: uppercase; }
+.profile-details dd { font-size: 15px; margin: 0; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.profile-actions button { background: #303030; border: 0; border-radius: 6px; color: #fff; font-size: 13px; font-weight: 700; padding: 11px 18px; }
+.profile-actions button:disabled { opacity: .55; }
+.profile-notice { color: #15803d; font-size: 13px; margin-top: 14px; }
+.profile-notice.error { color: #dc2626; }
+
+.access-denied {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-left: 3px solid #b91c1c;
+  background: #fef2f2;
+  color: #7f1d1d;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.confirm-dialog {
+  /* The reset at the top of this file removes the default centring. */
+  margin: auto;
+  max-width: 440px;
+  padding: 24px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 20px 40px rgb(0 0 0 / 18%);
+}
+
+.confirm-dialog::backdrop {
+  background: rgb(17 24 39 / 45%);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.confirm-dialog p {
+  margin: 0 0 20px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-actions button {
+  padding: 9px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm-actions button.danger {
+  border-color: #b91c1c;
+  background: #b91c1c;
+  color: #fff;
+}
+
+/* Room for "5 (2 accepted)" on one line. */
+.funnel.per-coordinator .funnel-row {
+  grid-template-columns: 96px 1fr 104px;
+}
+
+.funnel.per-coordinator .funnel-row > strong {
+  white-space: nowrap;
+}

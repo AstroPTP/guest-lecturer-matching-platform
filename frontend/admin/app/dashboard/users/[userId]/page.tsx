@@ -1,16 +1,18 @@
-import { notFound } from "next/navigation";
 import { UserProfileManagement } from "@/components/UserProfileManagement";
-import { initialUsers } from "@/data/users";
 
-interface UserProfilePageProps {
+/**
+ * One person's record.
+ *
+ * The lookup used to run against a three-row array compiled into the page, so
+ * any real user's profile was a 404. The component fetches the record itself
+ * now, because it is also the thing that writes to it and both should address
+ * the same record.
+ */
+export default async function UserProfilePage({
+  params,
+}: {
   params: Promise<{ userId: string }>;
-}
-
-export default async function UserProfilePage({ params }: UserProfilePageProps) {
+}) {
   const { userId } = await params;
-  const user = initialUsers.find((candidate) => candidate.id === decodeURIComponent(userId));
-
-  if (!user) notFound();
-
-  return <UserProfileManagement initialUser={user} />;
+  return <UserProfileManagement directoryId={decodeURIComponent(userId)} />;
 }

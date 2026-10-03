@@ -8,7 +8,6 @@ export const verificationStatusOptions: readonly VerificationStatus[] = [
 export const accountStatusOptions: readonly AccountStatus[] = [
   AccountStatus.Active,
   AccountStatus.Suspended,
-  AccountStatus.Inactive,
 ];
 
 export const statusColors: Record<VerificationStatus | AccountStatus, string> = {

@@ -5,7 +5,7 @@ export enum VerificationStatus {
 
 export enum AccountStatus {
   Active = "Active",
-  Suspended = "Suspended",
+  Suspended = "Deactivated",
   Inactive = "Inactive",
 }
 export type UserRole = "Guest Lecturer" | "Unit Coordinator";
@@ -42,6 +42,7 @@ export type AuditAction =
   | "Invitation Sent"
   | "Invitation Accepted"
   | "Invitation Declined"
+  | "User Reported"
   | "User Verified"
   | "Account Suspended"
   | "Account Reactivated"

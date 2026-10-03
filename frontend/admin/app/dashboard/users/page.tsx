@@ -2,14 +2,14 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
 import ruleIcon from "@/assets/rule.png";
-import { initialUsers, userDirectoryTabs, userDirectoryTotal, userSummary } from "@/data/users";
-import { accountStatusOptions, statusColors, verificationStatusOptions } from "@/lib/user_status";
+import { getUsers } from "@/services/adminApi";
+import type { DirectoryUser } from "@/types/admin";
+import { accountStatusOptions, statusColors } from "@/lib/user_status";
 import { getUserDirectoryAction } from "@/lib/user_directory_actions";
-import { AccountStatus, VerificationStatus, type UserDirectoryTab,
-} from "@/types/admin";
+import { AccountStatus, type UserDirectoryTab } from "@/types/admin";
 
 const USERS_PER_PAGE = 10;
 
@@ -32,32 +32,85 @@ function getPaginationItems(currentPage: number, totalPages: number): Array<numb
   return items;
 }
 
+const userDirectoryTabs: UserDirectoryTab[] = ["All", "Guest Lecturers", "Unit Coordinators"];
+
 export default function UsersPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<UserDirectoryTab>("All");
-  const [verificationFilter, setVerificationFilter] = useState<VerificationStatus | "All">("All");
   const [accountFilter, setAccountFilter] = useState<AccountStatus | "All">("All");
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-  const users = initialUsers;
+  const [search, setSearch] = useState("");
+  const [users, setUsers] = useState<DirectoryUser[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(userDirectoryTotal / USERS_PER_PAGE));
-  const paginationItems = getPaginationItems(currentPage, totalPages);
-  const firstVisibleUser = userDirectoryTotal === 0 ? 0 : (currentPage - 1) * USERS_PER_PAGE + 1;
-  const lastVisibleUser = Math.min(currentPage * USERS_PER_PAGE, userDirectoryTotal);
 
-  const visibleUsers = useMemo(() => {
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const rows = await getUsers();
+        if (active) setUsers(rows);
+      } catch (error) {
+        if (active) {
+          setErrorMessage(
+            error instanceof Error ? error.message : "The directory could not be loaded.",
+          );
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const matchingUsers = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+
     return users.filter((user) => {
       const matchesRole =
         activeTab === "All" ||
         (activeTab === "Guest Lecturers" && user.role === "Guest Lecturer") ||
         (activeTab === "Unit Coordinators" && user.role === "Unit Coordinator");
-      const matchesVerification =
-        verificationFilter === "All" || user.verificationStatus === verificationFilter;
       const matchesAccount = accountFilter === "All" || user.accountStatus === accountFilter;
+      const matchesSearch =
+        needle === "" ||
+        user.name.toLowerCase().includes(needle) ||
+        user.email.toLowerCase().includes(needle) ||
+        user.id.toLowerCase().includes(needle);
 
-      return matchesRole && matchesVerification && matchesAccount;
+      return matchesRole && matchesAccount && matchesSearch;
     });
-  }, [accountFilter, activeTab, users, verificationFilter]);
+  }, [accountFilter, activeTab, search, users]);
+
+  // Pagination now counts and slices the rows that are actually there. It used
+  // to be computed from a fixed total of 248 while the table rendered three
+  // rows and never sliced, so pages two to twenty-five were blank and the
+  // footer count was fiction.
+  const totalMatching = matchingUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalMatching / USERS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginationItems = getPaginationItems(safePage, totalPages);
+  const firstVisibleUser = totalMatching === 0 ? 0 : (safePage - 1) * USERS_PER_PAGE + 1;
+  const lastVisibleUser = Math.min(safePage * USERS_PER_PAGE, totalMatching);
+
+  const visibleUsers = useMemo(
+    () => matchingUsers.slice((safePage - 1) * USERS_PER_PAGE, safePage * USERS_PER_PAGE),
+    [matchingUsers, safePage],
+  );
+
+  const userSummary = useMemo(() => {
+    const deactivated = users.filter((u) => u.accountStatus === AccountStatus.Suspended).length;
+
+    return [
+      { label: "Total users", value: String(users.length), detail: "Across every role" },
+      { label: "Guest lecturers", value: String(users.filter((u) => u.role === "Guest Lecturer").length) },
+      { label: "Unit coordinators", value: String(users.filter((u) => u.role === "Unit Coordinator").length) },
+      { label: "Deactivated", value: String(deactivated) },
+    ] as { label: string; value: string; detail?: string }[];
+  }, [users]);
 
   return (
     <div className="users-page">
@@ -96,20 +149,17 @@ export default function UsersPage() {
           </button>
           {showAdvancedFilters && (
             <div className="advanced-filter-panel">
-              <label htmlFor="verification-filter">Verification</label>
-              <select
-                id="verification-filter"
+              <label htmlFor="user-search">Search</label>
+              <input
+                id="user-search"
                 onChange={(event) => {
-                  setVerificationFilter(event.target.value as VerificationStatus | "All");
+                  setSearch(event.target.value);
                   setCurrentPage(1);
                 }}
-                value={verificationFilter}
-              >
-                <option value="All">All</option>
-                {verificationStatusOptions.map((status) => (
-                  <option key={status} value={status}>{status}</option>
-                ))}
-              </select>
+                placeholder="Name, email or id"
+                type="search"
+                value={search}
+              />
               <label htmlFor="account-status-filter">Account Status</label>
               <select
                 id="account-status-filter"
@@ -138,7 +188,6 @@ export default function UsersPage() {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Joined</th>
-                <th>Verification</th>
                 <th>Account Status</th>
                 <th>Actions</th>
               </tr>
@@ -174,11 +223,6 @@ export default function UsersPage() {
                   </td>
                   <td className="joined-date">{user.joined}</td>
                   <td>
-                    <span className="status-label" style={{ color: statusColors[user.verificationStatus] }}>
-                      {user.verificationStatus}
-                    </span>
-                  </td>
-                  <td>
                     <span className="status-label" style={{ color: statusColors[user.accountStatus] }}>
                       {user.accountStatus}
                     </span>
@@ -197,8 +241,14 @@ export default function UsersPage() {
               })}
               {visibleUsers.length === 0 && (
                 <tr>
-                  <td className="empty-users" colSpan={7}>
-                    No users match this filter.
+                  <td className="empty-users" colSpan={6}>
+                    {isLoading
+                      ? "Loading users…"
+                      : errorMessage
+                        ? errorMessage
+                        : users.length === 0
+                          ? "Nobody has registered yet."
+                          : "No users match this filter."}
                   </td>
                 </tr>
               )}
@@ -208,12 +258,12 @@ export default function UsersPage() {
 
         <footer className="users-pagination">
           <p>
-            Showing <strong>{firstVisibleUser}-{lastVisibleUser}</strong> of <strong>{userDirectoryTotal}</strong> users
+            Showing <strong>{firstVisibleUser}-{lastVisibleUser}</strong> of <strong>{totalMatching}</strong> users
           </p>
           <div>
             <button
               aria-label="Previous page"
-              disabled={currentPage === 1}
+              disabled={safePage === 1}
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
               type="button"
             >
@@ -224,9 +274,9 @@ export default function UsersPage() {
                 <span aria-hidden="true" key={"ellipsis-" + index}>…</span>
               ) : (
                 <button
-                  aria-current={currentPage === item ? "page" : undefined}
+                  aria-current={safePage === item ? "page" : undefined}
                   aria-label={"Page " + item}
-                  className={currentPage === item ? "current" : ""}
+                  className={safePage === item ? "current" : ""}
                   key={item}
                   onClick={() => setCurrentPage(item)}
                   type="button"
@@ -237,7 +287,7 @@ export default function UsersPage() {
             )}
             <button
               aria-label="Next page"
-              disabled={currentPage === totalPages}
+              disabled={safePage === totalPages}
               onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
               type="button"
             >

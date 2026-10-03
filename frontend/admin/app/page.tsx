@@ -4,7 +4,15 @@ import infoIcon from "@/assets/info.png";
 import schoolIcon from "@/assets/school.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ denied?: string }>;
+}) {
+  // Set by the middleware when a signed-in account without the administrator
+  // role tries to open the dashboard.
+  const { denied } = await searchParams;
+
   return (
     <main className="login-page">
       <section className="login-intro">
@@ -20,10 +28,10 @@ export default function Home() {
             Administration
           </h1>
           <div className="security-notice">
-            <p>This system is restricted to authorized Global Learning Management administrators. Unauthorized access attempts will be blocked and reported.</p>
+            <p>This system is restricted to CCAE administrators. Every request is checked against the account&apos;s role, and other accounts are refused.</p>
             <small>
               <Image alt="" aria-hidden="true" src={verifiedUserIcon} />
-              All administrative actions are logged and audited.
+              Sessions are kept in an encrypted, HTTP-only cookie and expire automatically.
             </small>
           </div>
         </div>
@@ -38,6 +46,12 @@ export default function Home() {
         </div>
         <div className="login-form-wrap">
           <h2>Administrator sign in</h2>
+          {denied === "administrator-only" && (
+            <p className="access-denied" role="alert">
+              That account is not an administrator, so the dashboard is not
+              available to it.
+            </p>
+          )}
           <AdminLoginForm />
           <div className="signin-support">
             <Image alt="" aria-hidden="true" src={infoIcon} />
