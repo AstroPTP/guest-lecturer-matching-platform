@@ -16,11 +16,14 @@ function model(): Record<string, AnyFn> {
     findMany: () => Promise.resolve([]),
     findFirst: () => Promise.resolve(null),
     findUnique: () => Promise.resolve(null),
+    findUniqueOrThrow: () => Promise.resolve({}),
     update: () => Promise.resolve({}),
+    updateMany: () => Promise.resolve({ count: 0 }),
     upsert: () => Promise.resolve({}),
     delete: () => Promise.resolve({}),
     createMany: () => Promise.resolve({ count: 0 }),
     deleteMany: () => Promise.resolve({ count: 0 }),
+    count: () => Promise.resolve(0),
   };
 }
 

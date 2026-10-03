@@ -18,6 +18,33 @@ import { attachDemoUser, demoBypassEnabled } from './demo-user';
  * Its whole job is to run the JwtStrategy and translate the outcome into the
  * two error codes the frontend branches on.
  */
+/**
+ * Records that a user has been active, for the administrator's "signed in"
+ * figure.
+ *
+ * One conditional UPDATE that only writes when the stored time is missing or
+ * over an hour old, so a busy session costs one write an hour rather than one
+ * per request. Fire-and-forget: a failure here must never block a request.
+ */
+function recordSignIn(auth0Id: string | undefined): void {
+  if (!auth0Id) return;
+  const hourAgo = new Date(Date.now() - 3_600_000);
+  // Started inside .then() so that even a synchronous throw from the client
+  // lands in .catch() instead of failing the request.
+  void Promise.resolve()
+    .then(() =>
+      prisma.users.updateMany({
+        where: {
+          auth0Id,
+          deletedat: null,
+          OR: [{ lastloginat: null }, { lastloginat: { lt: hourAgo } }],
+        },
+        data: { lastloginat: new Date() },
+      }),
+    )
+    .catch(() => undefined);
+}
+
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
   constructor(private readonly reflector: Reflector) {
@@ -41,7 +68,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     // still runs and still refuses a route the simulated role cannot reach.
     // Refuses to engage in production regardless of the flag. See demo-user.ts.
     if (demoBypassEnabled()) {
-      attachDemoUser(context.switchToHttp().getRequest());
+      const request = context
+        .switchToHttp()
+        .getRequest<{ user?: { id: string } }>();
+      attachDemoUser(request as never);
+      recordSignIn(request.user?.id);
       return true;
     }
 
@@ -70,6 +101,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       });
     }
 
+    recordSignIn(user.id);
     return true;
   }
 
