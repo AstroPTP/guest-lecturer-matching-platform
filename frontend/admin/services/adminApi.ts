@@ -1,5 +1,14 @@
 import { backendFetch } from '@/lib/api/backendClient';
-import { AccountStatus, VerificationStatus, type DirectoryUser, type UserRole } from '@/types/admin';
+import {
+  AccountStatus,
+  VerificationStatus,
+  type AuditAction,
+  type AuditActorRole,
+  type AuditCategory,
+  type AuditEntry,
+  type DirectoryUser,
+  type UserRole,
+} from '@/types/admin';
 
 /**
  * The administrator portal's view of the API.
@@ -199,4 +208,161 @@ export async function downloadUsageReport(): Promise<void> {
   link.download = `platform-usage-${new Date().toISOString().slice(0, 10)}.csv`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Verification queue
+// ---------------------------------------------------------------------------
+
+export interface PendingProfile {
+  guestId: string;
+  userId: string | null;
+  name: string;
+  field: string | null;
+  role: string | null;
+  email: string | null;
+  submittedAt: string;
+}
+
+export async function getPendingReviews(): Promise<PendingProfile[]> {
+  return backendFetch<PendingProfile[]>('/admin/reviews');
+}
+
+export async function approveGuest(guestId: string): Promise<void> {
+  await backendFetch(`/admin/reviews/${guestId}/approve`, { method: 'PATCH' });
+}
+
+// ---------------------------------------------------------------------------
+// Audit log
+// ---------------------------------------------------------------------------
+
+interface AuditRow {
+  id: string;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  detail: unknown;
+  actorEmail: string | null;
+  actorRole: string | null;
+  occurredAt: string;
+}
+
+/**
+ * How each stored action reads in the log. An action with no entry here is
+ * shown as itself rather than hidden: an unrecognised action in an audit log
+ * is exactly what somebody needs to see.
+ */
+const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategory }> = {
+  'user.deactivated': { label: 'Account Deactivated', category: 'Account Management' },
+  'user.reactivated': { label: 'Account Reactivated', category: 'Account Management' },
+  'user.reported': { label: 'User Reported', category: 'Account Management' },
+  'report.resolved': { label: 'Report Resolved', category: 'Account Management' },
+  'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
+  'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
+};
+
+const ACTOR_ROLES: Record<string, AuditActorRole> = {
+  ccae_admin: 'Administrator',
+  unit_coordinator: 'Unit Coordinator',
+  guest_speaker: 'Guest Lecturer',
+};
+
+function toAuditEntry(row: AuditRow): AuditEntry {
+  const known = ACTION_LABELS[row.action];
+  const when = new Date(row.occurredAt);
+  return {
+    // The two-line form the table renders and the date filter parses.
+    // Local date and local time, matching the date-range inputs the page filters with.
+    timestamp: `${when.toLocaleDateString('en-CA')}\n${when.toTimeString().slice(0, 8)}`,
+    actorName: row.actorEmail ?? 'System',
+    actorRole: (row.actorRole && ACTOR_ROLES[row.actorRole]) || 'System',
+    action: known?.label ?? (row.action as AuditAction),
+    target: row.targetId ? `${row.targetType ?? 'record'} ${row.targetId}` : row.targetType ?? 'platform',
+    targetType: row.targetType === 'guest' ? 'Profile' : 'Account',
+    category: known?.category ?? 'Account Management',
+    status: 'Success',
+  };
+}
+
+export async function getAuditEntries(limit = 200): Promise<AuditEntry[]> {
+  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?limit=${limit}`);
+  return rows.map(toAuditEntry);
+}
+
+// ---------------------------------------------------------------------------
+// Events and notifications
+// ---------------------------------------------------------------------------
+
+export interface AdminEvent {
+  id: string;
+  title: string;
+  coordinator: string;
+  guestLecturer: string;
+  date: string;
+  startTime: string;
+  format: string;
+  status: string;
+}
+
+export interface AdminEvents {
+  events: AdminEvent[];
+  notifications: { sent: number; unread: number; lastSevenDays: number };
+}
+
+export async function getAdminEvents(): Promise<AdminEvents> {
+  return backendFetch<AdminEvents>('/admin/events');
+}
+
+// ---------------------------------------------------------------------------
+// Moderation queue
+// ---------------------------------------------------------------------------
+
+export interface OpenReport {
+  id: string;
+  reason: string;
+  reporterEmail: string | null;
+  reportedUserId: string | null;
+  reportedEmail: string | null;
+  reportedRole: string | null;
+  reportedStatus: 'active' | 'deactivated';
+  reportedAt: string;
+}
+
+export async function getOpenReports(): Promise<OpenReport[]> {
+  return backendFetch<OpenReport[]>('/admin/reports');
+}
+
+export async function resolveReport(
+  id: string,
+  outcome: 'dismissed' | 'deactivated',
+): Promise<void> {
+  await backendFetch(`/admin/reports/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ outcome }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+export interface PlatformSettings {
+  systemName: string;
+  supportEmail: string;
+  requireAdminApproval: boolean;
+  contactLimitDays: number;
+  updatedAt: string;
+}
+
+export async function getSettings(): Promise<PlatformSettings> {
+  return backendFetch<PlatformSettings>('/admin/settings');
+}
+
+export async function saveSettings(
+  changes: Partial<Omit<PlatformSettings, 'updatedAt'>>,
+): Promise<PlatformSettings> {
+  return backendFetch<PlatformSettings>('/admin/settings', {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  });
 }

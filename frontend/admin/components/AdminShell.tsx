@@ -7,9 +7,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import analyticsIcon from "@/assets/analytics.png";
 import checkIcon from "@/assets/check.png";
 import dashboardIcon from "@/assets/dashboard.png";
+import descriptionIcon from "@/assets/description.png";
+import eventIcon from "@/assets/event.png";
 import groupIcon from "@/assets/group.png";
+import historyIcon from "@/assets/history.png";
+import howToRegIcon from "@/assets/how_to_reg.png";
 import logoutIcon from "@/assets/log_out.png";
 import schoolIcon from "@/assets/school.png";
+import settingsIcon from "@/assets/settings.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
 
 interface NavigationItem {
@@ -27,9 +32,14 @@ interface NavigationItem {
 const navigation: NavigationItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: dashboardIcon },
   { href: "/dashboard/users", label: "Users", icon: groupIcon },
+  { href: "/dashboard/reviews", label: "Verification Queue", icon: howToRegIcon },
   { href: "/dashboard/lecturers", label: "Guest Lecturers", icon: verifiedUserIcon },
   { href: "/dashboard/coordinators", label: "Coordinators", icon: checkIcon },
+  { href: "/dashboard/events", label: "Events", icon: eventIcon },
   { href: "/dashboard/analytics", label: "Analytics", icon: analyticsIcon },
+  { href: "/dashboard/reports", label: "Reports", icon: descriptionIcon },
+  { href: "/dashboard/audit_log", label: "Audit Log", icon: historyIcon },
+  { href: "/dashboard/settings", label: "Settings", icon: settingsIcon },
 ];
 
 interface SessionUser {

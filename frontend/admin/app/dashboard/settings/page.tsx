@@ -1,11 +1,212 @@
-import { SectionPlaceholder } from "@/components/SectionPlaceholder";
+"use client";
 
+import Image, { type StaticImageData } from "next/image";
+import { useEffect, useState, type FormEvent } from "react";
+import groupIcon from "@/assets/group.png";
+import ruleIcon from "@/assets/rule.png";
+import { getSettings, saveSettings, type PlatformSettings } from "@/services/adminApi";
+
+const settingsNav: Array<{ label: string; href: string; icon: StaticImageData }> = [
+  { label: "General", href: "#general", icon: ruleIcon },
+  { label: "Matching rules", href: "#rules", icon: groupIcon },
+];
+
+type Editable = Omit<PlatformSettings, "updatedAt">;
+
+/**
+ * Platform settings. Only settings the server enforces are shown: approval
+ * decides who coordinators can see, and the contact limit is checked whenever
+ * a coordinator sends a request. Every change is written to the audit log.
+ */
 export default function SettingsPage() {
+  const [saved, setSaved] = useState<PlatformSettings | null>(null);
+  const [draft, setDraft] = useState<Editable | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const current = await getSettings();
+        if (active) {
+          setSaved(current);
+          setDraft(current);
+        }
+      } catch (error) {
+        if (active) setErrorMessage(error instanceof Error ? error.message : "Settings could not be loaded.");
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!draft) return;
+    setIsSaving(true);
+    setNotice("");
+    setErrorMessage("");
+    try {
+      const next = await saveSettings({
+        systemName: draft.systemName,
+        supportEmail: draft.supportEmail,
+        requireAdminApproval: draft.requireAdminApproval,
+        contactLimitDays: draft.contactLimitDays,
+      });
+      setSaved(next);
+      setDraft(next);
+      setNotice("Settings saved.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Settings could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  if (!draft || !saved) {
+    return <p className="control-empty">{errorMessage || "Loading settings…"}</p>;
+  }
+
+  const update = <K extends keyof Editable>(key: K, value: Editable[K]) =>
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+
   return (
-    <SectionPlaceholder
-      title="Configuration"
-      description="Platform-wide settings."
-      reason="Not in the agreed requirements. Included only if the client wants it."
-    />
+    <form className="settings-page" onSubmit={(event) => void submit(event)}>
+      <header className="settings-heading">
+        <h1>Settings</h1>
+        <p>
+          Last changed{" "}
+          {new Date(saved.updatedAt).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}.
+          Every change is recorded in the audit log.
+        </p>
+      </header>
+
+      <div className="settings-layout">
+        <nav className="settings-local-nav" aria-label="Settings sections">
+          {settingsNav.map((item) => (
+            <a href={item.href} key={item.href}>
+              <Image alt="" aria-hidden="true" src={item.icon} />
+              {item.label}
+            </a>
+          ))}
+        </nav>
+
+        <div className="settings-sections">
+          <section className="settings-card" id="general">
+            <header>
+              <h2>General</h2>
+              <p>How the platform names itself and where users go for help.</p>
+            </header>
+            <div className="settings-field">
+              <label htmlFor="system-name">System name</label>
+              <div>
+                <input
+                  id="system-name"
+                  maxLength={120}
+                  onChange={(event) => update("systemName", event.target.value)}
+                  required
+                  value={draft.systemName}
+                />
+              </div>
+            </div>
+            <div className="settings-field">
+              <label htmlFor="support-email">Support email</label>
+              <div>
+                <input
+                  id="support-email"
+                  onChange={(event) => update("supportEmail", event.target.value)}
+                  required
+                  type="email"
+                  value={draft.supportEmail}
+                />
+                <small>Where users are told to send questions.</small>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-card" id="rules">
+            <header>
+              <h2>Matching rules</h2>
+              <p>Rules applied when coordinators look for and contact guest lecturers.</p>
+            </header>
+            <div className="protocol-list">
+              <Protocol
+                checked={draft.requireAdminApproval}
+                description="New guest lecturer profiles stay hidden from coordinators until approved in the verification queue. Profiles already visible stay visible."
+                label="Require admin approval"
+                onChange={() => update("requireAdminApproval", !draft.requireAdminApproval)}
+              />
+            </div>
+            <div className="settings-field">
+              <label htmlFor="contact-limit">Contact limit (days)</label>
+              <div>
+                <input
+                  id="contact-limit"
+                  max={365}
+                  min={0}
+                  onChange={(event) => update("contactLimitDays", Number(event.target.value))}
+                  required
+                  type="number"
+                  value={draft.contactLimitDays}
+                />
+                <small>
+                  A guest lecturer can receive one contact request in this many days, from any coordinator. 90 is
+                  about three months. 0 turns the limit off.
+                </small>
+              </div>
+            </div>
+          </section>
+
+          <footer className="settings-actions">
+            {notice && <span role="status">{notice}</span>}
+            {errorMessage && (
+              <span className="error" role="alert">
+                {errorMessage}
+              </span>
+            )}
+            <button onClick={() => setDraft(saved)} type="button">
+              Discard changes
+            </button>
+            <button className="save-settings" disabled={isSaving} type="submit">
+              {isSaving ? "Saving…" : "Save settings"}
+            </button>
+          </footer>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function Protocol({
+  checked,
+  description,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  description: string;
+  label: string;
+  onChange: () => void;
+}) {
+  return (
+    <div className="protocol-row">
+      <p>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </p>
+      <button
+        aria-checked={checked}
+        aria-label={label + ": " + (checked ? "on" : "off")}
+        className={"settings-toggle " + (checked ? "enabled" : "")}
+        onClick={onChange}
+        role="switch"
+        type="button"
+      >
+        <span />
+      </button>
+    </div>
   );
 }

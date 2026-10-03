@@ -46,7 +46,10 @@ export type AuditAction =
   | "User Verified"
   | "Account Suspended"
   | "Account Reactivated"
-  | "Account Deactivated";
+  | "Account Deactivated"
+  | "Profile Approved"
+  | "Settings Changed"
+  | "Report Resolved";
 export type AuditStatus = "Success" | "Failed" | "Pending";
 export type AuditActorRole =
   | "Administrator"

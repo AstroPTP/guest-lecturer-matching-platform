@@ -1,11 +1,6 @@
-import { SectionPlaceholder } from "@/components/SectionPlaceholder";
+import { redirect } from "next/navigation";
 
+/** Notifications are shown with the events they are about. */
 export default function NotificationsPage() {
-  return (
-    <SectionPlaceholder
-      title="Notifications"
-      description="Alerts for the administrator."
-      reason="Beyond the agreed administrator scope. Included only if the client wants it."
-    />
-  );
+  redirect("/dashboard/events");
 }
