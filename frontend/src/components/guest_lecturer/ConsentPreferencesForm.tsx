@@ -2,11 +2,16 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import ConsentOption from "@/components/shared/ConsentOption";
 import FormNavButtons from "@/components/shared/FormNavButtons";
-import { getGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
+import { resetOnboardingStatus } from "@/lib/hooks/useOnboardingStatus";
+import { getGuestLecturerConsent, saveGuestLecturerConsent } from "@/services/profile/guestLecturerProfileService";
 export default function ConsentPreferencesForm() {
   const router = useRouter();
+  const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [profileMatchingConsent, setProfileMatchingConsent] = useState(false);
   const [informationAccurate, setInformationAccurate] = useState(false);
   const [receiveUpdates, setReceiveUpdates] = useState(false);
@@ -31,6 +36,10 @@ export default function ConsentPreferencesForm() {
         setTimeLimitedUse(data.timeLimitedUse);
         setTermsAccepted(data.termsAccepted);
       } catch {
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
 
@@ -55,8 +64,35 @@ export default function ConsentPreferencesForm() {
       alert("Please read and accept the Terms and Conditions.");
       return;
     }
-    router.push("/guest_lecturer/confirmation");
+
+    setError("");
+    setIsSaving(true);
+    try {
+      // Saving consent marks the profile as complete, so the next sign-in
+      // goes straight to the dashboard.
+      await saveGuestLecturerConsent({
+        profileMatchingConsent,
+        informationAccurate,
+        receiveUpdates,
+        futureTeachingReuse,
+        otherUnitsReuse,
+        timeLimitedUse,
+        termsAccepted,
+      });
+      resetOnboardingStatus();
+      router.push("/guest_lecturer/confirmation");
+    } catch {
+      setError("Could not save your information. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
+  }
+
   return (
     <main className="mx-auto w-full max-w-6xl">
       <div className="mb-8 flex flex-col items-center">
@@ -189,7 +225,8 @@ export default function ConsentPreferencesForm() {
           </div>
         </section>
 
-        <FormNavButtons submitLabel="Complete Profile" isFinalStep />
+        {error && <p className="text-center text-sm text-red-600">{error}</p>}
+        <FormNavButtons submitLabel={isSaving ? "Saving..." : "Complete Profile"} isFinalStep />
       </form>
     </main>
   );

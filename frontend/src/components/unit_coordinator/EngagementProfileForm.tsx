@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getUnitCoordinatorEngagement, saveUnitCoordinatorEngagement } from "@/services/profile/unitCoordinatorProfileService";
@@ -22,6 +23,7 @@ export default function EngagementProfileForm() {
   const [scheduleNotes, setScheduleNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +45,10 @@ export default function EngagementProfileForm() {
         setEngagementFrequency(data.schedule.engagementFrequency);
         setScheduleNotes(data.schedule.scheduleNotes);
       } catch {
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
 
@@ -145,6 +151,12 @@ export default function EngagementProfileForm() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
   }
 
   return (
