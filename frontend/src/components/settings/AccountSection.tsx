@@ -1,34 +1,27 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import type { ActionResult, RequestEmailChangeResult } from "@/types/settings/settingsTypes";
+import type { RequestEmailChangeResult } from "@/types/settings/settingsTypes";
 import { Field, FeedbackBanner, PasswordInput, SectionHeader, isValidEmail } from "@/components/settings/settingsShared";
 
-type Step = "view" | "editEmail" | "verifyCode";
+type Step = "view" | "editEmail";
 export default function AccountSection({
   currentEmail,
   onRequestEmailChange,
-  onConfirmEmailChange,
-  onCancelEmailChange,
 }: {
   currentEmail: string;
   onRequestEmailChange: (params: { newEmail: string; currentPassword: string }) => Promise<RequestEmailChangeResult>;
-  onConfirmEmailChange: (params: { code: string }) => Promise<ActionResult>;
-  onCancelEmailChange: () => void;
 }) {
   const [step, setStep] = useState<Step>("view");
   const [newEmail, setNewEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
-  const [code, setCode] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string;} | null>(null);
 
   function resetToView() {
-    onCancelEmailChange();
     setStep("view");
     setNewEmail("");
     setCurrentPassword("");
-    setCode("");
     setFeedback(null);
   }
 
@@ -57,36 +50,13 @@ export default function AccountSection({
     if (!result.success) {
       setFeedback({
         type: "error",
-        message: result.error ?? "Couldn't send a verification code.",
+        message: result.error ?? "Couldn't update your email.",
       });
       return;
     }
-    setStep("verifyCode");
-    setFeedback(null);
-  }
-
-  async function handleConfirmCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFeedback(null);
-
-    if (code.trim().length !== 6) {
-      setFeedback({ type: "error", message: "Enter the 6-digit code." });
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    const result = await onConfirmEmailChange({ code: code.trim() });
-
-    setIsSubmitting(false);
-    if (!result.success) {
-      setFeedback({ type: "error",  message: result.error ?? "Couldn't verify that code.",});
-      return;
-    }
-    setFeedback({ type: "success", message: "Email updated successfully." });
+    setFeedback({ type: "success", message: "Email updated. Check your new inbox for a verification link." });
     setStep("view");
     setCurrentPassword("");
-    setCode("");
   }
 
   return (
@@ -140,7 +110,7 @@ export default function AccountSection({
                 disabled={isSubmitting}
                 className="rounded-full bg-[#2d2d2d] px-6 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSubmitting ? "Sending code..." : "Send verification code"}
+                {isSubmitting ? "Updating..." : "Update email"}
               </button>
 
               <button type="button" onClick={resetToView} className="rounded-full px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100">
@@ -150,40 +120,6 @@ export default function AccountSection({
           </form>
         )}
 
-        {step === "verifyCode" && (
-          <form onSubmit={handleConfirmCode} className="mt-4 space-y-4">
-            <p className="text-sm text-gray-600">
-              We sent a 6-digit code to <span className="font-semibold text-[#2d2d2d]">{newEmail}</span>. Enter it below to confirm the change.
-            </p>
-
-            <Field label="Verification code">
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-lg tracking-[0.4em] outline-none focus:border-[#156874]"
-                placeholder="000000"
-                autoFocus
-              />
-            </Field>
-
-            <div className="flex items-center gap-3 pt-1">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="rounded-full bg-[#2d2d2d] px-6 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSubmitting ? "Verifying..." : "Confirm change"}
-              </button>
-
-              <button type="button" onClick={resetToView} className="rounded-full px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100">
-                Cancel
-              </button>
-            </div>
-          </form>
-        )}
       </div>
       {feedback && <FeedbackBanner type={feedback.type} message={feedback.message} />}
     </section>

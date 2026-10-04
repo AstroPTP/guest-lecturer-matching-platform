@@ -17,6 +17,8 @@ interface CreateEventModalProps {
 export default function CreateEventModal({ coordinatorName, matchedGuestLecturers, onClose, onCreate }: CreateEventModalProps) {
   const [selectedGuestId, setSelectedGuestId] = useState("");
   const [submitError, setSubmitError] = useState("");
+  // Sending takes several seconds; this stops a second click sending it twice.
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("");
@@ -30,6 +32,9 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
     }));
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
     setSubmitError("");
     const selectedMatch = matchedGuestLecturers.find((item) => item.profile.id === selectedGuestId && item.profileType === "guestLecturer");
     if (!selectedMatch || selectedMatch.profileType !== "guestLecturer") {
@@ -44,6 +49,7 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
       alert("The end time must be later than the start time.");
       return;
     }
+    setIsSubmitting(true);
     const succeeded = await onCreate({
       matchId: selectedMatch.match.id,
       coordinatorName,
@@ -56,7 +62,7 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
       endTime,
       location: location.trim(),
       format,
-    });
+    }).finally(() => setIsSubmitting(false));
 
     if (!succeeded) {
       setSubmitError("This isn't connected to a backend yet, so the invitation couldn't be sent.");
@@ -148,8 +154,8 @@ export default function CreateEventModal({ coordinatorName, matchedGuestLecturer
                 Cancel
               </button>
 
-              <button type="submit" className="rounded-xl bg-[#2d2d2d] px-7 py-3 font-semibold text-white hover:bg-black">
-                Send Invitation
+              <button type="submit" disabled={isSubmitting} className="rounded-xl bg-[#2d2d2d] px-7 py-3 font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-50">
+                {isSubmitting ? "Sending..." : "Send Invitation"}
               </button>
             </div>
           </form>

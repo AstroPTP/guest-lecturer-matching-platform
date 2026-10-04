@@ -23,12 +23,10 @@ import {
   saveUnitCoordinatorDiscoveryFilters,
 } from "@/services/filter/discoveryFilterService";
 import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
-import { createNotification } from "@/services/notifications/notificationService";
 import {
   applyGuestLecturerFilters,
   applyUnitCoordinatorFilters,
   countActiveFilters,
-  CURRENT_USER_PLACEHOLDER_ID,
   getAvailableDiscoveryItems,
   getDismissedDiscoveryItems,
 } from "@/utils/discoveryFilters";
@@ -76,6 +74,9 @@ export default function DiscoveryPageContent({
   // Bumped to reload the list after filters are cleared from this page.
   const [filterVersion, setFilterVersion] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
+  // The profile whose action is still saving. Requests take seconds, and a
+  // second click in that time would send the same request again.
+  const [busyProfileId, setBusyProfileId] = useState<string | null>(null);
   // shownAt makes each dismiss a new value, so dismissing twice in a row
   // restarts the hide timer.
   const [dismissToast, setDismissToast] = useState<{ name: string; shownAt: number } | null>(null);
@@ -159,12 +160,18 @@ export default function DiscoveryPageContent({
   }
 
   async function handleDismiss(profileId: string) {
+    if (busyProfileId) {
+      return;
+    }
     setActionError(null);
+    setBusyProfileId(profileId);
     try {
       await dismissProfile(profileId);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
+    } finally {
+      setBusyProfileId(null);
     }
     const dismissedItem = items.find((item) => item.profile.id === profileId);
     removeCurrentItem(profileId, "dismiss");
@@ -182,56 +189,43 @@ export default function DiscoveryPageContent({
   }
 
   async function handleRestore(profileId: string) {
+    if (busyProfileId) {
+      return;
+    }
     setActionError(null);
+    setBusyProfileId(profileId);
     try {
       await removeDismiss(profileId);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
+    } finally {
+      setBusyProfileId(null);
     }
     setItems((currentItems) => currentItems.filter((item) => item.profile.id !== profileId));
   }
   async function handleExpressInterest(profileId: string) {
     const selectedItem = items.find((item) => item.profile.id === profileId);
-    if (!selectedItem) {
+    if (!selectedItem || busyProfileId) {
       return;
     }
     setActionError(null);
     setDismissToast(null);
+    setBusyProfileId(profileId);
     try {
       if (isReviewingDismissed) {
         await removeDismiss(profileId);
       }
       const result = await expressInterest(profileId);
       removeCurrentItem(profileId, "interest");
+      // The backend notifies both people when the request becomes a match.
       if (result.matched && result.match) {
-        const matchedProfileName = selectedItem.profile.basicInformation.fullName;
-        const currentRoleRoot = currentUserType === "guestLecturer" ? "/guest_lecturer" : "/unit_coordinator";
-        const matchedRoleRoot = selectedItem.profileType === "guestLecturer" ? "/guest_lecturer" : "/unit_coordinator";
-        await createNotification({
-          id: "match-" + result.match.id + "-" + CURRENT_USER_PLACEHOLDER_ID,
-          recipientId: CURRENT_USER_PLACEHOLDER_ID,
-          type: "match",
-          title: "It's a match!",
-          description: "You matched with " + matchedProfileName + ".",
-          actionLabel: "View match",
-          href: currentRoleRoot + "/matches",
-        });
-
-        await createNotification({
-          id: "match-" + result.match.id + "-" + profileId,
-          recipientId: profileId,
-          type: "match",
-          title: "It's a match!",
-          description: "You matched with " + currentUserName + ".",
-          actionLabel: "View match",
-          href: matchedRoleRoot + "/matches",
-        });
-
         setMatchModalData({ match: result.match, matchedItem: selectedItem });
       }
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
+    } finally {
+      setBusyProfileId(null);
     }
   }
 
@@ -378,6 +372,7 @@ export default function DiscoveryPageContent({
               onDismiss={handleDismiss}
               isReviewingDismissed={isReviewingDismissed}
               onRestore={handleRestore}
+              isBusy={busyProfileId !== null}
             />
           </>
         ) : (

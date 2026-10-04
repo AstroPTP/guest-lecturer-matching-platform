@@ -27,12 +27,15 @@ export default function DiscoveryCard({
   onDismiss,
   isReviewingDismissed = false,
   onRestore,
+  isBusy = false,
 }: {
   item: DiscoveryItem;
   onExpressInterest: (profileId: string) => void;
   onDismiss: (profileId: string) => void;
   isReviewingDismissed?: boolean;
   onRestore?: (profileId: string) => void;
+  /** True while an action on this card is saving, so it can't be sent twice. */
+  isBusy?: boolean;
 }) {
   const { fullName, bio, photoPreview } = item.profile.basicInformation;
   let role = "";
@@ -69,7 +72,8 @@ export default function DiscoveryCard({
           <button
             type="button"
             onClick={() => onExpressInterest(item.profile.id)}
-            className="rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-700"
+            disabled={isBusy}
+            className="rounded-xl bg-gray-900 px-4 py-3 font-semibold text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Express Interest
           </button>
@@ -78,7 +82,8 @@ export default function DiscoveryCard({
             <button
               type="button"
               onClick={() => { onRestore?.(item.profile.id); }}
-              className="rounded-xl border border-[#2d2d2d] px-4 py-3 font-semibold text-[#2d2d2d] transition hover:bg-gray-100"
+              disabled={isBusy}
+              className="rounded-xl border border-[#2d2d2d] px-4 py-3 font-semibold text-[#2d2d2d] transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Restore
             </button>
@@ -86,7 +91,8 @@ export default function DiscoveryCard({
             <button
               type="button"
               onClick={() => {onDismiss(item.profile.id);}}
-              className="rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-600 transition hover:bg-red-50"
+              disabled={isBusy}
+              className="rounded-xl border border-red-200 px-4 py-3 font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Dismiss
             </button>

@@ -33,6 +33,8 @@ export default function EventPageContent({
   const [actionError, setActionError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // The event whose accept, decline, cancel or complete is still saving.
+  const [busyEventId, setBusyEventId] = useState<string | null>(null);
   const loadEvents = useCallback(async () => {
     setErrorMessage(null);
     try {
@@ -100,53 +102,31 @@ export default function EventPageContent({
     return true;
   }
 
-  async function handleAccept(eventId: string) {
+  /**
+   * Runs one action on an event. Each takes several seconds, so the event's
+   * buttons stay disabled until it finishes and a second click is ignored.
+   */
+  async function runEventAction(eventId: string, action: (id: string) => Promise<unknown>, successMessage: string) {
+    if (busyEventId) {
+      return;
+    }
+    setBusyEventId(eventId);
     try {
-      await acceptEvent(eventId);
+      await action(eventId);
     } catch {
       showActionError(NOT_INTEGRATED_MESSAGE);
       return;
+    } finally {
+      setBusyEventId(null);
     }
     await loadEvents();
-    showMessage("Event accepted successfully.");
-  }
-  async function handleDecline(eventId: string) {
-    try {
-      await declineEvent(eventId);
-    } catch {
-      showActionError(NOT_INTEGRATED_MESSAGE);
-      return;
-    }
-
-    await loadEvents();
-    showMessage("Event invitation declined.");
+    showMessage(successMessage);
   }
 
-  async function handleCancel(eventId: string) {
-    try {
-      await cancelEvent(eventId);
-    } catch {
-      showActionError(NOT_INTEGRATED_MESSAGE);
-      return;
-    }
-
-    await loadEvents();
-
-    showMessage("Event cancelled.");
-  }
-
-  async function handleComplete(eventId: string) {
-    try {
-      await completeEvent(eventId);
-    } catch {
-      showActionError(NOT_INTEGRATED_MESSAGE);
-      return;
-    }
-
-    await loadEvents();
-
-    showMessage("Event marked as completed.");
-  }
+  const handleAccept = (eventId: string) => runEventAction(eventId, acceptEvent, "Event accepted successfully.");
+  const handleDecline = (eventId: string) => runEventAction(eventId, declineEvent, "Event invitation declined.");
+  const handleCancel = (eventId: string) => runEventAction(eventId, cancelEvent, "Event cancelled.");
+  const handleComplete = (eventId: string) => runEventAction(eventId, completeEvent, "Event marked as completed.");
   return (
     <>
       <div className="mx-auto w-full max-w-6xl">
@@ -209,6 +189,7 @@ export default function EventPageContent({
                   onDecline={handleDecline}
                   onCancel={handleCancel}
                   onComplete={handleComplete}
+                  isBusy={busyEventId === event.id}
                 />
               ))}
             </div>

@@ -1,41 +1,91 @@
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { EventsService } from './events.service';
-import { NotificationsService } from '../notifications/notifications.service';
 import { CreateEventDto } from './dto/create-event.dto';
+import { NotificationsService } from '../notifications/notifications.service';
+import { MatchRequestsService } from '../match-requests/match-requests.service';
+import { prisma } from '../prisma';
 
 describe('EventsService', () => {
   let service: EventsService;
   let notificationsService: { create: jest.Mock };
+  let matchRequests: {
+    findAcceptedMatch: jest.Mock;
+    findAcceptedMatches: jest.Mock;
+  };
 
-  const coordinatorId = 'coordinator-1';
-  const guestLecturerId = 'lecturer-1';
+  const createdAt = new Date('2026-10-01T02:00:00.000Z');
 
-  const baseDto: CreateEventDto = {
-    matchId: 'match-1',
+  const dto: CreateEventDto = {
+    matchId: '6007',
     coordinatorName: 'Dr. Smith',
-    guestLecturerId,
+    guestLecturerId: '3002',
     guestLecturerName: 'Jane Doe',
     title: 'Cloud Security Talk',
     description: 'Intro to cloud security',
-    date: '2026-10-01',
+    date: '2026-10-15',
     startTime: '10:00',
     endTime: '11:00',
     location: 'Building 401',
-    format: 'face-to-face' as const,
+    format: 'face-to-face',
   };
+
+  function eventRow(overrides: Record<string, unknown> = {}) {
+    return {
+      event_id: 1n,
+      match_id: 6007n,
+      coordinator_name: 'Dr. Smith',
+      guest_lecturer_name: 'Jane Doe',
+      title: 'Cloud Security Talk',
+      description: 'Intro to cloud security',
+      date: '2026-10-15',
+      start_time: '10:00',
+      end_time: '11:00',
+      location: 'Building 401',
+      format: 'face-to-face',
+      status: 'invitation-sent',
+      created_at: createdAt,
+      responded_at: null,
+      completed_at: null,
+      match: {
+        coordinator_id: 2005n,
+        guest_id: 3002n,
+        coordinator: { users: { auth0Id: 'auth0|coordinator' } },
+        guest: { users: { auth0Id: 'auth0|guest' } },
+      },
+      ...overrides,
+    };
+  }
+
+  function signInAs(side: 'coordinator' | 'guest') {
+    matchRequests.findAcceptedMatches.mockResolvedValue({
+      side,
+      matches: [
+        { matchId: 6007n, targetId: side === 'guest' ? '2005' : '3002' },
+      ],
+    });
+  }
 
   beforeEach(async () => {
     notificationsService = { create: jest.fn() };
+    matchRequests = {
+      findAcceptedMatch: jest.fn(),
+      findAcceptedMatches: jest.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EventsService,
         { provide: NotificationsService, useValue: notificationsService },
+        { provide: MatchRequestsService, useValue: matchRequests },
       ],
     }).compile();
 
     service = module.get<EventsService>(EventsService);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('should be defined', () => {
@@ -43,177 +93,164 @@ describe('EventsService', () => {
   });
 
   describe('create', () => {
-    it('should create an event with an invitation-sent status and generated id', () => {
-      const event = service.create(baseDto, coordinatorId);
+    it("stores the event against the caller's match with the matched guest", async () => {
+      matchRequests.findAcceptedMatch.mockResolvedValue({
+        side: 'coordinator',
+        matchId: 6007n,
+      });
+      const create = jest
+        .spyOn(prisma.events, 'create')
+        .mockResolvedValue(eventRow());
 
-      expect(event.id).toBeDefined();
-      expect(event.coordinatorId).toBe(coordinatorId);
-      expect(event.status).toBe('invitation-sent');
-      expect(event.createdAt).toBeDefined();
-      expect(event.title).toBe(baseDto.title);
-    });
-
-    it('should notify the guest lecturer of the new invitation', () => {
-      const event = service.create(baseDto, coordinatorId);
-
-      expect(notificationsService.create).toHaveBeenCalledWith(
+      await expect(service.create(dto, 'auth0|coordinator')).resolves.toEqual(
         expect.objectContaining({
-          recipientId: event.guestLecturerId,
-          type: 'event',
-          title: 'New event invitation',
-          href: '/guest_lecturer/events',
+          id: '1',
+          matchId: '6007',
+          coordinatorId: '2005',
+          guestLecturerId: '3002',
+          status: 'invitation-sent',
+        }),
+      );
+      expect(matchRequests.findAcceptedMatch).toHaveBeenCalledWith(
+        'auth0|coordinator',
+        '3002',
+      );
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ match_id: 6007n }) as unknown,
         }),
       );
     });
 
-    it('should add the event to findAll results', () => {
-      service.create(baseDto, coordinatorId);
+    it('notifies the guest lecturer at their Auth0 id, not their profile id', async () => {
+      matchRequests.findAcceptedMatch.mockResolvedValue({
+        side: 'coordinator',
+        matchId: 6007n,
+      });
+      jest.spyOn(prisma.events, 'create').mockResolvedValue(eventRow());
 
-      expect(service.findAll()).toHaveLength(1);
-    });
-  });
-
-  describe('findOne', () => {
-    it('should return the event when it exists', () => {
-      const created = service.create(baseDto, coordinatorId);
-
-      expect(service.findOne(created.id)).toEqual(created);
-    });
-
-    it('should throw NotFoundException when the event does not exist', () => {
-      expect(() => service.findOne('missing-id')).toThrow(NotFoundException);
-    });
-  });
-
-  describe('findByCoordinator', () => {
-    it('should return only events for the given coordinator', () => {
-      service.create(baseDto, coordinatorId);
-      service.create(baseDto, 'other-coordinator');
-
-      const results = service.findByCoordinator(coordinatorId);
-
-      expect(results).toHaveLength(1);
-      expect(results[0].coordinatorId).toBe(coordinatorId);
-    });
-  });
-
-  describe('findByGuestLecturer', () => {
-    it('should return only events for the given guest lecturer', () => {
-      service.create(baseDto, coordinatorId);
-      service.create(
-        { ...baseDto, guestLecturerId: 'other-lecturer' },
-        coordinatorId,
+      await service.create(dto, 'auth0|coordinator');
+      expect(notificationsService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          recipientId: 'auth0|guest',
+          type: 'event',
+          title: 'New event invitation',
+        }),
       );
+    });
 
-      const results = service.findByGuestLecturer(guestLecturerId);
+    it('refuses a guest lecturer', async () => {
+      matchRequests.findAcceptedMatch.mockResolvedValue({
+        side: 'guest',
+        matchId: 6007n,
+      });
 
-      expect(results).toHaveLength(1);
-      expect(results[0].guestLecturerId).toBe(guestLecturerId);
+      await expect(service.create(dto, 'auth0|guest')).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('findMine', () => {
+    it("returns events from the caller's matches", async () => {
+      signInAs('guest');
+      const findMany = jest
+        .spyOn(prisma.events, 'findMany')
+        .mockResolvedValue([eventRow()] as never);
+
+      await expect(service.findMine('auth0|guest')).resolves.toHaveLength(1);
+      expect(findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { match_id: { in: [6007n] } } }),
+      );
+    });
+
+    it('returns nothing without any matches', async () => {
+      matchRequests.findAcceptedMatches.mockResolvedValue({
+        side: 'guest',
+        matches: [],
+      });
+
+      await expect(service.findMine('auth0|guest')).resolves.toEqual([]);
     });
   });
 
   describe('updateStatus', () => {
-    it('should allow the invited guest lecturer to accept and set respondedAt', () => {
-      const created = service.create(baseDto, coordinatorId);
+    it('lets the invited guest lecturer accept, sets respondedAt and notifies the coordinator', async () => {
+      signInAs('guest');
+      jest.spyOn(prisma.events, 'findUnique').mockResolvedValue(eventRow());
+      jest
+        .spyOn(prisma.events, 'update')
+        .mockResolvedValue(
+          eventRow({ status: 'accepted', responded_at: createdAt }),
+        );
 
-      const updated = service.updateStatus(
-        created.id,
-        'accepted',
-        guestLecturerId,
+      await expect(
+        service.updateStatus('1', 'accepted', 'auth0|guest'),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          status: 'accepted',
+          respondedAt: createdAt.toISOString(),
+        }),
       );
-
-      expect(updated.status).toBe('accepted');
-      expect(updated.respondedAt).toBeDefined();
-    });
-
-    it('should allow the invited guest lecturer to decline and set respondedAt', () => {
-      const created = service.create(baseDto, coordinatorId);
-
-      const updated = service.updateStatus(
-        created.id,
-        'declined',
-        guestLecturerId,
-      );
-
-      expect(updated.status).toBe('declined');
-      expect(updated.respondedAt).toBeDefined();
-    });
-
-    it('should throw ForbiddenException if someone other than the guest lecturer tries to accept', () => {
-      const created = service.create(baseDto, coordinatorId);
-
-      expect(() =>
-        service.updateStatus(created.id, 'accepted', 'someone-else'),
-      ).toThrow(ForbiddenException);
-    });
-
-    it('should allow the coordinator to cancel the event', () => {
-      const created = service.create(baseDto, coordinatorId);
-
-      const updated = service.updateStatus(
-        created.id,
-        'cancelled',
-        coordinatorId,
-      );
-
-      expect(updated.status).toBe('cancelled');
-    });
-
-    it('should allow the coordinator to mark the event completed and set completedAt', () => {
-      const created = service.create(baseDto, coordinatorId);
-
-      const updated = service.updateStatus(
-        created.id,
-        'completed',
-        coordinatorId,
-      );
-
-      expect(updated.status).toBe('completed');
-      expect(updated.completedAt).toBeDefined();
-    });
-
-    it('should throw ForbiddenException if someone other than the coordinator tries to cancel', () => {
-      const created = service.create(baseDto, coordinatorId);
-
-      expect(() =>
-        service.updateStatus(created.id, 'cancelled', 'someone-else'),
-      ).toThrow(ForbiddenException);
-    });
-
-    it('should throw NotFoundException when updating a non-existent event', () => {
-      expect(() =>
-        service.updateStatus('missing-id', 'accepted', guestLecturerId),
-      ).toThrow(NotFoundException);
-    });
-
-    it('should notify the coordinator when the guest lecturer accepts', () => {
-      const created = service.create(baseDto, coordinatorId);
-      notificationsService.create.mockClear();
-
-      service.updateStatus(created.id, 'accepted', guestLecturerId);
-
       expect(notificationsService.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          recipientId: coordinatorId,
+          recipientId: 'auth0|coordinator',
           title: 'Invitation accepted',
-          href: '/unit_coordinator/events',
         }),
       );
     });
 
-    it('should notify the guest lecturer when the coordinator cancels', () => {
-      const created = service.create(baseDto, coordinatorId);
-      notificationsService.create.mockClear();
+    it('lets the coordinator cancel and notifies the guest lecturer', async () => {
+      signInAs('coordinator');
+      jest.spyOn(prisma.events, 'findUnique').mockResolvedValue(eventRow());
+      jest
+        .spyOn(prisma.events, 'update')
+        .mockResolvedValue(eventRow({ status: 'cancelled' }));
 
-      service.updateStatus(created.id, 'cancelled', coordinatorId);
-
+      await service.updateStatus('1', 'cancelled', 'auth0|coordinator');
       expect(notificationsService.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          recipientId: guestLecturerId,
+          recipientId: 'auth0|guest',
           title: 'Event cancelled',
-          href: '/guest_lecturer/events',
         }),
       );
+    });
+
+    it('stops a coordinator from accepting on the guest lecturer’s behalf', async () => {
+      signInAs('coordinator');
+      jest.spyOn(prisma.events, 'findUnique').mockResolvedValue(eventRow());
+
+      await expect(
+        service.updateStatus('1', 'accepted', 'auth0|coordinator'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('stops a guest lecturer from cancelling', async () => {
+      signInAs('guest');
+      jest.spyOn(prisma.events, 'findUnique').mockResolvedValue(eventRow());
+
+      await expect(
+        service.updateStatus('1', 'cancelled', 'auth0|guest'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("reports an event outside the caller's matches as not found", async () => {
+      signInAs('guest');
+      jest
+        .spyOn(prisma.events, 'findUnique')
+        .mockResolvedValue(eventRow({ match_id: 9999n }));
+
+      await expect(
+        service.updateStatus('1', 'accepted', 'auth0|guest'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws NotFoundException for an event that does not exist', async () => {
+      signInAs('guest');
+
+      await expect(
+        service.updateStatus('404', 'accepted', 'auth0|guest'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });
