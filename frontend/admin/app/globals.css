@@ -1830,6 +1830,41 @@ textarea:focus-visible,
   outline-offset: 2px;
 }
 
+/* Administrator help page */
+.help-page { display: grid; gap: 22px; margin: 0 auto; max-width: 960px; }
+.help-hero {
+  align-items: center;
+  background: var(--c-ffffff);
+  border: 1px solid var(--c-e5e5e7);
+  border-radius: 14px;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  padding: 28px 32px;
+}
+.help-hero h1 { color: var(--c-303030); font-size: 30px; margin: 6px 0 10px; }
+.help-hero p { color: var(--c-55555b); font-size: 15px; line-height: 1.55; margin: 0; max-width: 540px; }
+.help-eyebrow { color: var(--c-2563eb); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.help-hero-image { border-radius: 10px; height: auto; max-width: 240px; width: 34%; }
+.help-card {
+  background: var(--c-ffffff);
+  border: 1px solid var(--c-e5e5e7);
+  border-radius: 14px;
+  padding: 24px 32px;
+}
+.help-card h2 { color: var(--c-303030); font-size: 20px; margin: 0 0 8px; }
+.help-card details { border-top: 1px solid var(--c-e5e5e7); padding: 12px 0; }
+.help-card details:first-of-type { border-top: 0; }
+.help-card summary { color: var(--c-303030); cursor: pointer; font-size: 15px; font-weight: 600; padding: 4px 0; }
+.help-card ol, .help-card details p { color: var(--c-55555b); font-size: 14px; line-height: 1.6; margin: 8px 0 4px; }
+.help-card ol { list-style: decimal; padding-left: 22px; }
+.help-card li + li { margin-top: 6px; }
+@media (max-width: 700px) {
+  .help-hero { flex-direction: column; align-items: flex-start; padding: 22px; }
+  .help-hero-image { width: 70%; }
+  .help-card { padding: 20px; }
+}
+
 /* Dark theme. "System" leaves data-theme unset so the media query follows the
    device; an explicit choice sets data-theme and wins either way. */
 @media (prefers-color-scheme: dark) {
@@ -2273,7 +2308,7 @@ textarea:focus-visible,
   }
 
   /* The interface icons are black PNGs; lighten them on dark surfaces. */
-  :root:not([data-theme="light"]) img { filter: invert(0.85); }
+  :root:not([data-theme="light"]) img:not(.help-hero-image) { filter: invert(0.85); }
   :root:not([data-theme="light"]) .login-form-panel img { filter: none; }
 }
 
@@ -2418,5 +2453,5 @@ textarea:focus-visible,
   --c-6b7280: #656c77;
 }
 
-:root[data-theme="dark"] img { filter: invert(0.85); }
+:root[data-theme="dark"] img:not(.help-hero-image) { filter: invert(0.85); }
 :root[data-theme="dark"] .login-form-panel img { filter: none; }

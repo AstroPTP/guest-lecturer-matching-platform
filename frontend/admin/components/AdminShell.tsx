@@ -13,6 +13,7 @@ import groupIcon from "@/assets/group.png";
 import historyIcon from "@/assets/history.png";
 import howToRegIcon from "@/assets/how_to_reg.png";
 import logoutIcon from "@/assets/log_out.png";
+import infoIcon from "@/assets/info.png";
 import schoolIcon from "@/assets/school.png";
 import settingsIcon from "@/assets/settings.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
@@ -41,6 +42,7 @@ const navigation: NavigationItem[] = [
   { href: "/dashboard/reports", label: "Reports", icon: descriptionIcon },
   { href: "/dashboard/audit_log", label: "Audit Log", icon: historyIcon },
   { href: "/dashboard/settings", label: "Settings", icon: settingsIcon },
+  { href: "/dashboard/help", label: "Help", icon: infoIcon },
 ];
 
 interface SessionUser {
