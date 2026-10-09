@@ -16,6 +16,7 @@ import logoutIcon from "@/assets/log_out.png";
 import schoolIcon from "@/assets/school.png";
 import settingsIcon from "@/assets/settings.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 interface NavigationItem {
   href: string;
@@ -134,6 +135,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <p className="control-greeting" suppressHydrationWarning>
             {greeting}, <strong>{displayName}!</strong>
           </p>
+          <ThemeToggle />
         </header>
         <main className="control-main">{children}</main>
       </div>

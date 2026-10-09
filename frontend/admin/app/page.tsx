@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 import infoIcon from "@/assets/info.png";
 import schoolIcon from "@/assets/school.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
@@ -16,9 +17,12 @@ export default async function Home({
   return (
     <main className="login-page">
       <section className="login-intro">
-        <div className="university-brand">
-          <Image alt="" aria-hidden="true" src={schoolIcon} />
-          <span>Curtin University</span>
+        <div className="login-intro-head">
+          <div className="university-brand">
+            <Image alt="" aria-hidden="true" src={schoolIcon} />
+            <span>Curtin University</span>
+          </div>
+          <ThemeToggle />
         </div>
 
         <div className="login-intro-content">
