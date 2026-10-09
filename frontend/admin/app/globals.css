@@ -524,7 +524,7 @@ a { color: inherit; text-decoration: none; }
 .control-sidebar-footer a:hover { color: var(--c-252525); }
 .control-sidebar-footer { margin-top: auto; }
 .control-sidebar-footer a { padding-left: 35px; }
-.control-workspace { min-width: 0; }
+.control-workspace { background: var(--c-f7f7f7); min-height: 100vh; min-width: 0; }
 .control-topbar {
   align-items: center;
   background: var(--c-ffffff);
