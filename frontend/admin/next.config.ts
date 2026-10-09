@@ -29,6 +29,10 @@ const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // The portal opens no cross-origin popups and serves nothing to other sites;
+  // Auth0 sign-in is a full-page redirect, which these do not affect.
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   // Browsers only honour this over HTTPS, so it is harmless in development.
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
 ];
