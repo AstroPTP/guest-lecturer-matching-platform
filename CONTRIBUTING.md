@@ -137,10 +137,11 @@ A PR should be focused — one feature or fix per PR. Avoid bundling unrelated c
 
 ## Automated Checks (Pre-commit & CI)
 
-One automated check runs on your code, on your machine before a commit is even created.
-Understanding what it does (and does not do) will save you time.
+Two separate automated checks run on your code — one on your machine before a commit is
+even created, one on Bitbucket after you push. Understanding what each one does (and does
+not do) will save you time.
 
-### Pre-commit hook (runs on your machine, instantly)
+### 1. Pre-commit hook (runs on your machine, instantly)
 
 Every time you run `git commit`, a Husky hook automatically runs `lint-staged` against
 **only the files you staged** (`git add`) — not your whole project. This does two things:
@@ -155,7 +156,32 @@ it will tell you exactly which file and which rule failed. Fix the issue, `git a
 again, and re-run `git commit`.
 
 **Do not use `git commit --no-verify` to skip this.** It bypasses the check entirely instead
-of fixing the underlying problem.
+of fixing the underlying problem, and CircleCI will likely catch the same issue anyway — just
+later, and after it's already pushed.
+
+### 2. CircleCI pipeline (runs on Bitbucket, after you push)
+
+Once you `git push`, CircleCI automatically picks up the new commit and runs a full pipeline
+against the **entire** `backend/`, `frontend/` and `frontend/admin/` apps (not just staged
+files). You'll see the result as a status check directly on your Pull Request in Bitbucket.
+
+Each app runs as its own job, through, in order: install dependencies → lint → test
+*(backend only)* → build. If any step fails, that job stops and reports red — everything
+after it in that job is skipped, but the other apps' jobs still run independently.
+
+Unlike `npm run lint`, the CI lint step does **not** auto-fix. Anything ESLint would fix for
+you locally fails the pipeline instead, so run `npm run lint` in the app and commit the result.
+
+| PR status shows | What it means | What to do |
+|------------------|----------------|-------------|
+| 🟡 Pending        | Pipeline is still running        | Wait — usually a few minutes |
+| ✅ Passed          | Lint, tests, and build all succeeded | Ready for review |
+| ❌ Failed          | Something broke — click through to CircleCI's logs | Fix locally, commit, push again — pipeline reruns automatically |
+
+**A green CircleCI check does not mean the PR is ready to merge on its own** — it only proves
+the code lints, existing tests pass, and it builds. It does not check whether your feature
+actually does what it's supposed to. A human review is still required before merging (see
+[Pull Requests](#pull-requests) above).
 
 ---
 
