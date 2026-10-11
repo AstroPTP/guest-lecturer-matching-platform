@@ -43,5 +43,27 @@ export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
       href: routes.settings,
       icon: <Image src={settingsIcon} alt="" width={20} height={20} />,
     },
+    {
+      label: "Help",
+      href: routes.help,
+      icon: <HelpIcon />,
+    },
   ];
+}
+
+/** A question mark in a circle, drawn inline because the icon set has none. */
+function HelpIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width={20} height={20}>
+      <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M9.6 9.4a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="16.8" r="1.1" fill="currentColor" />
+    </svg>
+  );
 }
