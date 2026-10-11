@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsEnum } from 'class-validator';
+import { IsString, IsNotEmpty, IsEmail, IsEnum } from 'class-validator';
 
 export enum UserRole {
   GUEST_SPEAKER = 'GUEST_SPEAKER',
@@ -8,6 +8,7 @@ export enum UserRole {
 
 export class CreateUserProfileDto {
   @IsString()
+  @IsNotEmpty()
   auth0Id: string;
 
   @IsEmail()
