@@ -5,9 +5,13 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 
-type GuestRow = NonNullable<Awaited<ReturnType<typeof prisma.guests.findUnique>>>;
+type GuestRow = NonNullable<
+  Awaited<ReturnType<typeof prisma.guests.findUnique>>
+>;
 type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
-type AvailabilityRow = Awaited<ReturnType<typeof prisma.availability.findFirst>>;
+type AvailabilityRow = Awaited<
+  ReturnType<typeof prisma.availability.findFirst>
+>;
 @Injectable()
 export class GuestSpeakersService {
   /**
@@ -234,9 +238,7 @@ export class GuestSpeakersService {
 
     return {
       basicInformation: {
-        fullName: [guest.first_name, guest.last_name]
-          .filter(Boolean)
-          .join(' '),
+        fullName: [guest.first_name, guest.last_name].filter(Boolean).join(' '),
         bio: guest.bio ?? '',
         photoPreview: '', // not persisted yet (schema gap)
         professionalField: guest.field ?? '',
