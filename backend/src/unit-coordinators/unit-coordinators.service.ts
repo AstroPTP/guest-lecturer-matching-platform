@@ -9,7 +9,9 @@ type CoordinatorRow = NonNullable<
   Awaited<ReturnType<typeof prisma.coordinators.findUnique>>
 >;
 type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
-type AvailabilityRow = Awaited<ReturnType<typeof prisma.availability.findFirst>>;
+type AvailabilityRow = Awaited<
+  ReturnType<typeof prisma.availability.findFirst>
+>;
 
 @Injectable()
 export class UnitCoordinatorsService {
