@@ -7,10 +7,6 @@ import { prisma, resolveUserId } from '../prisma';
 
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 
-/**
- * The leading bytes of each accepted format. `file.mimetype` is whatever the
- * browser claims, so the bytes are checked rather than trusted.
- */
 const SIGNATURES: Record<string, (bytes: Buffer) => boolean> = {
   'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
   'image/png': (b) =>
@@ -34,10 +30,6 @@ export class ImagesService {
     return image;
   }
 
-  /**
-   * Stores the caller's new profile photo, points their profile at it, and
-   * deletes the photo it replaces.
-   */
   async replaceProfileImage(
     owner: Owner,
     auth0Id: string,
@@ -89,7 +81,6 @@ export class ImagesService {
     return { success: true };
   }
 
-  /** Throws if the caller has no profile row to attach a photo to yet. */
   private async currentImageId(owner: Owner, userId: bigint) {
     const row =
       owner === 'coordinator'
@@ -125,10 +116,6 @@ export class ImagesService {
   }
 }
 
-/**
- * What a profile DTO's `photoPreview` holds: a same-origin path the browser
- * can use directly as an <img> src, via the frontend's /api/backend proxy.
- */
 export function profileImageUrl(imageId: bigint | null): string {
   return imageId === null ? '' : `/api/backend/images/${imageId}`;
 }
