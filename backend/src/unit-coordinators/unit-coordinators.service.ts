@@ -4,12 +4,15 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
+import { profileImageUrl } from '../images/images.service';
 
 type CoordinatorRow = NonNullable<
   Awaited<ReturnType<typeof prisma.coordinators.findUnique>>
 >;
 type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
-type AvailabilityRow = Awaited<ReturnType<typeof prisma.availability.findFirst>>;
+type AvailabilityRow = Awaited<
+  ReturnType<typeof prisma.availability.findFirst>
+>;
 
 @Injectable()
 export class UnitCoordinatorsService {
@@ -40,7 +43,7 @@ export class UnitCoordinatorsService {
     const userId = await resolveUserId(auth0Id);
     const name = splitName(dto.fullName);
 
-    // NOTE: photoPreview has no column on `coordinators` yet, so it isn't persisted.
+    // photoPreview is managed by the profile-image upload route, not here.
     const fields = {
       first_name: name.first_name,
       last_name: name.last_name,
@@ -225,7 +228,7 @@ export class UnitCoordinatorsService {
           .filter(Boolean)
           .join(' '),
         bio: coordinator.bio ?? '',
-        photoPreview: '', // not persisted yet (schema gap)
+        photoPreview: profileImageUrl(coordinator.profile_image_id),
         schoolDepartment: coordinator.faculty ?? '',
         academicRole: coordinator.role ?? '',
       },

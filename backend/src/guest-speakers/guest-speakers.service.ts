@@ -4,10 +4,15 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
+import { profileImageUrl } from '../images/images.service';
 
-type GuestRow = NonNullable<Awaited<ReturnType<typeof prisma.guests.findUnique>>>;
+type GuestRow = NonNullable<
+  Awaited<ReturnType<typeof prisma.guests.findUnique>>
+>;
 type ExpertiseRows = Awaited<ReturnType<typeof prisma.user_expertise.findMany>>;
-type AvailabilityRow = Awaited<ReturnType<typeof prisma.availability.findFirst>>;
+type AvailabilityRow = Awaited<
+  ReturnType<typeof prisma.availability.findFirst>
+>;
 @Injectable()
 export class GuestSpeakersService {
   /**
@@ -37,7 +42,7 @@ export class GuestSpeakersService {
     const userId = await resolveUserId(auth0Id);
     const name = splitName(dto.fullName);
 
-    // NOTE: photoPreview has no column on `guests` yet, so it isn't persisted.
+    // photoPreview is managed by the profile-image upload route, not here.
     const fields = {
       first_name: name.first_name,
       last_name: name.last_name,
@@ -218,11 +223,9 @@ export class GuestSpeakersService {
 
     return {
       basicInformation: {
-        fullName: [guest.first_name, guest.last_name]
-          .filter(Boolean)
-          .join(' '),
+        fullName: [guest.first_name, guest.last_name].filter(Boolean).join(' '),
         bio: guest.bio ?? '',
-        photoPreview: '', // not persisted yet (schema gap)
+        photoPreview: profileImageUrl(guest.profile_image_id),
         professionalField: guest.field ?? '',
         professionalRole: guest.role ?? '',
       },

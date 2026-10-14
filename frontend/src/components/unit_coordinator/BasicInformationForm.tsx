@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { getUnitCoordinatorBasicInformation, saveUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import { academicRoleOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
+import { applyProfilePhotoChange, MAX_PROFILE_PHOTO_BYTES, type PendingPhotoChange } from "@/lib/api/images";
+import { BackendError } from "@/lib/api/backendClient";
 
 export default function BasicInformationForm() {
   const router = useRouter();
@@ -13,6 +15,10 @@ export default function BasicInformationForm() {
   const [academicRole, setAcademicRole] = useState("");
   const [bio, setBio] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
+  // The saved photo's URL, sent unchanged with the basic information.
+  const [savedPhoto, setSavedPhoto] = useState("");
+  // A photo picked or removed here, applied once the profile row exists.
+  const [photoChange, setPhotoChange] = useState<PendingPhotoChange>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -30,6 +36,7 @@ export default function BasicInformationForm() {
         setAcademicRole(data.academicRole);
         setBio(data.bio);
         setPhotoPreview(data.photoPreview);
+        setSavedPhoto(data.photoPreview);
       } catch {
     
       }
@@ -48,12 +55,14 @@ export default function BasicInformationForm() {
       return;
     }
 
-    if (file.size > 1024 * 1024) {
-      alert("Please select an image smaller than 1 MB.");
-      event.target.value = "";
+    // Cleared so picking the same file again, e.g. after removing it, still fires onChange.
+    event.target.value = "";
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      alert("Please select an image smaller than 5 MB.");
       return;
     }
 
+    setPhotoChange({ kind: "upload", file });
     const reader = new FileReader();
     reader.onload = () => {
       const imageData = reader.result as string;
@@ -61,6 +70,13 @@ export default function BasicInformationForm() {
     };
     reader.readAsDataURL(file);
   }
+
+  function handlePhotoRemove() {
+    // Only a photo that was already saved needs deleting on the server.
+    setPhotoChange(savedPhoto ? { kind: "remove" } : null);
+    setPhotoPreview("");
+  }
+
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,11 +88,14 @@ export default function BasicInformationForm() {
         schoolDepartment,
         academicRole,
         bio,
-        photoPreview,
+        photoPreview: savedPhoto,
       });
+      if (photoChange) {
+        await applyProfilePhotoChange("unit-coordinators", photoChange);
+      }
       router.push("/unit_coordinator/expertise");
-    } catch {
-      setError("Could not save your information. Please try again.");
+    } catch (error) {
+      setError(error instanceof BackendError ? error.message : "Could not save your information. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -126,12 +145,19 @@ export default function BasicInformationForm() {
               )}
             </button>
 
-            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handlePhotoChange} />
 
             <div>
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold hover:bg-gray-300">
-                Upload Photo
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold hover:bg-gray-300">
+                  {photoPreview ? "Change Photo" : "Upload Photo"}
+                </button>
+                {photoPreview && (
+                  <button type="button" onClick={handlePhotoRemove} className="rounded-xl px-6 py-3 font-semibold text-red-600 hover:bg-red-50">
+                    Remove Photo
+                  </button>
+                )}
+              </div>
 
               <p className="mt-2 text-sm text-gray-500">Helps Guest Lecturers recognise the Unit Coordinator managing an engagement. Optional but recommended.</p>
             </div>

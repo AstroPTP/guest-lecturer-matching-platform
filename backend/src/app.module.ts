@@ -13,6 +13,7 @@ import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
+import { ImagesModule } from './images/images.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { SettingsModule } from './settings/settings.module';
     EventsModule,
     NotificationsModule,
     SettingsModule,
+    ImagesModule,
   ],
   controllers: [AppController],
   providers: [
