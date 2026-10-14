@@ -16,7 +16,7 @@ function getClient(): PrismaClient {
 
 export const prisma = new Proxy({} as PrismaClient, {
   get(_target, prop, receiver) {
-    return Reflect.get(getClient(), prop, receiver);
+    return Reflect.get(getClient(), prop, receiver) as unknown;
   },
 });
 
@@ -30,24 +30,19 @@ export const prisma = new Proxy({} as PrismaClient, {
  * the person, the numeric id is for joining rows.
  *
  * Creates the row on first sight, because a profile can be saved before
- * anything else has written a user record.
+ * anything else has written a user record. An upsert rather than a lookup
+ * followed by a create, so two requests arriving together cannot both try to
+ * create the row and trip the unique constraint on `auth0Id`.
  */
 export async function resolveUserId(auth0Id: string): Promise<bigint> {
-  const existing = await prisma.users.findFirst({
+  const row = await prisma.users.upsert({
     where: { auth0Id },
+    update: {},
+    create: { auth0Id, createdat: new Date() },
     select: { userid: true },
   });
 
-  if (existing) {
-    return existing.userid;
-  }
-
-  const created = await prisma.users.create({
-    data: { auth0Id, createdat: new Date() },
-    select: { userid: true },
-  });
-
-  return created.userid;
+  return row.userid;
 }
 
 /** Splits a display name into the two columns the schema stores. */

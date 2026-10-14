@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
@@ -13,6 +14,7 @@ export default function ExpertiseForm() {
   const [learningObjective, setLearningObjective] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,6 +31,10 @@ export default function ExpertiseForm() {
         setIndustryRelevance(data.industryRelevance);
         setLearningObjective(data.learningObjective);
       } catch {
+      } finally {
+        if (!cancelled) {
+          setIsLoadingDraft(false);
+        }
       }
     }
 
@@ -99,6 +105,12 @@ export default function ExpertiseForm() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  // Wait for the saved draft before showing the form. Otherwise anything
+  // typed while it loads is overwritten when it arrives.
+  if (isLoadingDraft) {
+    return <FormSkeleton />;
   }
 
   return (

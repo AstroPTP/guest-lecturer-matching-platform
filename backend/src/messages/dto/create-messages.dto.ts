@@ -1,18 +1,24 @@
-import { IsNumberString, IsString, MaxLength } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumberString,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 /**
- * `matchId` is a digit string for the same reason as in the match request DTO:
- * `messages.match_id` is a `BigInt` pointing at a row the database assigned, so
- * validating it as a UUID rejected every id that could actually exist.
+ * A message to the person behind `targetId`, the other profile in the match.
+ * The match itself is looked up from the caller's token, so a caller cannot
+ * write into a match they are not part of by naming its id.
  */
 export class CreateMessagesDto {
   @IsNumberString(
     { no_symbols: true },
-    { message: 'matchId must be a numeric id' },
+    { message: 'targetId must be a numeric id' },
   )
-  matchId: string;
+  targetId: string;
 
   @IsString()
+  @IsNotEmpty()
   @MaxLength(2000)
   content: string;
 }

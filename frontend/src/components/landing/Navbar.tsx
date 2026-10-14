@@ -1,4 +1,14 @@
+"use client";
 import Link from "next/link";
+
+/**
+ * Scrolls to the role cards without adding #role-cards to the URL. A hash link
+ * left /landing#role-cards in history, so Back from sign-up returned there, and
+ * clicking Sign Up again did nothing because the URL did not change.
+ */
+function showRoleCards() {
+  document.getElementById("role-cards")?.scrollIntoView({ behavior: "smooth" });
+}
 
 export default function Navbar() {
   return (
@@ -16,9 +26,13 @@ export default function Navbar() {
           </Link>
         </nav>
         <nav aria-label="Account actions" className="flex gap-2 md:flex">
-          <Link href="/landing#role-cards" className="rounded-xl bg-transparent px-6 py-3 text-black transition-colors hover:bg-gray-200">
+          <button
+            type="button"
+            onClick={showRoleCards}
+            className="cursor-pointer rounded-xl bg-transparent px-6 py-3 text-black transition-colors hover:bg-gray-200"
+          >
             Sign Up
-          </Link>
+          </button>
           <Link href="/login" className="rounded-xl bg-black px-6 py-3 text-white transition-colors hover:bg-gray-800">
             Sign In
           </Link>

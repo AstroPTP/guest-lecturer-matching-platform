@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { cancelEmailChange, changePassword, confirmEmailChange, deleteAccount, getAccountSettings, requestEmailChange} from "@/services/settings/settingsService";
+import { changePassword, deleteAccount, getAccountSettings, requestEmailChange } from "@/services/settings/settingsService";
 import AccountSection from "@/components/settings/AccountSection";
 import PasswordSection from "@/components/settings/PasswordSection";
 import DeleteAccountSection from "@/components/settings/DeleteAccountSection";
@@ -21,7 +21,7 @@ export default function SettingsPageContent({  seedEmail }: SettingsPageContentP
 
     async function loadSettings() {
       try {
-        const settings = await getAccountSettings(seedEmail);
+        const settings = await getAccountSettings();
 
         if (!cancelled) {
           setEmail(settings.email);
@@ -48,20 +48,14 @@ export default function SettingsPageContent({  seedEmail }: SettingsPageContentP
           {activeTab === "account" && (
             <AccountSection
               currentEmail={email}
-              onRequestEmailChange={({ newEmail, currentPassword }) => requestEmailChange(newEmail, currentPassword)}
-              onConfirmEmailChange={async ({ code }) => {
-                const result = await confirmEmailChange(code);
+              onRequestEmailChange={async ({ newEmail, currentPassword }) => {
+                const result = await requestEmailChange(newEmail, currentPassword);
                 if (result.success) {
-                  try {
-                    const settings = await getAccountSettings( seedEmail);
-                    setEmail(settings.email);
-                  } catch {
-                  }
+                  setEmail(newEmail);
                 }
 
                 return result;
               }}
-              onCancelEmailChange={() => cancelEmailChange()}
             />
           )}
           {activeTab === "password" && (

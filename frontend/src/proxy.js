@@ -92,6 +92,10 @@ export async function proxy(request) {
     );
   }
 
+  // Dashboard pages show the signed-in user's data, so the browser must not
+  // keep a copy. Without this, Back after logging out shows the old page from
+  // the browser's cache instead of asking here, where it would go to login.
+  authResponse.headers.set('Cache-Control', 'no-store');
   return authResponse;
 }
 

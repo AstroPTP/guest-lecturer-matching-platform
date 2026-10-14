@@ -2,15 +2,12 @@
 
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
-import callIcon from "@/assets/call.png";
-import attachIcon from "@/assets/attach.png";
 import closeIcon from "@/assets/close.png";
 import deleteIcon from "@/assets/delete.png";
 import infoIcon from "@/assets/info.png";
 import reportIcon from "@/assets/report.png";
 import searchIcon from "@/assets/search.png";
 import sendIcon from "@/assets/send.png";
-import videoIcon from "@/assets/video.png";
 import type { ChatMessage, Conversation, ConversationParticipant, ConversationSeed } from "@/types/messages/messageTypes";
 import type { UserRole } from "@/types/shared/userRole";
 import { deleteConversation, ensureConversations, getConversations, getMessages, sendMessage } from "@/services/messages/messageService";
@@ -35,6 +32,8 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Unmatching takes several seconds; this stops a second click sending it again.
+  const [isUnmatching, setIsUnmatching] = useState(false);
   useEffect(() => {
     let cancelled = false;
 
@@ -152,13 +151,19 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
   }
 
   async function handleUnmatch(conversation: Conversation) {
+    if (isUnmatching) {
+      return;
+    }
     setActionError(null);
+    setIsUnmatching(true);
     try {
       await unmatchUsers(conversation.participant.id);
       await deleteConversation(conversation.id);
     } catch {
       setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
       return;
+    } finally {
+      setIsUnmatching(false);
     }
     const remainingConversations = conversations.filter((item) => item.id !== conversation.id);
     const nextConversation = remainingConversations[0] ?? null;
@@ -210,6 +215,7 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
           onClose={() => setShowInfoPanel(false)}
           onReport={(reason) => handleReport(selectedConversation, reason)}
           onUnmatch={() => handleUnmatch(selectedConversation)}
+          isUnmatching={isUnmatching}
         />
       )}
     </div>
@@ -293,14 +299,6 @@ function ChatThread({ conversation, messages, messageText, setMessageText,onSubm
         </div>
 
         <div className="flex items-center gap-3">
-          <HeaderButton label="Call">
-            <Image src={callIcon} alt="" width={22} height={22} />
-          </HeaderButton>
-
-          <HeaderButton label="Video call">
-            <Image src={videoIcon} alt="" width={22} height={22} />
-          </HeaderButton>
-
           <button
             type="button"
             aria-label="Conversation information"
@@ -328,14 +326,6 @@ function ChatThread({ conversation, messages, messageText, setMessageText,onSubm
 
       <form onSubmit={onSubmit} className="shrink-0 border-t border-gray-100 bg-white p-6">
         <div className="flex items-end gap-3 rounded-xl bg-gray-100 p-2">
-          <button
-            type="button"
-            aria-label="Attach a file"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xl text-gray-600 hover:bg-white"
-          >
-            <Image src={attachIcon} alt="" width={22} height={22} />
-          </button>
-
           <textarea
             rows={1}
             value={messageText}
@@ -383,17 +373,18 @@ function MessageBubble({ message, participant,}: {
   );
 }
 
-function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, onUnmatch}: {
+function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, onUnmatch, isUnmatching}: {
   conversation: Conversation;
   participantProfileHref: string;
   onClose: () => void;
   onReport: (reason: string) => void;
   onUnmatch: () => void;
+  isUnmatching: boolean;
 }) {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [showReportForm, setShowReportForm] = useState(false);
   const [reportReason, setReportReason] = useState("");
-  const { participant, sharedFiles } = conversation;
+  const { participant } = conversation;
 
   return (
     <aside className="flex w-[390px] shrink-0 flex-col overflow-y-auto border-l border-gray-100 bg-white">
@@ -420,36 +411,6 @@ function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, 
             View full profile
           </a>
         </div>
-
-        <section className="mt-10">
-          <div className="flex items-center justify-between">
-            <SectionLabel>Shared Files</SectionLabel>
-            <button type="button" className="text-xl text-gray-600 hover:text-black">
-              +
-            </button>
-          </div>
-          {sharedFiles.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-500">No files have been shared yet.</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {sharedFiles.map((file) => (
-                <div key={file.id} className="flex items-center gap-4 rounded-xl p-3 hover:bg-gray-100">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-200">PDF</div>
-
-                  <div>
-                    <p className="text-sm font-medium text-[#2d2d2d]">{file.name}</p>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      {file.size}
-                      {" • "}
-                      {file.sentLabel}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
 
         <section className="mt-10 border-t border-gray-100 pt-8">
           <SectionLabel>Safety &amp; Privacy</SectionLabel>
@@ -506,8 +467,13 @@ function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, 
               >
                 Cancel
               </button>
-              <button type="button" onClick={onUnmatch} className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-red-700">
-                Delete
+              <button
+                type="button"
+                onClick={onUnmatch}
+                disabled={isUnmatching}
+                className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isUnmatching ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
@@ -601,18 +567,6 @@ function ProfilePhoto({ participant, size}: {
         {getInitials(participant.fullName)}
       </div>
     </div>
-  );
-}
-
-function HeaderButton({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-gray-600 hover:bg-gray-100 hover:text-black"
-    >
-      {children}
-    </button>
   );
 }
 

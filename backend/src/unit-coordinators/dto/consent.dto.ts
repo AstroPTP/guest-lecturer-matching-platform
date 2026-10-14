@@ -1,4 +1,4 @@
-import { IsBoolean, IsString, IsNotEmpty } from 'class-validator';
+import { IsBoolean, IsString, IsNotEmpty, IsOptional } from 'class-validator';
 
 export class ConsentDto {
   @IsBoolean()
@@ -22,7 +22,10 @@ export class ConsentDto {
   @IsBoolean()
   termsAccepted: boolean;
 
+  // Nothing collects or reads this yet; optional so the consent form can be
+  // submitted without inventing a value for it.
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  requestStatus: string;
+  requestStatus?: string;
 }

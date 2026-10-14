@@ -35,7 +35,7 @@ export interface UnitCoordinatorConsentData {
   studentPrivacyCompliance: boolean;
 
   termsAccepted: boolean;
-  requestStatus: string;
+  requestStatus?: string;
 }
 
 export interface UnitCoordinatorProfileData {
