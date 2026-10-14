@@ -6,10 +6,6 @@ import Image from "next/image";
 import { BackendError } from "@/lib/api/backendClient";
 import { MAX_PROFILE_PHOTO_BYTES, uploadMyProfileImage, type ProfileImageOwner } from "@/lib/api/images";
 
-/**
- * The profile photo on a My Profile overview, with an edit button over it.
- * A picked photo is uploaded straight away rather than waiting for a save.
- */
 export default function ProfilePhotoEditor({
   owner,
   photo,
@@ -19,7 +15,6 @@ export default function ProfilePhotoEditor({
   owner: ProfileImageOwner;
   photo: string;
   fullName: string;
-  /** Called with the new photo's URL once it has uploaded. */
   onChange: (photoUrl: string) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -27,7 +22,6 @@ export default function ProfilePhotoEditor({
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
-    // Cleared so picking the same file again still fires onChange.
     event.target.value = "";
     if (!file) {
       return;

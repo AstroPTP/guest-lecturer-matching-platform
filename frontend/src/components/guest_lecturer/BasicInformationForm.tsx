@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import FormSkeleton from "@/components/shared/FormSkeleton";
 import Image from "next/image";
 import { getGuestLecturerBasicInformation, saveGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
@@ -17,13 +16,10 @@ export default function BasicInformationForm() {
   const [professionalRole, setProfessionalRole] = useState("");
   const [bio, setBio] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
-  // The saved photo's URL, sent unchanged with the basic information.
   const [savedPhoto, setSavedPhoto] = useState("");
-  // A photo picked or removed here, applied once the profile row exists.
   const [photoChange, setPhotoChange] = useState<PendingPhotoChange>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
-  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,10 +37,6 @@ export default function BasicInformationForm() {
         setPhotoPreview(data.photoPreview);
         setSavedPhoto(data.photoPreview);
       } catch {
-      } finally {
-        if (!cancelled) {
-          setIsLoadingDraft(false);
-        }
       }
     }
     void loadDraft();
@@ -59,7 +51,6 @@ export default function BasicInformationForm() {
     if (!file){
       return;
     }
-    // Cleared so picking the same file again, e.g. after removing it, still fires onChange.
     event.target.value = "";
     if (file.size > MAX_PROFILE_PHOTO_BYTES) {
       alert("Please select an image smaller than 5 MB.");
@@ -75,7 +66,6 @@ export default function BasicInformationForm() {
   }
 
   function handlePhotoRemove() {
-    // Only a photo that was already saved needs deleting on the server.
     setPhotoChange(savedPhoto ? { kind: "remove" } : null);
     setPhotoPreview("");
   }
@@ -102,12 +92,6 @@ export default function BasicInformationForm() {
       setIsSaving(false);
     }
   }
-  // Wait for the saved draft before showing the form. Otherwise anything
-  // typed while it loads is overwritten when it arrives.
-  if (isLoadingDraft) {
-    return <FormSkeleton />;
-  }
-
   return (
     <main className="mx-auto w-full max-w-6xl">
       <div className="mb-8 flex flex-col items-center">

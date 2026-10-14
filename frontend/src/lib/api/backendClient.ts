@@ -37,8 +37,6 @@ export async function backendFetch<TResponse>(
   init: RequestInit = {},
 ): Promise<TResponse> {
   const headers = new Headers(init.headers);
-  // FormData must be left alone: the browser sets the multipart Content-Type
-  // itself, boundary included, and multer cannot parse the body without it.
   if (!headers.has("Content-Type") && init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
