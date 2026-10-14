@@ -5,8 +5,6 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
-import googleIcon from "@/assets/google-icon.svg";
-import linkedInIcon from "@/assets/linkedin-icon.svg";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -44,12 +42,6 @@ export default function LoginForm() {
     !/[\\\x00-\x20]/.test(requestedReturnTo)
       ? requestedReturnTo
       : fallbackReturnTo;
-
-  function loginUrl(connection?: string) {
-    const params = new URLSearchParams({ returnTo });
-    if (connection) params.set("connection", connection);
-    return `/auth/login?${params.toString()}`;
-  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -136,30 +128,6 @@ export default function LoginForm() {
             {isChecking ? "Signing in…" : "Log in"}
           </button>
         </form>
-
-        <div className="my-8 flex items-center gap-3">
-          <div className="h-px bg-gray-300 flex-1"></div>
-          <span className="text-gray-500 text-sm">or continue with</span>
-          <div className="h-px bg-gray-300 flex-1"></div>
-        </div>
-        <div className="space-y-4">
-          <a
-            href={loginUrl("google-oauth2")}
-            aria-label="Continue with Google"
-            className="flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-medium text-slate-800 transition hover:border-blue-200 hover:bg-blue-50"
-          >
-            <Image src={googleIcon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" />
-            Continue with Google
-          </a>
-          <a
-            href={loginUrl("linkedin")}
-            aria-label="Continue with LinkedIn"
-            className="flex h-14 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 text-base font-medium text-slate-800 transition hover:border-blue-200 hover:bg-blue-50"
-          >
-            <Image src={linkedInIcon} alt="" width={22} height={22} className="h-[22px] w-[22px] object-contain" />
-            Continue with LinkedIn
-          </a>
-        </div>
 
         <p className="text-center mt-10 text-sm text-gray-600">
           Don&apos;t have an account? Register as{" "}
