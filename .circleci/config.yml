@@ -1,0 +1,78 @@
+# CircleCI pipeline: install, lint, test and build every app on each push.
+# See: https://circleci.com/docs/reference/configuration-reference/
+version: 2.1
+
+executors:
+  node:
+    docker:
+      - image: cimg/node:22.13 # pinned to match .nvmrc, not "current"
+    environment:
+      NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  app:
+    description: Install, lint, optionally test, and build one app in the repo.
+    executor: node
+    parameters:
+      app_dir:
+        type: string
+      lint_command:
+        description: >-
+          Lints without --fix. The package.json lint scripts fix in place, which
+          in CI would let fixable problems pass instead of failing the build.
+        type: string
+        default: npx eslint
+      test:
+        type: boolean
+        default: false
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - << parameters.app_dir >>-deps-v2-{{ checksum "<< parameters.app_dir >>/package-lock.json" }}
+            - << parameters.app_dir >>-deps-v2-
+      - run:
+          name: Install packages
+          command: npm ci
+          working_directory: << parameters.app_dir >>
+      - save_cache:
+          key: << parameters.app_dir >>-deps-v2-{{ checksum "<< parameters.app_dir >>/package-lock.json" }}
+          paths:
+            - ~/.npm
+      - run:
+          name: Lint
+          command: << parameters.lint_command >>
+          working_directory: << parameters.app_dir >>
+      - when:
+          condition: << parameters.test >>
+          steps:
+            - run:
+                name: Run tests
+                command: npm test -- --ci
+                working_directory: << parameters.app_dir >>
+      - run:
+          name: Build
+          command: npm run build
+          working_directory: << parameters.app_dir >>
+
+workflows:
+  lint-test-build:
+    jobs:
+      - app:
+          name: backend
+          app_dir: backend
+          lint_command: npx eslint "{src,apps,libs,test}/**/*.ts"
+          test: true
+          # npm ci runs `prisma generate`, and prisma.config.ts refuses to load
+          # without DIRECT_URL. Generating the client never connects, so a
+          # placeholder is enough. Unit tests use the Prisma test double.
+          pre-steps:
+            - run:
+                name: Set placeholder database URL
+                command: echo 'export DIRECT_URL="postgresql://ci:ci@localhost:5432/ci"' >> "$BASH_ENV"
+      - app:
+          name: frontend
+          app_dir: frontend
+      - app:
+          name: admin
+          app_dir: frontend/admin

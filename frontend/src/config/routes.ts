@@ -23,6 +23,7 @@ export function getDashboardRoutes(role: UserRole) {
     events: root + "/events",
     notifications: root + "/notifications",
     settings: root + "/settings",
+    help: root + "/help",
   } as const;
 }
 

@@ -7,7 +7,9 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { validateEnv } from './config/env.validation';
 import { loadEnvFile } from './config/load-env';
 
-(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function () {
+(BigInt.prototype as unknown as { toJSON: () => string }).toJSON = function (
+  this: bigint,
+) {
   return this.toString();
 };
 
