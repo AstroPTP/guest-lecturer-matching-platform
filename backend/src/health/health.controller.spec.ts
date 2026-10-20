@@ -6,7 +6,9 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import type { Response } from 'express';
 import request from 'supertest';
 import type { App } from 'supertest/types';
@@ -53,6 +55,20 @@ describe('HealthController', () => {
     (route) => {
       expect(
         Reflect.getMetadata(IS_PUBLIC_KEY, HealthController.prototype[route]),
+      ).toBe(true);
+    },
+  );
+
+  it.each(['liveness', 'readiness'] as const)(
+    'opts %s out of the rate limiter',
+    (route) => {
+      // @nestjs/throttler keeps this as "THROTTLER:SKIP" plus the name of the
+      // throttler, "default" unless the module names others.
+      expect(
+        Reflect.getMetadata(
+          'THROTTLER:SKIPdefault',
+          HealthController.prototype[route],
+        ),
       ).toBe(true);
     },
   );
@@ -233,5 +249,42 @@ describe('health routes over HTTP', () => {
 
     expect(monitoringStore.countsSinceStart().serverErrors).toBe(1);
     expect(errorLog).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('health routes and the rate limiter', () => {
+  let app: INestApplication<App>;
+
+  // A limit of two a minute, so that a third request is refused unless the
+  // route has opted out.
+  beforeEach(async () => {
+    jest.spyOn(prisma, '$queryRaw').mockResolvedValue([{}] as never);
+    const module = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 2 }])],
+      controllers: [HealthController, UnavailableController],
+      providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+    }).compile();
+    app = module.createNestApplication<INestApplication<App>>();
+    await app.init();
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  it.each(['/healthz', '/readyz'])(
+    'never answers 429 on %s, however often it is probed',
+    async (path) => {
+      for (let i = 0; i < 6; i += 1) {
+        await request(app.getHttpServer()).get(path).expect(200);
+      }
+    },
+  );
+
+  it('would have: an ordinary route is limited by the same guard', async () => {
+    // The control. If this stops being true, the test above proves nothing.
+    await request(app.getHttpServer()).get('/boom').expect(503);
+    await request(app.getHttpServer()).get('/boom').expect(503);
+    await request(app.getHttpServer()).get('/boom').expect(429);
   });
 });

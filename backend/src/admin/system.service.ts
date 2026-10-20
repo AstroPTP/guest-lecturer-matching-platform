@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { promises as fsPromises } from 'node:fs';
 import * as os from 'node:os';
-import { withTimeout } from '../common/with-timeout';
+import { TimeoutError, withTimeout } from '../common/with-timeout';
 import { monitoringStore } from '../monitoring/monitoring.store';
 import { prisma } from '../prisma';
 import type {
@@ -18,6 +18,15 @@ const QUERY_TIMEOUT_MS = 2000;
 const WINDOW_MINUTES = 15;
 
 const RECENT_EVENTS = 20;
+
+/** How many of the latest retention.purge entries are read to find the last real run. */
+const RETENTION_ENTRIES = 20;
+
+/** Runs that delete data and finished, as opposed to failed, skipped or dry. */
+const COUNTED_OUTCOMES: ReadonlySet<string> = new Set(['completed', 'partial']);
+
+/** Shown instead of a server path when SYSTEM_DISK_PATH has not been set. */
+const DEFAULT_DISK_LABEL = 'application directory';
 const LARGEST_TABLES = 8;
 const BYTES_PER_MB = 1024 * 1024;
 const MS_PER_DAY = 86_400_000;
@@ -93,23 +102,32 @@ const hostBytes = (value: number): number =>
   Number.isFinite(value) && value > 0 ? value : 0;
 
 /**
- * Runs one measurement and turns any failure, including a timeout, into null.
- * The error is dropped on purpose: a driver message can name the database host.
+ * Runs the database queries of one snapshot, one at a time.
+ *
+ * Each gets the usual timeout, and the first one to time out ends the run: the
+ * ones after it are not sent, because a database too slow to answer in two
+ * seconds is not helped by being asked more. Any other failure, a missing
+ * permission for one catalogue query for instance, costs only that figure.
+ *
+ * A failure and a skipped query both come back as null. The error itself is
+ * dropped on purpose: a driver message can name the database host.
  */
-async function measure<T>(work: () => PromiseLike<T>): Promise<T | null> {
-  try {
-    return await withTimeout(work(), QUERY_TIMEOUT_MS);
-  } catch {
-    return null;
+class QueryBudget {
+  timedOut = false;
+
+  async run<T>(work: () => PromiseLike<T>): Promise<T | null> {
+    if (this.timedOut) return null;
+    try {
+      return await withTimeout(work(), QUERY_TIMEOUT_MS);
+    } catch (error) {
+      if (error instanceof TimeoutError) this.timedOut = true;
+      return null;
+    }
   }
 }
 
-/** The count of a Prisma query, or null when it did not answer sensibly. */
-async function measureCount(
-  work: () => PromiseLike<number>,
-): Promise<number | null> {
-  return toNumber(await measure(work));
-}
+const SKIPPED_AFTER_TIMEOUT =
+  'Not checked because an earlier database query timed out.';
 
 interface DiskReading {
   path: string;
@@ -127,6 +145,15 @@ interface TableRow {
   table_name: unknown;
   row_estimate: unknown;
   bytes: unknown;
+}
+
+interface UsageRow {
+  active_24h: unknown;
+  active_7d: unknown;
+  new_accounts_7d: unknown;
+  match_requests_7d: unknown;
+  messages_7d: unknown;
+  photos_stored: unknown;
 }
 
 type Usage = SystemSnapshot['usage'];
@@ -157,28 +184,33 @@ export class SystemService {
     const checkedAt = now.toISOString();
     const limits = readThresholds();
 
+    const budget = new QueryBudget();
+
     // First and alone, so its timing is not inflated by the queries below and
     // so that an unreachable database is discovered once rather than by every
     // one of them waiting out its own timeout.
-    const database = await this.checkDatabase(checkedAt, limits);
+    const database = await this.checkDatabase(checkedAt, limits, budget);
     const reachable = database.status !== 'unavailable';
 
-    const [databaseBytes, tables, retention, usage, disk] = await Promise.all([
-      reachable ? this.readDatabaseBytes() : Promise.resolve(null),
-      reachable ? this.readTables() : Promise.resolve(NO_TABLES),
-      reachable
-        ? this.checkRetention(checkedAt, now, limits)
-        : Promise.resolve(
-            this.build(checkedAt, 'retention', 'Data retention', {
-              status: 'unknown',
-              message: 'Not checked because the database could not be reached.',
-              unit: 'days',
-              threshold: { warning: limits.retentionAlertDays, critical: null },
-            }),
-          ),
-      reachable ? this.readUsage(now) : Promise.resolve(NO_USAGE),
-      this.readDisk(),
-    ]);
+    // Not a database query, so it is not part of the budget.
+    const disk = await this.readDisk();
+
+    // One at a time, cheapest first, rather than all at once: the point of the
+    // page is to watch the database, and nine simultaneous queries from a
+    // refreshing dashboard are a load of its own on a small pooled plan.
+    const databaseBytes = reachable
+      ? await this.readDatabaseBytes(budget)
+      : null;
+    const tables = reachable ? await this.readTables(budget) : NO_TABLES;
+    const retention = reachable
+      ? await this.checkRetention(checkedAt, now, limits, budget)
+      : this.build(checkedAt, 'retention', 'Data retention', {
+          status: 'unknown',
+          message: 'Not checked because the database could not be reached.',
+          unit: 'days',
+          threshold: { warning: limits.retentionAlertDays, critical: null },
+        });
+    const usage = reachable ? await this.readUsage(budget) : NO_USAGE;
 
     const limitMb = positiveNumber('DB_SIZE_LIMIT_MB');
     const databaseLimitBytes =
@@ -192,6 +224,7 @@ export class SystemService {
         databaseBytes,
         databaseLimitBytes,
         reachable,
+        budget,
         limits,
       ),
       this.checkDisk(checkedAt, disk, limits),
@@ -311,13 +344,13 @@ export class SystemService {
   private async checkDatabase(
     checkedAt: string,
     limits: Thresholds,
+    budget: QueryBudget,
   ): Promise<SystemCheck> {
     const threshold = { warning: limits.dbLatencyWarnMs, critical: null };
     const started = Date.now();
 
-    try {
-      await withTimeout(prisma.$queryRaw`SELECT 1`, QUERY_TIMEOUT_MS);
-    } catch {
+    const answer = await budget.run(() => prisma.$queryRaw`SELECT 1`);
+    if (answer === null) {
       return this.build(checkedAt, 'database', 'Database', {
         status: 'unavailable',
         message: 'The database did not answer.',
@@ -339,8 +372,8 @@ export class SystemService {
     });
   }
 
-  private async readDatabaseBytes(): Promise<number | null> {
-    const rows = await measure(
+  private async readDatabaseBytes(budget: QueryBudget): Promise<number | null> {
+    const rows = await budget.run(
       () =>
         prisma.$queryRaw<
           { bytes: unknown }[]
@@ -354,14 +387,17 @@ export class SystemService {
     bytes: number | null,
     limitBytes: number | null,
     reachable: boolean,
+    budget: QueryBudget,
     limits: Thresholds,
   ): SystemCheck {
     if (bytes === null) {
       return this.build(checkedAt, 'database_size', 'Database size', {
         status: 'unknown',
-        message: reachable
-          ? 'The database size could not be read. The database user may lack permission to ask.'
-          : 'Not checked because the database could not be reached.',
+        message: !reachable
+          ? 'Not checked because the database could not be reached.'
+          : budget.timedOut
+            ? SKIPPED_AFTER_TIMEOUT
+            : 'The database size could not be read. The database user may lack permission to ask.',
         unit: limitBytes === null ? 'bytes' : 'percent',
       });
     }
@@ -413,10 +449,13 @@ export class SystemService {
   }
 
   private async readDisk(): Promise<DiskReading | null> {
-    const path = process.env.SYSTEM_DISK_PATH?.trim() || process.cwd();
+    // The directory is measured either way, but its name is shown only when an
+    // administrator chose it. The working directory is a path on the server's
+    // file system, and the page has no need to tell anyone what it is.
+    const configured = process.env.SYSTEM_DISK_PATH?.trim();
     try {
       if (typeof fsPromises.statfs !== 'function') return null;
-      const stats = await fsPromises.statfs(path);
+      const stats = await fsPromises.statfs(configured || process.cwd());
 
       const blockSize = toNumber(stats.bsize);
       const blocks = toNumber(stats.blocks);
@@ -440,7 +479,7 @@ export class SystemService {
       if (usable <= 0) return null;
 
       return {
-        path,
+        path: configured || DEFAULT_DISK_LABEL,
         totalBytes: blocks * blockSize,
         freeBytes: availableBlocks * blockSize,
         usedPct: round1((used / usable) * 100),
@@ -561,57 +600,114 @@ export class SystemService {
     });
   }
 
+  /**
+   * Judged on the last run that actually deleted something and finished.
+   *
+   * An entry counts only if its outcome is completed or partial and it was not
+   * a dry run. Without that, a run that failed on the night, or one that only
+   * counted what it would have deleted, would reset the clock and the page
+   * would call retention healthy while no data was being removed.
+   */
   private async checkRetention(
     checkedAt: string,
     now: Date,
     limits: Thresholds,
+    budget: QueryBudget,
   ): Promise<SystemCheck> {
     const threshold = { warning: limits.retentionAlertDays, critical: null };
-    let row: { occurred_at: Date } | null;
-    try {
-      row = await withTimeout(
-        prisma.audit_entries.findFirst({
-          where: { action: 'retention.purge' },
-          orderBy: { occurred_at: 'desc' },
-          select: { occurred_at: true },
-        }),
-        QUERY_TIMEOUT_MS,
-      );
-    } catch {
-      return this.build(checkedAt, 'retention', 'Data retention', {
-        status: 'unknown',
-        message: 'The retention history could not be read.',
+    const make = (
+      status: CheckStatus,
+      message: string,
+      value: number | null = null,
+    ) =>
+      this.build(checkedAt, 'retention', 'Data retention', {
+        status,
+        message,
+        value,
         unit: 'days',
         threshold,
       });
-    }
 
-    if (!row?.occurred_at) {
-      return this.build(checkedAt, 'retention', 'Data retention', {
-        status: 'unknown',
-        message: 'No retention run recorded yet.',
-        unit: 'days',
-        threshold,
-      });
-    }
-
-    const days = round1(
-      Math.max(0, now.getTime() - row.occurred_at.getTime()) / MS_PER_DAY,
+    const rows = await budget.run(() =>
+      prisma.audit_entries.findMany({
+        where: { action: 'retention.purge' },
+        orderBy: { occurred_at: 'desc' },
+        take: RETENTION_ENTRIES,
+        select: { occurred_at: true, detail: true },
+      }),
     );
-    const stale = days > limits.retentionAlertDays;
-    return this.build(checkedAt, 'retention', 'Data retention', {
-      status: stale ? 'warning' : 'healthy',
-      message: stale
-        ? `The last retention run was ${days} days ago, longer than the ${limits.retentionAlertDays} day limit.`
-        : `The last retention run was ${days} days ago.`,
-      value: days,
-      unit: 'days',
-      threshold,
+    if (rows === null) {
+      return make(
+        'unknown',
+        budget.timedOut
+          ? SKIPPED_AFTER_TIMEOUT
+          : 'The retention history could not be read.',
+      );
+    }
+
+    const entries = rows.flatMap((row) => {
+      const entry = readRetentionEntry(row);
+      return entry ? [entry] : [];
     });
+    if (entries.length === 0) {
+      return make('unknown', 'No retention run recorded yet.');
+    }
+
+    const daysSince = (at: Date) =>
+      round1(Math.max(0, now.getTime() - at.getTime()) / MS_PER_DAY);
+
+    const real = entries.filter((entry) => !entry.dryRun);
+    if (real.length === 0) {
+      return make(
+        'unknown',
+        `Only dry runs are recorded (the last was ${daysSince(entries[0].at)} days ago), and a dry run deletes nothing. No real run has been recorded.`,
+      );
+    }
+
+    const latest = real[0];
+    const lastCompleted = real.find((entry) =>
+      COUNTED_OUTCOMES.has(entry.outcome ?? ''),
+    );
+    const completedDays = lastCompleted ? daysSince(lastCompleted.at) : null;
+
+    if (latest.outcome === 'failed') {
+      return make(
+        'warning',
+        `The last run failed on ${isoDate(latest.at)}. ${
+          completedDays === null
+            ? 'No completed run is on record.'
+            : `The last completed run was ${completedDays} days ago.`
+        }`,
+        completedDays,
+      );
+    }
+
+    if (completedDays === null) {
+      const inWindow =
+        rows.length >= RETENTION_ENTRIES
+          ? ` among the latest ${RETENTION_ENTRIES} entries`
+          : '';
+      return make(
+        'unknown',
+        `No completed retention run is recorded${inWindow}. The latest entry was ${latest.outcome ?? 'without an outcome'} on ${isoDate(latest.at)}.`,
+      );
+    }
+
+    return completedDays > limits.retentionAlertDays
+      ? make(
+          'warning',
+          `The last completed run was ${completedDays} days ago, longer than the ${limits.retentionAlertDays} day limit.`,
+          completedDays,
+        )
+      : make(
+          'healthy',
+          `The last completed run was ${completedDays} days ago.`,
+          completedDays,
+        );
   }
 
-  private async readTables(): Promise<TableReading> {
-    const rows = await measure(
+  private async readTables(budget: QueryBudget): Promise<TableReading> {
+    const rows = await budget.run(
       () => prisma.$queryRaw<TableRow[]>`
         SELECT c.relname AS table_name,
                GREATEST(c.reltuples, 0)::bigint AS row_estimate,
@@ -645,50 +741,79 @@ export class SystemService {
     };
   }
 
-  private async readUsage(now: Date): Promise<Usage> {
-    const day = new Date(now.getTime() - MS_PER_DAY);
-    const week = new Date(now.getTime() - 7 * MS_PER_DAY);
+  /**
+   * Six counts from one statement: one round trip, one scan of each table, and
+   * windows measured on the database's own clock in UTC, which is how Prisma
+   * stores a DateTime in these timestamp columns. A failure takes all six, and
+   * they all come back null.
+   */
+  private async readUsage(budget: QueryBudget): Promise<Usage> {
+    const rows = await budget.run(
+      () => prisma.$queryRaw<UsageRow[]>`
+        WITH bounds AS (
+          SELECT (NOW() AT TIME ZONE 'UTC') - INTERVAL '24 hours' AS day,
+                 (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days' AS week
+        )
+        SELECT u.active_24h, u.active_7d, u.new_accounts_7d,
+               m.match_requests_7d, g.messages_7d, i.photos_stored
+        FROM bounds b
+        CROSS JOIN LATERAL (
+          SELECT COUNT(*) FILTER (WHERE lastloginat >= b.day AND deletedat IS NULL) AS active_24h,
+                 COUNT(*) FILTER (WHERE lastloginat >= b.week AND deletedat IS NULL) AS active_7d,
+                 COUNT(*) FILTER (WHERE createdat >= b.week) AS new_accounts_7d
+          FROM public.users) u
+        CROSS JOIN LATERAL (
+          SELECT COUNT(*) FILTER (WHERE requested_at >= b.week) AS match_requests_7d
+          FROM public.match_requests) m
+        CROSS JOIN LATERAL (
+          SELECT COUNT(*) FILTER (WHERE sent_at >= b.week) AS messages_7d
+          FROM public.messages) g
+        CROSS JOIN LATERAL (
+          SELECT COUNT(*) AS photos_stored FROM public.images) i`,
+    );
 
-    const [
-      activeUsers24h,
-      activeUsers7d,
-      newAccounts7d,
-      matchRequests7d,
-      messages7d,
-      photosStored,
-    ] = await Promise.all([
-      measureCount(() =>
-        prisma.users.count({
-          where: { lastloginat: { gte: day }, deletedat: null },
-        }),
-      ),
-      measureCount(() =>
-        prisma.users.count({
-          where: { lastloginat: { gte: week }, deletedat: null },
-        }),
-      ),
-      measureCount(() =>
-        prisma.users.count({ where: { createdat: { gte: week } } }),
-      ),
-      measureCount(() =>
-        prisma.match_requests.count({ where: { requested_at: { gte: week } } }),
-      ),
-      measureCount(() =>
-        prisma.messages.count({ where: { sent_at: { gte: week } } }),
-      ),
-      measureCount(() => prisma.images.count()),
-    ]);
+    const row = Array.isArray(rows) ? rows[0] : undefined;
+    if (!row) return NO_USAGE;
 
     return {
-      activeUsers24h,
-      activeUsers7d,
-      newAccounts7d,
-      matchRequests7d,
-      messages7d,
-      photosStored,
+      activeUsers24h: toNumber(row.active_24h),
+      activeUsers7d: toNumber(row.active_7d),
+      newAccounts7d: toNumber(row.new_accounts_7d),
+      matchRequests7d: toNumber(row.match_requests_7d),
+      messages7d: toNumber(row.messages_7d),
+      photosStored: toNumber(row.photos_stored),
     };
   }
 }
+
+interface RetentionEntry {
+  at: Date;
+  outcome: string | null;
+  dryRun: boolean;
+}
+
+/**
+ * Reads what the retention job recorded. The detail column is free-form JSON,
+ * so nothing in it is trusted to be there: a missing outcome is null, and only
+ * a literal true makes an entry a dry run.
+ */
+function readRetentionEntry(row: {
+  occurred_at: Date;
+  detail: unknown;
+}): RetentionEntry | null {
+  if (!(row.occurred_at instanceof Date)) return null;
+  const detail =
+    row.detail && typeof row.detail === 'object' && !Array.isArray(row.detail)
+      ? (row.detail as Record<string, unknown>)
+      : {};
+  return {
+    at: row.occurred_at,
+    outcome: typeof detail.outcome === 'string' ? detail.outcome : null,
+    dryRun: detail.dryRun === true,
+  };
+}
+
+const isoDate = (at: Date): string => at.toISOString().slice(0, 10);
 
 /**
  * The worst thing found. Unknown does not count against the system, since "we

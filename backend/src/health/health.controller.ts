@@ -1,4 +1,5 @@
 import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { Public } from '../auth/public.decorator';
 import { withTimeout } from '../common/with-timeout';
@@ -14,6 +15,11 @@ const READINESS_TIMEOUT_MS = 2000;
  * one cannot tell anybody the service is down. That is also why neither says
  * anything beyond one word. No versions, no host names, no error text, because
  * an unauthenticated caller can read every byte of it.
+ *
+ * Both skip the rate limiter too. A host probes on a fixed beat from one
+ * address, and a limiter that answers 429 to the probe would take a healthy
+ * instance out of rotation. Each does almost no work, so there is little to
+ * protect: liveness does none and readiness is a single SELECT 1.
  */
 @Controller()
 export class HealthController {
@@ -22,6 +28,7 @@ export class HealthController {
    * database outage cannot make the host restart a healthy process.
    */
   @Public()
+  @SkipThrottle()
   @Get('healthz')
   liveness() {
     return { status: 'ok' };
@@ -43,6 +50,7 @@ export class HealthController {
    * needed by a probe.
    */
   @Public()
+  @SkipThrottle()
   @Get('readyz')
   async readiness(@Res() response: Response): Promise<void> {
     try {
