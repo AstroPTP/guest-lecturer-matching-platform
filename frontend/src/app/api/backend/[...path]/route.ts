@@ -73,7 +73,7 @@ async function forward(request: NextRequest, path: string[]) {
     headers,
     body: ['GET', 'HEAD'].includes(request.method)
       ? undefined
-      : await request.text(),
+      : await request.arrayBuffer(),
     redirect: 'manual',
   }).catch(() => null);
 

@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, ChangeEvent, FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import FormSkeleton from "@/components/shared/FormSkeleton";
 import Image from "next/image";
 import { getGuestLecturerBasicInformation, saveGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
+import { applyProfilePhotoChange, MAX_PROFILE_PHOTO_BYTES, type PendingPhotoChange } from "@/lib/api/images";
+import { BackendError } from "@/lib/api/backendClient";
 
 export default function BasicInformationForm() {
   const router = useRouter();
@@ -15,9 +16,10 @@ export default function BasicInformationForm() {
   const [professionalRole, setProfessionalRole] = useState("");
   const [bio, setBio] = useState("");
   const [photoPreview, setPhotoPreview] = useState("");
+  const [savedPhoto, setSavedPhoto] = useState("");
+  const [photoChange, setPhotoChange] = useState<PendingPhotoChange>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
-  const [isLoadingDraft, setIsLoadingDraft] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,11 +35,8 @@ export default function BasicInformationForm() {
         setProfessionalRole(data.professionalRole);
         setBio(data.bio);
         setPhotoPreview(data.photoPreview);
+        setSavedPhoto(data.photoPreview);
       } catch {
-      } finally {
-        if (!cancelled) {
-          setIsLoadingDraft(false);
-        }
       }
     }
     void loadDraft();
@@ -52,11 +51,12 @@ export default function BasicInformationForm() {
     if (!file){
       return;
     }
-    if (file.size > 1024 * 1024) {
-      alert("Please select an image smaller than 1 MB.");
-      event.target.value = "";
+    event.target.value = "";
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      alert("Please select an image smaller than 5 MB.");
       return;
     }
+    setPhotoChange({ kind: "upload", file });
     const reader = new FileReader();
     reader.onload = () => {
       const imageData = reader.result as string;
@@ -64,6 +64,12 @@ export default function BasicInformationForm() {
     };
     reader.readAsDataURL(file);
   }
+
+  function handlePhotoRemove() {
+    setPhotoChange(savedPhoto ? { kind: "remove" } : null);
+    setPhotoPreview("");
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -74,21 +80,18 @@ export default function BasicInformationForm() {
         professionalField,
         professionalRole,
         bio,
-        photoPreview,
+        photoPreview: savedPhoto,
       });
+      if (photoChange) {
+        await applyProfilePhotoChange("guest-speakers", photoChange);
+      }
       router.push("/guest_lecturer/expertise");
-    } catch {
-      setError("Could not save your information. Please try again.");
+    } catch (error) {
+      setError(error instanceof BackendError ? error.message : "Could not save your information. Please try again.");
     } finally {
       setIsSaving(false);
     }
   }
-  // Wait for the saved draft before showing the form. Otherwise anything
-  // typed while it loads is overwritten when it arrives.
-  if (isLoadingDraft) {
-    return <FormSkeleton />;
-  }
-
   return (
     <main className="mx-auto w-full max-w-6xl">
       <div className="mb-8 flex flex-col items-center">
@@ -118,11 +121,18 @@ export default function BasicInformationForm() {
             >
               {photoPreview ? <Image src={photoPreview} className="h-full w-full rounded-full object-cover" alt="" width={96} height={96} unoptimized /> : "+"}
             </button>
-            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handlePhotoChange} />
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={handlePhotoChange} />
             <div>
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold">
-                Upload Photo
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-6 py-3 font-semibold">
+                  {photoPreview ? "Change Photo" : "Upload Photo"}
+                </button>
+                {photoPreview && (
+                  <button type="button" onClick={handlePhotoRemove} className="rounded-xl px-6 py-3 font-semibold text-red-600 hover:bg-red-50">
+                    Remove Photo
+                  </button>
+                )}
+              </div>
               <p className="mt-2 text-sm text-gray-500">Helps Unit Coordinators recognise you. Optional but recommended.</p>
             </div>
           </div>
