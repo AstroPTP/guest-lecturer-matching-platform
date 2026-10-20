@@ -27,7 +27,21 @@ function model(): Record<string, AnyFn> {
   };
 }
 
+/**
+ * Runs an interactive transaction against the same double, so a test can spy
+ * on the calls made inside it exactly as it would outside.
+ */
+function transaction(fn: (tx: unknown) => Promise<unknown>): Promise<unknown> {
+  return fn(prisma);
+}
+
 export const prisma = {
+  // Raw SQL and transactions. The defaults do nothing and report nothing, so a
+  // test that cares spies on them and supplies what the statement would return.
+  $executeRaw: () => Promise.resolve(0),
+  $queryRaw: () => Promise.resolve([]),
+  $transaction: transaction,
+  $disconnect: () => Promise.resolve(),
   users: model(),
   guests: model(),
   coordinators: model(),

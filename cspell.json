@@ -43,7 +43,8 @@
     "tenant",
     "throttler",
     "unparseable",
-    "unvetted"
+    "unvetted",
+    "xact"
   ],
   "ignorePaths": [
     "node_modules/**",

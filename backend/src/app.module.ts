@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
@@ -16,6 +17,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
 import { DismissalsModule } from './dismissals/dismissals.module';
 import { ImagesModule } from './images/images.module';
+import { RetentionModule } from './retention/retention.module';
 
 @Module({
   imports: [
@@ -38,6 +40,9 @@ import { ImagesModule } from './images/images.module';
     SettingsModule,
     DismissalsModule,
     ImagesModule,
+    // Registered once here; modules only declare @Cron methods.
+    ScheduleModule.forRoot(),
+    RetentionModule,
   ],
   controllers: [AppController],
   providers: [
