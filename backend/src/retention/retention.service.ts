@@ -20,7 +20,12 @@ const DAY_MS = 86_400_000;
  */
 const TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 60_000 };
 
-export type RetentionOutcome = 'completed' | 'skipped' | 'failed';
+/**
+ * How a run ended. 'skipped' means another instance held the lock from the
+ * start and nothing was deleted; 'partial' means this run deleted some rows
+ * before another instance took the lock.
+ */
+export type RetentionOutcome = 'completed' | 'skipped' | 'partial' | 'failed';
 
 /** What one run did. Counts and flags only, never anything from a message. */
 export interface RetentionRun {
@@ -36,6 +41,12 @@ export interface RetentionRun {
   batches: number;
   durationMs: number;
   outcome: RetentionOutcome;
+  /**
+   * False when the audit row could not be written. Not part of the row; it
+   * lets the one-shot command exit non-zero, because a purge with no record of
+   * it is a compliance gap someone has to hear about.
+   */
+  auditWritten: boolean;
 }
 
 /** What the administrator's preview returns. */
@@ -130,6 +141,7 @@ export class RetentionService {
       batches: 0,
       durationMs: 0,
       outcome: 'completed',
+      auditWritten: false,
     };
 
     try {
@@ -143,8 +155,17 @@ export class RetentionService {
         for (;;) {
           const batch = await this.deleteBatch(cutoff, config.batchSize);
           if (!batch.acquired) {
-            run.outcome = 'skipped';
-            this.logger.log('Skipped: another instance is running.');
+            // Rows already deleted in this run stay deleted, so a lock lost
+            // part-way is not the same as never having had it.
+            if (run.deleted > 0) {
+              run.outcome = 'partial';
+              this.logger.log(
+                `Stopped early: another instance took over after ${run.deleted} rows.`,
+              );
+            } else {
+              run.outcome = 'skipped';
+              this.logger.log('Skipped: another instance is running.');
+            }
             break;
           }
           if (batch.deleted === 0) break;
@@ -160,7 +181,7 @@ export class RetentionService {
     }
 
     run.durationMs = Date.now() - startedAt;
-    await this.audit(run);
+    run.auditWritten = await this.audit(run);
     this.logger.log(
       `Message retention ${run.outcome}: dryRun=${run.dryRun} ` +
         `deleted=${run.deleted} wouldDelete=${run.wouldDelete} ` +
@@ -182,6 +203,14 @@ export class RetentionService {
 
   /**
    * Deletes one batch under the retention lock.
+   *
+   * The lock serialises batches, not whole runs: it is released when each
+   * batch's transaction ends. Two instances that start together can therefore
+   * alternate between batches, each deleting some of the rows. That is safe,
+   * because a delete only ever removes rows past the cut-off and a re-run
+   * finds nothing left, and the batches never overlap, so no two deletes run
+   * at once. An instance that finds the lock taken stops, and says so in its
+   * outcome.
    *
    * The lock is a transaction-level advisory lock taken inside the same
    * transaction as the delete, not a session-level one. The database can sit
@@ -235,10 +264,11 @@ export class RetentionService {
   /**
    * One audit row per run. The detail holds counts and flags only, so the
    * trail records that a purge happened without becoming a second copy of
-   * what was purged. A failure here is logged and swallowed: the run has
-   * already happened, and throwing would only hide that.
+   * what was purged. A failure here is logged and reported through the return
+   * value rather than thrown: the run has already happened, and throwing would
+   * only hide that. The one-shot command turns it into a non-zero exit.
    */
-  private async audit(run: RetentionRun): Promise<void> {
+  private async audit(run: RetentionRun): Promise<boolean> {
     try {
       await recordAudit(
         null,
@@ -258,10 +288,12 @@ export class RetentionService {
           outcome: run.outcome,
         },
       );
+      return true;
     } catch (error) {
       this.logger.warn(
         `Message retention audit entry not written: ${describeError(error)}`,
       );
+      return false;
     }
   }
 }

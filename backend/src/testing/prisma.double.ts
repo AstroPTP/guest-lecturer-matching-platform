@@ -28,11 +28,17 @@ function model(): Record<string, AnyFn> {
 }
 
 /**
- * Runs an interactive transaction against the same double, so a test can spy
- * on the calls made inside it exactly as it would outside.
+ * Runs an interactive transaction. The callback gets a transaction client of
+ * its own, separate from the root one, as it does in Prisma. A statement the
+ * code under test mistakenly runs on the root client instead of inside the
+ * transaction then shows up on the wrong object rather than passing quietly.
+ * A test that cares passes its own through `mockImplementation`.
  */
 function transaction(fn: (tx: unknown) => Promise<unknown>): Promise<unknown> {
-  return fn(prisma);
+  return fn({
+    $executeRaw: () => Promise.resolve(0),
+    $queryRaw: () => Promise.resolve([]),
+  });
 }
 
 export const prisma = {

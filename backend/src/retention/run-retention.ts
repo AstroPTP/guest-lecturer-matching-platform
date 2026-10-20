@@ -17,9 +17,10 @@ import { RetentionService } from './retention.service';
  * the schedule calls, so the lock, the dry-run switch and the single audit row
  * behave identically.
  *
- * Exit code: 0 when the run completed, was skipped because another instance
- * holds the lock, or the job is switched off. 1 when it failed, so the
- * scheduler can alert on it.
+ * Exit code: 0 when the run completed, was skipped or stopped early because
+ * another instance holds the lock, or the job is switched off. 1 when the
+ * purge failed. 2 when the purge itself went through but its audit row could
+ * not be written, so the scheduler can alert on a purge with no record of it.
  */
 export async function runRetentionOnce(): Promise<number> {
   const logger = new Logger('RetentionRun');
@@ -32,7 +33,9 @@ export async function runRetentionOnce(): Promise<number> {
     try {
       // The service logs the one-line summary of counts when the run ends.
       const run = await app.get(RetentionService).runIfEnabled();
-      exitCode = run?.outcome === 'failed' ? 1 : 0;
+      if (run?.outcome === 'failed') exitCode = 1;
+      else if (run && !run.auditWritten) exitCode = 2;
+      else exitCode = 0;
     } finally {
       await app.close();
     }

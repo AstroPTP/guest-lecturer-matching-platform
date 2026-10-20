@@ -29,6 +29,18 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Whatever a test is about, the lock and the delete belong inside the
+  // transaction. Run on the root client they would not be in it, and the lock
+  // would be released the moment its own statement finished.
+  if (current) {
+    expect(current.rootExecuteRaw).not.toHaveBeenCalled();
+    expect(
+      current.queryRaw.mock.calls
+        .map(sqlOf)
+        .some((sql) => sql.text.includes('pg_try_advisory')),
+    ).toBe(false);
+    current = undefined;
+  }
   jest.useRealTimers();
   jest.restoreAllMocks();
   for (const name of ENV_NAMES) {
@@ -43,40 +55,69 @@ function sqlOf(call: unknown[]) {
   return { text: strings.join('?').replace(/\s+/g, ' ').trim(), values };
 }
 
+/** The database most recently faked, so afterEach can check where SQL ran. */
+let current: ReturnType<typeof fakeDatabase> | undefined;
+
 /**
  * Stands in for the database. Answers the lock, the two counts and each delete
  * batch from what the test asked for, telling them apart by their SQL.
+ *
+ * The lock and the delete are answered by `tx`, a client separate from
+ * `prisma`, which is all `$transaction` hands its callback. The root client
+ * answers only the counts. A statement run on the wrong one therefore goes
+ * unanswered and is caught by the check in afterEach.
  */
 function fakeDatabase(
   options: {
     locked?: boolean;
+    /** One answer per lock attempt, then `locked` for any after that. */
+    lockResults?: boolean[];
     expired?: number;
     unsent?: number;
     batches?: number[];
   } = {},
 ) {
   const remaining = [...(options.batches ?? [])];
+  const lockResults = [...(options.lockResults ?? [])];
+  const tx = {
+    $queryRaw: jest.fn(() =>
+      Promise.resolve([
+        { acquired: lockResults.shift() ?? options.locked ?? true },
+      ]),
+    ),
+    $executeRaw: jest.fn(() => Promise.resolve(remaining.shift() ?? 0)),
+  };
   const queryRaw = jest.spyOn(prisma, '$queryRaw').mockImplementation(((
     strings: TemplateStringsArray,
   ) => {
     const text = strings.join('?');
-    if (text.includes('pg_try_advisory_xact_lock')) {
-      return Promise.resolve([{ acquired: options.locked ?? true }]);
-    }
     if (text.includes('IS NULL')) {
       return Promise.resolve([{ count: options.unsent ?? 0 }]);
     }
     return Promise.resolve([{ count: options.expired ?? 0 }]);
   }) as never);
-  const executeRaw = jest
+  const rootExecuteRaw = jest
     .spyOn(prisma, '$executeRaw')
-    .mockImplementation((() =>
-      Promise.resolve(remaining.shift() ?? 0)) as never);
-  const transaction = jest.spyOn(prisma, '$transaction');
+    .mockImplementation((() => Promise.resolve(0)) as never);
+  const transaction = jest
+    .spyOn(prisma, '$transaction')
+    .mockImplementation(((fn: (client: typeof tx) => Promise<unknown>) =>
+      fn(tx)) as never);
   const audit = jest
     .spyOn(prisma.audit_entries, 'create')
     .mockResolvedValue({} as never);
-  return { queryRaw, executeRaw, transaction, audit };
+  const db = {
+    queryRaw,
+    /** The delete, as run on the transaction client. */
+    executeRaw: tx.$executeRaw,
+    /** The lock, as run on the transaction client. */
+    lockQuery: tx.$queryRaw,
+    rootExecuteRaw,
+    transaction,
+    audit,
+  };
+  current = db;
+  return db;
 }
 
 /** The `data` of the single audit row a run wrote. */
@@ -159,17 +200,21 @@ describe('RetentionService batching', () => {
     expect(db.executeRaw).toHaveBeenCalledTimes(1);
   });
 
-  it('limits each batch to RETENTION_BATCH_SIZE, 5000 by default', async () => {
-    const first = fakeDatabase({ batches: [0] });
-    await service.purge();
-    expect(sqlOf(first.executeRaw.mock.calls[0]).values[1]).toBe(5000);
+  it('limits each batch to 5000 rows by default', async () => {
+    const db = fakeDatabase({ batches: [0] });
 
-    jest.restoreAllMocks();
-    jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    process.env.RETENTION_BATCH_SIZE = '200';
-    const second = fakeDatabase({ batches: [0] });
     await service.purge();
-    expect(sqlOf(second.executeRaw.mock.calls[0]).values[1]).toBe(200);
+
+    expect(sqlOf(db.executeRaw.mock.calls[0]).values[1]).toBe(5000);
+  });
+
+  it('limits each batch to RETENTION_BATCH_SIZE when it is set', async () => {
+    process.env.RETENTION_BATCH_SIZE = '200';
+    const db = fakeDatabase({ batches: [0] });
+
+    await service.purge();
+
+    expect(sqlOf(db.executeRaw.mock.calls[0]).values[1]).toBe(200);
   });
 
   it('deletes by primary key through a sub-select with a LIMIT', async () => {
@@ -276,14 +321,32 @@ describe('RetentionService locking', () => {
 
     await service.purge();
 
-    const lock = db.queryRaw.mock.calls
-      .map(sqlOf)
-      .find((sql) => sql.text.includes('pg_try_advisory_xact_lock'));
-    expect(lock?.text).toContain('pg_try_advisory_xact_lock(?::bigint)');
-    expect(lock?.values).toEqual([RETENTION_LOCK_KEY]);
+    // On the transaction client, which is what $transaction hands the callback.
+    expect(db.lockQuery).toHaveBeenCalledTimes(1);
+    const lock = sqlOf(db.lockQuery.mock.calls[0]);
+    expect(lock.text).toContain('pg_try_advisory_xact_lock(?::bigint)');
+    expect(lock.values).toEqual([RETENTION_LOCK_KEY]);
     // A session-level lock would be unreliable behind a transaction pooler.
-    expect(lock?.text).not.toContain('pg_try_advisory_lock');
+    expect(lock.text).not.toContain('pg_try_advisory_lock');
     expect(db.transaction).toHaveBeenCalledTimes(1);
+    // And never on the root client, where the lock would not be in the
+    // transaction (afterEach also checks this for every test).
+    expect(
+      db.queryRaw.mock.calls
+        .map(sqlOf)
+        .some((sql) => sql.text.includes('pg_try_advisory')),
+    ).toBe(false);
+  });
+
+  it('runs the delete on the same transaction client as the lock', async () => {
+    const db = fakeDatabase({ batches: [7, 0] });
+
+    await service.purge();
+
+    expect(db.executeRaw).toHaveBeenCalledTimes(2);
+    expect(db.lockQuery).toHaveBeenCalledTimes(2);
+    expect(db.rootExecuteRaw).not.toHaveBeenCalled();
+    expect(db.transaction).toHaveBeenCalledTimes(2);
   });
 
   it('ends the run as skipped, deleting nothing, when another instance holds the lock', async () => {
@@ -294,6 +357,48 @@ describe('RetentionService locking', () => {
     expect(db.executeRaw).not.toHaveBeenCalled();
     expect(run).toMatchObject({ outcome: 'skipped', deleted: 0, batches: 0 });
     expect(auditedRow(db.audit).detail.outcome).toBe('skipped');
+  });
+
+  it('ends the run as partial, keeping the count, when the lock is lost after some batches', async () => {
+    const db = fakeDatabase({
+      lockResults: [true, true, false],
+      batches: [5000, 120, 5000],
+    });
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({
+      outcome: 'partial',
+      deleted: 5120,
+      batches: 2,
+    });
+    // The third batch never ran: the lock was refused before its delete.
+    expect(db.executeRaw).toHaveBeenCalledTimes(2);
+    expect(auditedRow(db.audit).detail).toMatchObject({
+      outcome: 'partial',
+      deleted: 5120,
+      batches: 2,
+    });
+  });
+
+  it('is skipped, not partial, when the lock is refused before anything is deleted', async () => {
+    const db = fakeDatabase({ lockResults: [false], batches: [5000] });
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({ outcome: 'skipped', deleted: 0, batches: 0 });
+    expect(db.executeRaw).not.toHaveBeenCalled();
+  });
+
+  it('says that another instance took over when it stops part-way', async () => {
+    fakeDatabase({ lockResults: [true, false], batches: [30] });
+    const log = jest.spyOn(Logger.prototype, 'log');
+
+    await service.purge();
+
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('another instance took over after 30 rows'),
+    );
   });
 
   it('says why it skipped', async () => {
@@ -317,6 +422,14 @@ describe('RetentionService audit', () => {
     await service.purge();
 
     expect(db.audit).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports that the audit row was written', async () => {
+    fakeDatabase({ batches: [0] });
+
+    await expect(service.purge()).resolves.toMatchObject({
+      auditWritten: true,
+    });
   });
 
   it('records the system as the actor, against the messages table', async () => {
@@ -427,6 +540,7 @@ describe('RetentionService audit', () => {
 
       await expect(service.purge()).resolves.toMatchObject({
         outcome: 'completed',
+        auditWritten: false,
       });
       expect(warn).toHaveBeenCalledWith(
         expect.stringContaining('audit entry not written'),
@@ -543,6 +657,7 @@ describe('RetentionService preview', () => {
     await service.preview();
 
     expect(db.executeRaw).not.toHaveBeenCalled();
+    expect(db.lockQuery).not.toHaveBeenCalled();
     expect(db.transaction).not.toHaveBeenCalled();
     expect(db.audit).not.toHaveBeenCalled();
     expect(

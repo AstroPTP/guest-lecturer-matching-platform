@@ -21,6 +21,7 @@ const run = (outcome: RetentionRun['outcome']): RetentionRun => ({
   batches: 0,
   durationMs: 0,
   outcome,
+  auditWritten: true,
 });
 
 /** An application context that hands back a service whose run is canned. */
@@ -59,11 +60,31 @@ describe('runRetentionOnce', () => {
     ['completed', 0],
     // Another instance doing the work is the lock doing its job, not a fault.
     ['skipped', 0],
+    // Some rows went before another instance took over; still no fault.
+    ['partial', 0],
     ['failed', 1],
   ] as const)('exits %s with code %i', async (outcome, code) => {
     context(run(outcome));
 
     await expect(runRetentionOnce()).resolves.toBe(code);
+  });
+
+  it('exits 2 when the purge went through but its audit row was not written', async () => {
+    context({ ...run('completed'), auditWritten: false });
+
+    await expect(runRetentionOnce()).resolves.toBe(2);
+  });
+
+  it('exits 2 for a partial run whose audit row was lost too', async () => {
+    context({ ...run('partial'), auditWritten: false });
+
+    await expect(runRetentionOnce()).resolves.toBe(2);
+  });
+
+  it('exits 1, not 2, when the purge failed and so did its audit row', async () => {
+    context({ ...run('failed'), auditWritten: false });
+
+    await expect(runRetentionOnce()).resolves.toBe(1);
   });
 
   it('exits 0 without a run when the job is switched off', async () => {

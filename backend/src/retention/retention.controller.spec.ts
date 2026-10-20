@@ -2,23 +2,47 @@ import 'reflect-metadata';
 import { Logger, RequestMethod } from '@nestjs/common';
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { prisma } from '../prisma';
+import { IS_PUBLIC_KEY } from '../auth/public.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
 import { AppRole } from '../auth/roles';
 import { RetentionController } from './retention.controller';
 import { RetentionService } from './retention.service';
 
+// The window comes from the environment, so pin it rather than trust whatever
+// the machine running the tests has set.
+const ENV_NAME = 'RETENTION_DAYS_MESSAGE_LOG';
+let savedDays: string | undefined;
+
 beforeEach(() => {
+  savedDays = process.env[ENV_NAME];
+  process.env[ENV_NAME] = '120';
   jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
   jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 });
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  if (savedDays === undefined) delete process.env[ENV_NAME];
+  else process.env[ENV_NAME] = savedDays;
+});
 
 describe('RetentionController access', () => {
   it('is restricted to CCAE administrators at class level, so every route inherits it', () => {
     expect(Reflect.getMetadata(ROLES_KEY, RetentionController)).toEqual([
       AppRole.CcaeAdmin,
     ]);
+  });
+
+  it('is not public, on the class or on its route', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      RetentionController.prototype,
+      'dryRun',
+    )?.value as object;
+
+    expect(
+      Reflect.getMetadata(IS_PUBLIC_KEY, RetentionController),
+    ).toBeUndefined();
+    expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBeUndefined();
   });
 
   it('is its own controller under admin/retention', () => {
@@ -70,7 +94,7 @@ describe('RetentionController dry-run', () => {
     ]);
     expect(result).toMatchObject({
       dryRun: true,
-      retentionDays: 365,
+      retentionDays: 120,
       wouldDelete: 12,
       skippedNullSentAt: 3,
     });
