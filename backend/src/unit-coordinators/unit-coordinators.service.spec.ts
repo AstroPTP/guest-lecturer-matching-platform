@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnitCoordinatorsService } from './unit-coordinators.service';
+import * as prismaModule from '../prisma';
 import { prisma } from '../prisma';
 
 describe('UnitCoordinatorsService', () => {
@@ -49,9 +50,15 @@ describe('UnitCoordinatorsService behaviour', () => {
   it('returns null for someone who has never saved a profile, without creating a user', async () => {
     jest.spyOn(prisma.users, 'findUnique').mockResolvedValue(null);
     const create = jest.spyOn(prisma.users, 'create');
+    const upsert = jest.spyOn(prisma.users, 'upsert');
+    // resolveUserId creates the user row if it is missing, so a read must not
+    // go through it.
+    const resolve = jest.spyOn(prismaModule, 'resolveUserId');
 
     await expect(service.findByUserId('auth0|new')).resolves.toBeNull();
     expect(create).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
   });
 
   it('maps stored columns back to the profile the frontend expects', async () => {
