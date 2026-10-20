@@ -4,12 +4,18 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  UnauthorizedException,
   type ArgumentsHost,
 } from '@nestjs/common';
+import { monitoringStore } from '../../monitoring/monitoring.store';
 import { GlobalExceptionFilter } from './global-exception.filter';
 
 /** A minimal Express request/response pair, enough for the filter. */
-function run(exception: unknown, headers: Record<string, string> = {}) {
+function run(
+  exception: unknown,
+  headers: Record<string, string> = {},
+  requestOverrides: Record<string, unknown> = {},
+) {
   const sent: {
     status?: number;
     body?: Record<string, unknown>;
@@ -40,6 +46,7 @@ function run(exception: unknown, headers: Record<string, string> = {}) {
     path: '/settings/password',
     url: '/settings/password?token=secret-in-query',
     header: (name: string) => headers[name.toLowerCase()],
+    ...requestOverrides,
   };
   const host = {
     switchToHttp: () => ({
@@ -54,6 +61,7 @@ function run(exception: unknown, headers: Record<string, string> = {}) {
 
 let logged: string[];
 beforeEach(() => {
+  monitoringStore.reset();
   logged = [];
   const capture = (...parts: unknown[]) => {
     logged.push(parts.map(String).join(' '));
@@ -157,5 +165,114 @@ describe('GlobalExceptionFilter', () => {
     run(new BadRequestException());
     expect(logged.join('\n')).toContain('POST /settings/password');
     expect(logged.join('\n')).not.toContain('secret-in-query');
+  });
+});
+
+describe('GlobalExceptionFilter monitoring', () => {
+  it('records a server error in the store, without the query string', () => {
+    run(new Error('boom'));
+
+    const [event] = monitoringStore.recent(1);
+    expect(event).toMatchObject({
+      status: 500,
+      category: 'server_error',
+      method: 'POST',
+      path: '/settings/password',
+      userId: null,
+    });
+    expect(JSON.stringify(event)).not.toContain('secret-in-query');
+  });
+
+  it('still never logs the query string once it is recording', () => {
+    run(new Error('boom'));
+
+    expect(logged.join('\n')).toContain('POST /settings/password');
+    expect(logged.join('\n')).not.toContain('secret-in-query');
+  });
+
+  it.each([
+    [
+      '401 on any path',
+      new UnauthorizedException(),
+      '/users/me',
+      'auth_failure',
+    ],
+    [
+      '403 on an admin route',
+      new ForbiddenException(),
+      '/admin/users',
+      'admin_forbidden',
+    ],
+    [
+      '429 from the throttler',
+      new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS),
+      '/auth/login',
+      'rate_limited',
+    ],
+  ])('records %s', (_label, exception, path, category) => {
+    run(exception, {}, { path });
+
+    expect(monitoringStore.recent(5).map((e) => e.category)).toEqual([
+      category,
+    ]);
+  });
+
+  it.each([
+    ['a 403 outside /admin', new ForbiddenException(), '/users/me'],
+    ['a 400', new BadRequestException(), '/users/me'],
+    ['a 404', new HttpException('Not Found', HttpStatus.NOT_FOUND), '/nowhere'],
+  ])('does not record %s', (_label, exception, path) => {
+    run(exception, {}, { path });
+
+    expect(monitoringStore.recent(5)).toEqual([]);
+  });
+
+  it('takes the user id only when the request user carries a numeric one', () => {
+    run(new Error('a'), {}, { user: { id: 42 } });
+    // The real AuthenticatedUser.id is the Auth0 subject string. It identifies
+    // a person and is not copied into the monitoring record.
+    run(new Error('b'), {}, { user: { id: 'auth0|65f1a' } });
+    run(new Error('c'));
+
+    expect(monitoringStore.recent(5).map((e) => e.userId)).toEqual([
+      null,
+      null,
+      42,
+    ]);
+    expect(JSON.stringify(monitoringStore.recent(5))).not.toContain('auth0');
+  });
+
+  it('answers exactly as before when the store throws', () => {
+    jest.spyOn(monitoringStore, 'record').mockImplementation(() => {
+      throw new Error('store is broken');
+    });
+
+    const sent = run(new Error('boom'));
+
+    expect(sent.status).toBe(500);
+    expect(Object.keys(sent.body ?? {}).sort()).toEqual([
+      'code',
+      'correlationId',
+      'message',
+      'timestamp',
+    ]);
+    expect(sent.body).toMatchObject({
+      code: 'INTERNAL_ERROR',
+      message: 'An unexpected error occurred',
+    });
+    expect(logged.join('\n')).toContain('POST /settings/password -> 500');
+  });
+
+  it('still sets Retry-After on a 429 when the store throws', () => {
+    jest.spyOn(monitoringStore, 'record').mockImplementation(() => {
+      throw new Error('store is broken');
+    });
+
+    const sent = run(
+      new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS),
+    );
+
+    expect(sent.status).toBe(429);
+    expect(sent.headers['Retry-After']).toBe('60');
   });
 });

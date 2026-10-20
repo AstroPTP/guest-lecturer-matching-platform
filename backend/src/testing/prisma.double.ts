@@ -44,8 +44,9 @@ function transaction(fn: (tx: unknown) => Promise<unknown>): Promise<unknown> {
 export const prisma = {
   // Raw SQL and transactions. The defaults do nothing and report nothing, so a
   // test that cares spies on them and supplies what the statement would return.
+  // $queryRaw is called as a tagged template, so it takes any arguments.
   $executeRaw: () => Promise.resolve(0),
-  $queryRaw: () => Promise.resolve([]),
+  $queryRaw: (..._args: unknown[]) => Promise.resolve([] as unknown[]),
   $transaction: transaction,
   $disconnect: () => Promise.resolve(),
   users: model(),
@@ -56,6 +57,7 @@ export const prisma = {
   match_requests: model(),
   dismissals: model(),
   messages: model(),
+  images: model(),
   events: model(),
   notifications: model(),
   audit_entries: model(),
