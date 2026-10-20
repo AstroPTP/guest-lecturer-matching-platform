@@ -4,10 +4,9 @@ import { ProfileField, ProfileLabel, ProfileInput, ProfileSelect, TagList } from
 import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
-import type { ChangeEvent, Dispatch, ReactNode, RefObject, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
@@ -18,6 +17,8 @@ import { getUnitCoordinatorProfile, saveUnitCoordinatorBasicInformation, saveUni
 import { academicRoleOptions,engagementFrequencyOptions, schoolDepartmentOptions} from "@/constants/profileOptions/unitCoordinator";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, sessionDurationOptions, unitCoordinatorAudienceSizeOptions as audienceSizeOptions,  weekDays} from "@/constants/profileOptions/shared";
 import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFormatters";
+import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
+import { BackendError } from "@/lib/api/backendClient";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
   value: level.value,
@@ -27,7 +28,6 @@ const experienceLevelOptions = experienceLevels.map((level) => ({
 type EditingSection = "basic" | "expertise" | "engagement" | "schedule" | null;
 type NullableStateSetter<T> = Dispatch<SetStateAction<T | null>>;
 export default function UnitCoordinatorMyProfilePage() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<UnitCoordinatorProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
@@ -99,19 +99,27 @@ export default function UnitCoordinatorMyProfilePage() {
     window.setTimeout(() => setSavedMessage(""), 2500);
   }
 
+  function handlePhotoUploaded(photoUrl: string) {
+    setProfile((current) => current && { ...current, basicInformation: { ...current.basicInformation, photoPreview: photoUrl } });
+    setBasicDraft((current) => current && { ...current, photoPreview: photoUrl });
+    showSavedMessage("Profile photo updated.");
+  }
+
   async function saveBasicInformation() {
     if (!profile || !basicDraft) return;
     if (!basicDraft.fullName.trim()) return alert("Please enter your full name.");
     if (!basicDraft.schoolDepartment) return alert("Please select your school or department.");
     if (!basicDraft.academicRole) return alert("Please select your academic role.");
+    const saved: UnitCoordinatorBasicInformationData = { ...basicDraft, photoPreview: profile.basicInformation.photoPreview };
     try {
-      await saveUnitCoordinatorBasicInformation(basicDraft);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
+      await saveUnitCoordinatorBasicInformation(saved);
+    } catch (error) {
+      alert(error instanceof BackendError ? error.message : "Your changes couldn't be saved. Please try again.");
       return;
     }
 
-    setProfile({ ...profile, basicInformation: cloneData(basicDraft) });
+    setBasicDraft(cloneData(saved));
+    setProfile({ ...profile, basicInformation: cloneData(saved) });
     setEditingSection(null);
     showSavedMessage("Basic information saved successfully.");
   }
@@ -189,23 +197,6 @@ export default function UnitCoordinatorMyProfilePage() {
     showSavedMessage("Preferred schedule saved successfully.");
   }
 
-  function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || !basicDraft){
-      return;
-    }
-
-    if (file.size > 1024 * 1024) {
-      alert("Please select an image smaller than 1 MB.");
-      event.target.value = "";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => setBasicDraft({ ...basicDraft, photoPreview: reader.result as string });
-    reader.readAsDataURL(file);
-  }
-
   function toggleExpertiseTopic(topic: string) {
     if (!expertiseDraft) return;
     const selected = expertiseDraft.selectedTopics.includes(topic);
@@ -277,20 +268,12 @@ export default function UnitCoordinatorMyProfilePage() {
         {savedMessage && <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 font-medium text-green-700">{savedMessage}</div>}
         <section className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-            {profile.basicInformation.photoPreview ? (
-              <Image
-                src={profile.basicInformation.photoPreview}
-                alt={profile.basicInformation.fullName}
-                width={112}
-                height={112}
-                unoptimized
-                className="h-28 w-28 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-gray-200 text-4xl font-bold text-gray-500">
-                {profile.basicInformation.fullName.charAt(0).toUpperCase() || "?"}
-              </div>
-            )}
+            <ProfilePhotoEditor
+              owner="unit-coordinators"
+              photo={profile.basicInformation.photoPreview ?? ""}
+              fullName={profile.basicInformation.fullName ?? ""}
+              onChange={handlePhotoUploaded}
+            />
 
             <div>
               <h2 className="text-3xl font-bold text-[#2d2d2d]">{profile.basicInformation.fullName}</h2>
@@ -309,7 +292,7 @@ export default function UnitCoordinatorMyProfilePage() {
               onEdit={() => startEditing("basic")}
               onCancel={cancelEditing}
               onSave={saveBasicInformation}
-              editContent={<BasicInformationEditor draft={basicDraft} setDraft={setBasicDraft} fileInputRef={fileInputRef} onPhotoChange={handlePhotoChange} />}
+              editContent={<BasicInformationEditor draft={basicDraft} setDraft={setBasicDraft} />}
             >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <ProfileField label="Full Name" value={profile.basicInformation.fullName} />
@@ -411,30 +394,12 @@ export default function UnitCoordinatorMyProfilePage() {
 function BasicInformationEditor({
   draft,
   setDraft,
-  fileInputRef,
-  onPhotoChange,
 }: {
   draft: UnitCoordinatorBasicInformationData;
   setDraft: NullableStateSetter<UnitCoordinatorBasicInformationData>;
-  fileInputRef: RefObject<HTMLInputElement | null>;
-  onPhotoChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-5">
-        {draft.photoPreview ? (
-          <Image src={draft.photoPreview} alt={draft.fullName} width={96} height={96} unoptimized className="h-24 w-24 rounded-full object-cover" />
-        ) : (
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gray-200 text-3xl font-bold text-gray-500">
-            {draft.fullName.charAt(0).toUpperCase() || "?"}
-          </div>
-        )}
-        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onPhotoChange} />
-        <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300">
-          Change Photo
-        </button>
-      </div>
-
       <ProfileInput label="Full Name" value={draft.fullName} onChange={(value) => setDraft({ ...draft, fullName: value })} />
 
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">

@@ -5,8 +5,7 @@ import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 import { useRouter } from "next/navigation";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
-import Image from "next/image";
+import { useEffect, useState } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
@@ -14,11 +13,12 @@ import type {GuestLecturerBasicInformationData, GuestLecturerEngagementData, Gue
 import { getGuestLecturerProfile, saveGuestLecturerBasicInformation,saveGuestLecturerEngagement, saveGuestLecturerExpertise} from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 import { formatStoredValue } from "@/utils/displayFormatters";
+import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
+import { BackendError } from "@/lib/api/backendClient";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
 export default function GuestLecturerMyProfilePage() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<GuestLecturerProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
@@ -91,6 +91,12 @@ export default function GuestLecturerMyProfilePage() {
     }, 2500);
   }
 
+  function handlePhotoUploaded(photoUrl: string) {
+    setProfile((current) => current && { ...current, basicInformation: { ...current.basicInformation, photoPreview: photoUrl } });
+    setBasicDraft((current) => current && { ...current, photoPreview: photoUrl });
+    showSavedMessage("Profile photo updated.");
+  }
+
   async function saveBasicInformation() {
     if (!profile || !basicDraft){
       return;
@@ -107,15 +113,17 @@ export default function GuestLecturerMyProfilePage() {
       alert("Please select your professional role.");
       return;
     }
+    const saved: GuestLecturerBasicInformationData = { ...basicDraft, photoPreview: profile.basicInformation.photoPreview };
     try {
-      await saveGuestLecturerBasicInformation(basicDraft);
-    } catch {
-      alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
+      await saveGuestLecturerBasicInformation(saved);
+    } catch (error) {
+      alert(error instanceof BackendError ? error.message : "Your changes couldn't be saved. Please try again.");
       return;
     }
+    setBasicDraft(cloneData(saved));
     setProfile({
       ...profile,
-      basicInformation: cloneData(basicDraft),
+      basicInformation: cloneData(saved),
     });
 
     setEditingSection(null);
@@ -229,24 +237,6 @@ export default function GuestLecturerMyProfilePage() {
     showSavedMessage("Availability saved successfully.");
   }
 
-  function handlePhotoChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || !basicDraft){
-      return;
-    }
-    if (file.size > 1024 * 1024) {
-      alert("Please select an image smaller than 1 MB.");
-      event.target.value = "";
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setBasicDraft({...basicDraft,photoPreview: reader.result as string});
-    };
-
-    reader.readAsDataURL(file);
-  }
-
   function toggleExpertiseTopic(topic: string) {
     if (!expertiseDraft) return;
     const isSelected = expertiseDraft.selectedTopics.includes(topic);
@@ -335,20 +325,12 @@ export default function GuestLecturerMyProfilePage() {
         {savedMessage && <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-5 py-4 font-medium text-green-700">{savedMessage}</div>}
         <section className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
           <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-            {profile?.basicInformation.photoPreview ? (
-              <Image
-                src={profile.basicInformation.photoPreview}
-                alt={profile.basicInformation.fullName}
-                width={112}
-                height={112}
-                unoptimized
-                className="h-28 w-28 shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full bg-gray-200 text-4xl font-bold text-gray-500">
-                {profile?.basicInformation.fullName.charAt(0).toUpperCase() || "?"}
-              </div>
-            )}
+            <ProfilePhotoEditor
+              owner="guest-speakers"
+              photo={profile?.basicInformation.photoPreview ?? ""}
+              fullName={profile?.basicInformation.fullName ?? ""}
+              onChange={handlePhotoUploaded}
+            />
             <div>
               <h2 className="text-3xl font-bold text-[#2d2d2d]">{profile?.basicInformation.fullName}</h2>
               <p className="mt-2 text-lg text-gray-700">{profile?.basicInformation.professionalRole}</p>
@@ -366,7 +348,7 @@ export default function GuestLecturerMyProfilePage() {
               onEdit={() => startEditing("basic")}
               onCancel={cancelEditing}
               onSave={saveBasicInformation}
-              editContent={<BasicInformationEditor draft={basicDraft} setDraft={setBasicDraft} fileInputRef={fileInputRef} onPhotoChange={handlePhotoChange} />}
+              editContent={<BasicInformationEditor draft={basicDraft} setDraft={setBasicDraft} />}
             >
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <ProfileField label="Full Name" value={profile?.basicInformation.fullName ?? ""} />
@@ -465,31 +447,12 @@ export default function GuestLecturerMyProfilePage() {
 function BasicInformationEditor({
   draft,
   setDraft,
-  fileInputRef,
-  onPhotoChange,
 }: {
   draft: GuestLecturerBasicInformationData;
   setDraft: React.Dispatch<React.SetStateAction<GuestLecturerBasicInformationData | null>>;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  onPhotoChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-5">
-        {draft.photoPreview ? (
-          <Image src={draft.photoPreview} alt={draft.fullName} width={96} height={96} unoptimized className="h-24 w-24 rounded-full object-cover" />
-        ) : (
-          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gray-200 text-3xl font-bold text-gray-500">
-            {draft.fullName.charAt(0).toUpperCase() || "?"}
-          </div>
-        )}
-
-        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={onPhotoChange} />
-        <button type="button" onClick={() => fileInputRef.current?.click()} className="rounded-xl bg-gray-200 px-5 py-3 font-semibold hover:bg-gray-300">
-          Change Photo
-        </button>
-      </div>
-
       <ProfileInput
         label="Full Name"
         value={draft.fullName}

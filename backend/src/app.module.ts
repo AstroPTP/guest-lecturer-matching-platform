@@ -15,6 +15,7 @@ import { EventsModule } from './events/events.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
 import { DismissalsModule } from './dismissals/dismissals.module';
+import { ImagesModule } from './images/images.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { DismissalsModule } from './dismissals/dismissals.module';
     NotificationsModule,
     SettingsModule,
     DismissalsModule,
+    ImagesModule,
   ],
   controllers: [AppController],
   providers: [
