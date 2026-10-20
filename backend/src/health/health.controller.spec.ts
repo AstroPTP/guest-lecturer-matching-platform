@@ -22,11 +22,17 @@ import { HealthController } from './health.controller';
 const DRIVER_ERROR =
   'connect ECONNREFUSED 10.0.0.5:5432 (db.internal.example) PostgreSQL 16.2';
 
+let savedCacheMs: string | undefined;
+
 beforeEach(() => {
   monitoringStore.reset();
+  savedCacheMs = process.env.READINESS_CACHE_MS;
+  delete process.env.READINESS_CACHE_MS;
 });
 
 afterEach(() => {
+  if (savedCacheMs === undefined) delete process.env.READINESS_CACHE_MS;
+  else process.env.READINESS_CACHE_MS = savedCacheMs;
   restoreRealTimers();
   jest.restoreAllMocks();
 });
@@ -48,7 +54,11 @@ function fakeResponse() {
 }
 
 describe('HealthController', () => {
-  const controller = new HealthController();
+  // A new one each time: it remembers its last readiness answer.
+  let controller: HealthController;
+  beforeEach(() => {
+    controller = new HealthController();
+  });
 
   it.each(['liveness', 'readiness'] as const)(
     'is reachable without a token on %s',
@@ -165,6 +175,220 @@ describe('HealthController', () => {
   });
 });
 
+describe('readyz database load', () => {
+  /** Probes the controller as the framework would, and says what came back. */
+  const probe = async (controller: HealthController) => {
+    const { sent, response } = fakeResponse();
+    await controller.readiness(response);
+    return sent;
+  };
+
+  const READY = { status: 200, body: { status: 'ready' } };
+  const UNAVAILABLE = { status: 503, body: { status: 'unavailable' } };
+
+  /** A query that answers after `ms`, or rejects, so probes can overlap it. */
+  const answersAfter = (ms: number, outcome: 'ok' | 'fail' = 'ok') =>
+    jest
+      .spyOn(prisma, '$queryRaw')
+      .mockImplementation(
+        (() =>
+          new Promise((resolve, reject) =>
+            setTimeout(
+              () =>
+                outcome === 'ok'
+                  ? resolve([{}])
+                  : reject(new Error(DRIVER_ERROR)),
+              ms,
+            ),
+          )) as never,
+      );
+
+  it('answers fifty concurrent probes with one query', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(100);
+    const controller = new HealthController();
+
+    const answers = Array.from({ length: 50 }, () => probe(controller));
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(await Promise.all(answers)).toEqual(Array(50).fill(READY));
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one failing query among concurrent probes too', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(100, 'fail');
+    const controller = new HealthController();
+
+    const answers = Array.from({ length: 50 }, () => probe(controller));
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(await Promise.all(answers)).toEqual(Array(50).fill(UNAVAILABLE));
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares one timed-out query too, and answers 503 at two seconds', async () => {
+    jest.useFakeTimers();
+    const query = jest
+      .spyOn(prisma, '$queryRaw')
+      .mockReturnValue(new Promise(() => undefined) as never);
+    const controller = new HealthController();
+
+    const answers = Array.from({ length: 20 }, () => probe(controller));
+    await jest.advanceTimersByTimeAsync(2000);
+
+    expect(await Promise.all(answers)).toEqual(Array(20).fill(UNAVAILABLE));
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('reuses the answer for a second probe inside the window', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(10);
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    await first;
+    await jest.advanceTimersByTimeAsync(1999);
+
+    expect(await probe(controller)).toEqual(READY);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again once the window has passed', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(10);
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    await first;
+    await jest.advanceTimersByTimeAsync(2000);
+    const second = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+
+    expect(await second).toEqual(READY);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds a failure for the same window, then retries', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(10, 'fail');
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    expect(await first).toEqual(UNAVAILABLE);
+
+    // The database comes back, but the failure is still the answer.
+    query.mockImplementation((() => Promise.resolve([{}])) as never);
+    await jest.advanceTimersByTimeAsync(1999);
+    expect(await probe(controller)).toEqual(UNAVAILABLE);
+    expect(query).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(1);
+    expect(await probe(controller)).toEqual(READY);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('counts the window from when the answer arrived, not from when it was asked for', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(1500);
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(1500);
+    await first;
+    // 1999 ms after the answer is 3499 ms after the first probe.
+    await jest.advanceTimersByTimeAsync(1999);
+    await probe(controller);
+
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps no timer running between probes', async () => {
+    jest.useFakeTimers();
+    answersAfter(10);
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    await first;
+
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('takes the window from READINESS_CACHE_MS', async () => {
+    process.env.READINESS_CACHE_MS = '500';
+    jest.useFakeTimers();
+    const query = answersAfter(10);
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    await first;
+    await jest.advanceTimersByTimeAsync(499);
+    await probe(controller);
+    expect(query).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(1);
+    const second = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    await second;
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['abc', '-1', '', '60001', 'Infinity', 'NaN'])(
+    'falls back to two seconds for READINESS_CACHE_MS=%j',
+    async (bad) => {
+      process.env.READINESS_CACHE_MS = bad;
+      jest.useFakeTimers();
+      const query = answersAfter(10);
+      const controller = new HealthController();
+
+      const first = probe(controller);
+      await jest.advanceTimersByTimeAsync(10);
+      await first;
+      await jest.advanceTimersByTimeAsync(1999);
+      await probe(controller);
+
+      expect(query).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('with READINESS_CACHE_MS=0 reuses nothing, but still shares a check in flight', async () => {
+    process.env.READINESS_CACHE_MS = '0';
+    jest.useFakeTimers();
+    const query = answersAfter(10);
+    const controller = new HealthController();
+
+    const together = [probe(controller), probe(controller), probe(controller)];
+    await jest.advanceTimersByTimeAsync(10);
+    await Promise.all(together);
+    expect(query).toHaveBeenCalledTimes(1);
+
+    const next = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    await next;
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it('never lets the cache change the body of either answer', async () => {
+    jest.useFakeTimers();
+    const query = answersAfter(10);
+    const controller = new HealthController();
+
+    const first = probe(controller);
+    await jest.advanceTimersByTimeAsync(10);
+    const cached = await probe(controller);
+
+    expect(await first).toEqual(READY);
+    expect(cached).toEqual(READY);
+    expect(Object.keys(cached.body as object)).toEqual(['status']);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+});
+
 /** A route that fails the ordinary way, as the control for the probe tests. */
 @Controller()
 class UnavailableController {
@@ -228,6 +452,31 @@ describe('health routes over HTTP', () => {
     expect(res.body).toEqual({ status: 'unavailable' });
     expect(Object.keys(res.body as object)).toEqual(['status']);
     expect(res.text).not.toMatch(/ECONNREFUSED|5432|PostgreSQL|db\.internal/);
+  });
+
+  it('answers a flood of probes with one query', async () => {
+    const query = jest
+      .spyOn(prisma, '$queryRaw')
+      .mockImplementation(
+        (() =>
+          new Promise((resolve) =>
+            setTimeout(() => resolve([{}]), 20),
+          )) as never,
+      );
+    // Listening once, because supertest otherwise binds a new port per request
+    // and fifty at the same moment race each other.
+    await app.listen(0, '127.0.0.1');
+    const url = await app.getUrl();
+
+    const responses = await Promise.all(
+      Array.from({ length: 50 }, () => request(url).get('/readyz')),
+    );
+
+    expect(responses.map((r) => r.status)).toEqual(Array(50).fill(200));
+    expect(
+      responses.every((r) => (r.body as { status: string }).status === 'ready'),
+    ).toBe(true);
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it('records nothing and logs nothing when a probe fails, however often it comes', async () => {
