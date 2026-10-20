@@ -1,14 +1,18 @@
 import 'reflect-metadata';
 import {
+  Controller,
+  Get,
   INestApplication,
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { Response } from 'express';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { IS_PUBLIC_KEY } from '../auth/public.decorator';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter';
+import { monitoringStore } from '../monitoring/monitoring.store';
 import { prisma } from '../prisma';
 import { restoreRealTimers } from '../testing/timers';
 import { HealthController } from './health.controller';
@@ -16,10 +20,30 @@ import { HealthController } from './health.controller';
 const DRIVER_ERROR =
   'connect ECONNREFUSED 10.0.0.5:5432 (db.internal.example) PostgreSQL 16.2';
 
+beforeEach(() => {
+  monitoringStore.reset();
+});
+
 afterEach(() => {
   restoreRealTimers();
   jest.restoreAllMocks();
 });
+
+/** Just enough of an Express response to see what the controller wrote. */
+function fakeResponse() {
+  const sent: { status?: number; body?: unknown } = {};
+  const response = {
+    status(code: number) {
+      sent.status = code;
+      return response;
+    },
+    json(body: unknown) {
+      sent.body = body;
+      return response;
+    },
+  };
+  return { sent, response: response as unknown as Response };
+}
 
 describe('HealthController', () => {
   const controller = new HealthController();
@@ -43,34 +67,31 @@ describe('HealthController', () => {
   });
 
   describe('readyz', () => {
-    it('answers ready when the database answers', async () => {
+    it('answers 200 {"status":"ready"} when the database answers', async () => {
       const query = jest
         .spyOn(prisma, '$queryRaw')
         .mockResolvedValue([{ '?column?': 1 }] as never);
+      const { sent, response } = fakeResponse();
 
-      await expect(controller.readiness()).resolves.toEqual({
-        status: 'ready',
-      });
+      await controller.readiness(response);
+
+      expect(sent).toEqual({ status: 200, body: { status: 'ready' } });
       expect(query).toHaveBeenCalledTimes(1);
     });
 
-    it('answers 503 with a generic body when the query fails', async () => {
+    it('answers 503 with exactly {"status":"unavailable"} when the query fails', async () => {
       jest
         .spyOn(prisma, '$queryRaw')
         .mockRejectedValue(new Error(DRIVER_ERROR));
+      const { sent, response } = fakeResponse();
 
-      const failure: unknown = await controller
-        .readiness()
-        .catch((e: unknown) => e);
+      await expect(controller.readiness(response)).resolves.toBeUndefined();
 
-      expect(failure).toBeInstanceOf(ServiceUnavailableException);
-      const refusal = failure as ServiceUnavailableException;
-      expect(refusal.getStatus()).toBe(503);
-      expect(refusal.getResponse()).toEqual({ status: 'unavailable' });
-      expect(JSON.stringify(refusal.getResponse())).not.toMatch(
+      expect(sent).toEqual({ status: 503, body: { status: 'unavailable' } });
+      expect(Object.keys(sent.body as object)).toEqual(['status']);
+      expect(JSON.stringify(sent)).not.toMatch(
         /ECONNREFUSED|5432|db\.internal|PostgreSQL|16\.2/,
       );
-      expect(refusal.message).not.toMatch(/ECONNREFUSED|5432|PostgreSQL/);
     });
 
     it('answers 503 when the query takes longer than two seconds', async () => {
@@ -78,16 +99,18 @@ describe('HealthController', () => {
       jest
         .spyOn(prisma, '$queryRaw')
         .mockReturnValue(new Promise(() => undefined) as never);
+      const { sent, response } = fakeResponse();
 
-      const outcome = controller.readiness().catch((e: unknown) => e);
-      await jest.advanceTimersByTimeAsync(2000);
+      const outcome = controller.readiness(response);
+      await jest.advanceTimersByTimeAsync(1999);
+      expect(sent.status).toBeUndefined();
+      await jest.advanceTimersByTimeAsync(1);
+      await outcome;
 
-      const failure = (await outcome) as ServiceUnavailableException;
-      expect(failure).toBeInstanceOf(ServiceUnavailableException);
-      expect(failure.getResponse()).toEqual({ status: 'unavailable' });
+      expect(sent).toEqual({ status: 503, body: { status: 'unavailable' } });
     });
 
-    it('still answers ready for a query that finishes just inside two seconds', async () => {
+    it('still answers 200 for a query that finishes just inside two seconds', async () => {
       jest.useFakeTimers();
       jest
         .spyOn(prisma, '$queryRaw')
@@ -96,37 +119,66 @@ describe('HealthController', () => {
             setTimeout(() => resolve([{}]), 1500),
           ) as never,
         );
+      const { sent, response } = fakeResponse();
 
-      const outcome = controller.readiness();
+      const outcome = controller.readiness(response);
       await jest.advanceTimersByTimeAsync(1500);
+      await outcome;
 
-      await expect(outcome).resolves.toEqual({ status: 'ready' });
+      expect(sent).toEqual({ status: 200, body: { status: 'ready' } });
     });
 
     it('leaves no timer behind once the query has answered', async () => {
       jest.useFakeTimers();
       jest.spyOn(prisma, '$queryRaw').mockResolvedValue([{}] as never);
 
-      await controller.readiness();
+      await controller.readiness(fakeResponse().response);
 
       expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('does not throw, so the exception filter is never involved', async () => {
+      jest
+        .spyOn(prisma, '$queryRaw')
+        .mockRejectedValue(new Error(DRIVER_ERROR));
+
+      await expect(
+        controller.readiness(fakeResponse().response),
+      ).resolves.not.toThrow();
     });
   });
 });
 
+/** A route that fails the ordinary way, as the control for the probe tests. */
+@Controller()
+class UnavailableController {
+  @Get('boom')
+  boom(): never {
+    throw new ServiceUnavailableException({ status: 'unavailable' });
+  }
+}
+
 describe('health routes over HTTP', () => {
   let app: INestApplication<App>;
+  let errorLog: jest.SpyInstance;
+  let warnLog: jest.SpyInstance;
 
-  const start = async (withFilter: boolean) => {
+  // Started the way main.ts starts the real application, with the global
+  // filter in place, because that is the path the probes take.
+  beforeEach(async () => {
+    errorLog = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    warnLog = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
     const module = await Test.createTestingModule({
-      controllers: [HealthController],
+      controllers: [HealthController, UnavailableController],
     }).compile();
     app = module.createNestApplication<INestApplication<App>>();
-    if (withFilter) {
-      app.useGlobalFilters(new GlobalExceptionFilter());
-    }
+    app.useGlobalFilters(new GlobalExceptionFilter());
     await app.init();
-  };
+  });
 
   afterEach(async () => {
     await app.close();
@@ -134,7 +186,6 @@ describe('health routes over HTTP', () => {
 
   it('serves /healthz as {"status":"ok"} without touching the database', async () => {
     const query = jest.spyOn(prisma, '$queryRaw');
-    await start(false);
 
     const res = await request(app.getHttpServer()).get('/healthz');
 
@@ -143,9 +194,8 @@ describe('health routes over HTTP', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
-  it('serves /readyz as {"status":"ready"} when the database answers', async () => {
+  it('serves /readyz as 200 {"status":"ready"} when the database answers', async () => {
     jest.spyOn(prisma, '$queryRaw').mockResolvedValue([{}] as never);
-    await start(false);
 
     const res = await request(app.getHttpServer()).get('/readyz');
 
@@ -155,24 +205,33 @@ describe('health routes over HTTP', () => {
 
   it('serves /readyz as 503 with exactly {"status":"unavailable"} when it fails', async () => {
     jest.spyOn(prisma, '$queryRaw').mockRejectedValue(new Error(DRIVER_ERROR));
-    await start(false);
 
     const res = await request(app.getHttpServer()).get('/readyz');
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ status: 'unavailable' });
-    expect(res.text).not.toMatch(/ECONNREFUSED|5432|PostgreSQL/);
+    expect(Object.keys(res.body as object)).toEqual(['status']);
+    expect(res.text).not.toMatch(/ECONNREFUSED|5432|PostgreSQL|db\.internal/);
   });
 
-  it('keeps the 503 and leaks nothing when the global filter wraps it', async () => {
-    // The filter logs every 5xx at error level; keep that out of the test output.
-    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+  it('records nothing and logs nothing when a probe fails, however often it comes', async () => {
     jest.spyOn(prisma, '$queryRaw').mockRejectedValue(new Error(DRIVER_ERROR));
-    await start(true);
 
-    const res = await request(app.getHttpServer()).get('/readyz');
+    for (let i = 0; i < 5; i += 1) {
+      await request(app.getHttpServer()).get('/readyz').expect(503);
+    }
 
-    expect(res.status).toBe(503);
-    expect(res.text).not.toMatch(/ECONNREFUSED|5432|PostgreSQL|db\.internal/);
+    expect(monitoringStore.recent(10)).toEqual([]);
+    expect(monitoringStore.countsSinceStart().serverErrors).toBe(0);
+    expect(errorLog).not.toHaveBeenCalled();
+    expect(warnLog).not.toHaveBeenCalled();
+  });
+
+  it('would have caught it: a 503 thrown from an ordinary route is recorded and logged', async () => {
+    // The control. If this stops being true, the test above proves nothing.
+    await request(app.getHttpServer()).get('/boom').expect(503);
+
+    expect(monitoringStore.countsSinceStart().serverErrors).toBe(1);
+    expect(errorLog).toHaveBeenCalledTimes(1);
   });
 });

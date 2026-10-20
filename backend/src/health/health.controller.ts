@@ -1,4 +1,5 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { Public } from '../auth/public.decorator';
 import { withTimeout } from '../common/with-timeout';
 import { prisma } from '../prisma';
@@ -30,18 +31,28 @@ export class HealthController {
    * Readiness: the process can reach its database. A failing answer tells the
    * host to stop sending traffic, not to restart.
    *
+   * Answers on the response directly instead of throwing. A thrown exception
+   * goes through GlobalExceptionFilter, which would log every failed probe at
+   * error level with a stack trace, count it as a server error against the
+   * administrator's error rate, and replace this body with the standard error
+   * envelope. A probe every few seconds during an outage would then bury the
+   * log and trip the error-rate warning on its own.
+   *
    * The reason for a failure is deliberately dropped. The driver's message can
    * name the database host and port, so it is not safe to return and is not
    * needed by a probe.
    */
   @Public()
   @Get('readyz')
-  async readiness() {
+  async readiness(@Res() response: Response): Promise<void> {
     try {
       await withTimeout(prisma.$queryRaw`SELECT 1`, READINESS_TIMEOUT_MS);
     } catch {
-      throw new ServiceUnavailableException({ status: 'unavailable' });
+      response
+        .status(HttpStatus.SERVICE_UNAVAILABLE)
+        .json({ status: 'unavailable' });
+      return;
     }
-    return { status: 'ready' };
+    response.status(HttpStatus.OK).json({ status: 'ready' });
   }
 }
