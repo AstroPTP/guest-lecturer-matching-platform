@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { AppService } from './app.service';
 import { CcaeAdministratorsModule } from './ccae-administrators/ccae-administrators.module';
 import { GuestSpeakersModule } from './guest-speakers/guest-speakers.module';
+import { HealthModule } from './health/health.module';
 import { MatchRequestsModule } from './match-requests/match-requests.module';
 import { MessagesModule } from './messages/messages.module';
 import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.module';
@@ -29,6 +30,7 @@ import { ImagesModule } from './images/images.module';
     ]),
     CcaeAdministratorsModule,
     GuestSpeakersModule,
+    HealthModule,
     MatchRequestsModule,
     MessagesModule,
     UnitCoordinatorsModule,
