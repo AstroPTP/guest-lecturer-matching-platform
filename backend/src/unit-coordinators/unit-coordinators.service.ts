@@ -19,10 +19,17 @@ export class UnitCoordinatorsService {
   /**
    * The caller's profile, assembled from the `coordinators` row plus its
    * related `user_expertise` and `availability` rows, or null if they
-   * haven't saved anything yet.
+   * haven't saved anything yet. A read only: it never creates the user row.
    */
   async findByUserId(auth0Id: string) {
-    const userId = await resolveUserId(auth0Id);
+    const user = await prisma.users.findUnique({
+      where: { auth0Id },
+      select: { userid: true },
+    });
+    if (!user) {
+      return null;
+    }
+    const userId = user.userid;
 
     const coordinator = await prisma.coordinators.findUnique({
       where: { user_id: userId },

@@ -18,10 +18,17 @@ export class GuestSpeakersService {
   /**
    * The caller's profile, assembled from the `guests` row plus its related
    * `user_expertise` and `availability` rows, or null if they haven't saved
-   * anything yet.
+   * anything yet. A read only: it never creates the user row.
    */
   async findByUserId(auth0Id: string) {
-    const userId = await resolveUserId(auth0Id);
+    const user = await prisma.users.findUnique({
+      where: { auth0Id },
+      select: { userid: true },
+    });
+    if (!user) {
+      return null;
+    }
+    const userId = user.userid;
 
     const guest = await prisma.guests.findUnique({
       where: { user_id: userId },
