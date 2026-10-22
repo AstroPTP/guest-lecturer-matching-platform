@@ -34,3 +34,21 @@ export interface CreateAcademicEventData {
   location: string;
   format: EventFormat;
 }
+
+/**
+ * Starting values for a session with one matched guest lecturer, worked out by
+ * the API from the stored profiles. Every field can be changed before sending.
+ */
+export interface EventPrefill {
+  matchId: string;
+  guestLecturerId: string;
+  guestLecturerName: string;
+  coordinatorName: string;
+  title: string;
+  description: string;
+  format: EventFormat;
+  location: string;
+  /** How long the coordinator's sessions run, or null when they left it flexible. */
+  durationMinutes: number | null;
+  sharedTopics: string[];
+}

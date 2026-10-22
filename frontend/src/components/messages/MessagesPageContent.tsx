@@ -12,6 +12,10 @@ import sendIcon from "@/assets/send.png";
 import type { ChatMessage, Conversation, ConversationParticipant, ConversationSeed } from "@/types/messages/messageTypes";
 import type { UserRole } from "@/types/shared/userRole";
 import { ServiceError } from "@/lib/serviceErrors";
+import CreateEventModal from "@/components/events/CreateEventModal";
+import SessionCard from "./SessionCard";
+import { acceptEvent, createEvent, declineEvent, getEventPrefill, getEventsForCoordinator, getEventsForGuestLecturer } from "@/services/events/eventService";
+import type { AcademicEvent, CreateAcademicEventData, EventPrefill } from "@/types/events/eventTypes";
 import { deleteConversation, ensureConversations, getConversations, getMessages, sendMessage } from "@/services/messages/messageService";
 import { unmatchUsers } from "@/services/discovery/matchService";
 import { reportUser } from "@/services/reports/reportService";
@@ -70,6 +74,27 @@ function withSupport(conversations: Conversation[], support: Conversation | null
   return support ? [support, ...others] : others;
 }
 
+/**
+ * The caller's sessions with their matches. A failure here must not take the
+ * conversations down with it, so it is logged and treated as having none.
+ */
+async function loadSessions(userType: UserRole): Promise<AcademicEvent[]> {
+  try {
+    return userType === "unitCoordinator" ? await getEventsForCoordinator() : await getEventsForGuestLecturer();
+  } catch (error) {
+    console.error("Unable to load sessions:", error);
+    return [];
+  }
+}
+
+/** The sessions of one match: the ones whose other person is this conversation's participant. */
+function sessionsWith(events: AcademicEvent[], userType: UserRole, conversation: Conversation): AcademicEvent[] {
+  if (conversation.kind === "support") {
+    return [];
+  }
+  return events.filter((event) => (userType === "unitCoordinator" ? event.guestLecturerId : event.coordinatorId) === conversation.id);
+}
+
 export default function MessagesPageContent({ userType, conversationSeeds, participantProfileHref }: MessagesPageContentProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
@@ -87,6 +112,12 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  // Sessions between the caller and their matches, shown as cards in the thread.
+  const [sessions, setSessions] = useState<AcademicEvent[]>([]);
+  const [busySessionId, setBusySessionId] = useState<string | null>(null);
+  // The coordinator's session form, open once the starting values have loaded.
+  const [scheduling, setScheduling] = useState<EventPrefill | null>(null);
+  const [isPreparingSession, setIsPreparingSession] = useState(false);
   useEffect(() => {
     let cancelled = false;
 
@@ -95,13 +126,15 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       try {
         // With no matches there is nothing to ask the API for, and an account
         // with no profile yet is refused if it does.
-        const [matchConversations, threads] = await Promise.all([
+        const [matchConversations, threads, nextSessions] = await Promise.all([
           conversationSeeds.length === 0 ? Promise.resolve([]) : ensureConversations(userType, conversationSeeds),
           loadSupportThreads(),
+          conversationSeeds.length === 0 ? Promise.resolve([]) : loadSessions(userType),
         ]);
         if (cancelled) {
           return;
         }
+        setSessions(nextSessions);
         const support = toSupportConversation(threads);
         const nextConversations = withSupport(matchConversations, support);
         setSupportThreads(threads);
@@ -216,7 +249,10 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         setSupportThreads(threads);
         setMessages(await getSupportMessages(threads));
       } else {
-        setMessages(await getMessages(conversation.id));
+        // The other person may have answered a session since the page loaded.
+        const [nextMessages, nextSessions] = await Promise.all([getMessages(conversation.id), loadSessions(userType)]);
+        setMessages(nextMessages);
+        setSessions(nextSessions);
       }
     } catch (error) {
       setActionError(errorText(error, "This isn't connected to a backend yet, so messages couldn't be loaded."));
@@ -332,6 +368,53 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
     setShowInfoPanel(false);
   }
 
+  /** Opens the session form for the open chat, filled in from the two profiles. */
+  async function handleSchedule(conversation: Conversation) {
+    if (isPreparingSession) {
+      return;
+    }
+    setActionError(null);
+    setIsPreparingSession(true);
+    try {
+      setScheduling(await getEventPrefill(conversation.id));
+    } catch (error) {
+      setActionError(errorText(error, "This isn't connected to a backend yet, so the session form couldn't be opened."));
+    } finally {
+      setIsPreparingSession(false);
+    }
+  }
+
+  /** Sends the invitation; resolves to the reason it failed, or null once it is sent. */
+  async function handleCreateSession(data: CreateAcademicEventData): Promise<string | null> {
+    try {
+      await createEvent(data);
+    } catch (error) {
+      return errorText(error, "The invitation couldn't be sent. Please try again.");
+    }
+    setScheduling(null);
+    setSessions(await loadSessions(userType));
+    return null;
+  }
+
+  /** Answers an invitation from its card. Each takes a moment, so a second click is ignored. */
+  async function respondToSession(eventId: string, respond: (id: string) => Promise<AcademicEvent>) {
+    if (busySessionId) {
+      return;
+    }
+    setActionError(null);
+    setBusySessionId(eventId);
+    try {
+      const updated = await respond(eventId);
+      setSessions((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (error) {
+      setActionError(errorText(error, "This isn't connected to a backend yet, so your answer couldn't be saved."));
+      // The other person may have changed the session since this page loaded.
+      setSessions(await loadSessions(userType));
+    } finally {
+      setBusySessionId(null);
+    }
+  }
+
   return (
     <div className="-m-8 flex h-[calc(100vh-5rem)] overflow-hidden bg-white">
       <ConversationList
@@ -357,6 +440,13 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
             setMessageText={setMessageText}
             onSubmit={handleSubmit}
             onShowInfo={() => setShowInfoPanel(true)}
+            sessions={sessionsWith(sessions, userType, selectedConversation)}
+            viewer={userType}
+            busySessionId={busySessionId}
+            onAcceptSession={(eventId) => void respondToSession(eventId, acceptEvent)}
+            onDeclineSession={(eventId) => void respondToSession(eventId, declineEvent)}
+            onSchedule={userType === "unitCoordinator" && selectedConversation.kind !== "support" ? () => void handleSchedule(selectedConversation) : undefined}
+            isPreparingSession={isPreparingSession}
             canReply={selectedConversation.kind !== "support" || Boolean(replyThread)}
             attachment={attachment}
             attachmentError={attachmentError}
@@ -381,6 +471,10 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
           onUnmatch={() => handleUnmatch(selectedConversation)}
           isUnmatching={isUnmatching}
         />
+      )}
+
+      {scheduling && (
+        <CreateEventModal coordinatorName={scheduling.coordinatorName} prefill={scheduling} onClose={() => setScheduling(null)} onCreate={handleCreateSession} />
       )}
     </div>
   );
@@ -459,6 +553,13 @@ function ChatThread({
   setMessageText,
   onSubmit,
   onShowInfo,
+  sessions,
+  viewer,
+  busySessionId,
+  onAcceptSession,
+  onDeclineSession,
+  onSchedule,
+  isPreparingSession,
   canReply,
   attachment,
   attachmentError,
@@ -472,6 +573,15 @@ function ChatThread({
   setMessageText: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onShowInfo: () => void;
+  /** The sessions with this person, shown as cards in the thread. */
+  sessions: AcademicEvent[];
+  viewer: UserRole;
+  busySessionId: string | null;
+  onAcceptSession: (eventId: string) => void;
+  onDeclineSession: (eventId: string) => void;
+  /** Present for a coordinator in a matched chat; opens the session form. */
+  onSchedule?: () => void;
+  isPreparingSession: boolean;
   /** False for a closed request, which takes no further replies. */
   canReply: boolean;
   attachment: File | null;
@@ -509,6 +619,16 @@ function ChatThread({
 
         {!isSupport && (
           <div className="flex items-center gap-3">
+            {onSchedule && (
+              <button
+                type="button"
+                onClick={onSchedule}
+                disabled={isPreparingSession}
+                className="rounded-xl bg-[#2d2d2d] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isPreparingSession ? "Opening..." : "Schedule a session"}
+              </button>
+            )}
             <button
               type="button"
               aria-label="Conversation information"
@@ -526,23 +646,34 @@ function ChatThread({
           <span className="rounded-full bg-gray-100 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-gray-600">Today</span>
         </div>
 
-        {messages.length === 0 ? (
+        {messages.length === 0 && sessions.length === 0 ? (
           <div className="mx-auto max-w-md rounded-2xl bg-white p-6 text-center text-gray-500 shadow-sm">
             Start the conversation with {conversation.participant.fullName}.
           </div>
         ) : (
-          messages.map((message, index) => (
-            <div key={message.id} className="space-y-6">
-              {message.requestId && message.requestId !== messages[index - 1]?.requestId && (
-                <div className="flex justify-center">
-                  <span className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-semibold text-gray-700">
-                    Request: {message.requestSubject} · {message.requestStatus === "closed" ? "Closed" : "Open"}
-                  </span>
-                </div>
-              )}
-              <MessageBubble message={message} participant={conversation.participant} />
-            </div>
-          ))
+          threadItems(messages, sessions).map((item) =>
+            item.kind === "session" ? (
+              <SessionCard
+                key={"session-" + item.event.id}
+                event={item.event}
+                viewer={viewer}
+                isBusy={busySessionId === item.event.id}
+                onAccept={onAcceptSession}
+                onDecline={onDeclineSession}
+              />
+            ) : (
+              <div key={item.message.id} className="space-y-6">
+                {item.message.requestId && item.message.requestId !== item.previousRequestId && (
+                  <div className="flex justify-center">
+                    <span className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-semibold text-gray-700">
+                      Request: {item.message.requestSubject} · {item.message.requestStatus === "closed" ? "Closed" : "Open"}
+                    </span>
+                  </div>
+                )}
+                <MessageBubble message={item.message} participant={conversation.participant} />
+              </div>
+            ),
+          )
         )}
       </div>
 
@@ -893,6 +1024,29 @@ function EmptyChatState() {
       </div>
     </div>
   );
+}
+
+type ThreadItem =
+  | { kind: "message"; at: string; message: ChatMessage; previousRequestId?: string }
+  | { kind: "session"; at: string; event: AcademicEvent };
+
+/**
+ * The messages and the sessions of a chat in the order they happened: a
+ * session sits where its invitation was sent. Messages keep their own order,
+ * and a message and a session at the same moment keep the message first.
+ */
+function threadItems(messages: ChatMessage[], sessions: AcademicEvent[]): ThreadItem[] {
+  const items: ThreadItem[] = [
+    ...messages.map((message, index): ThreadItem => ({ kind: "message", at: message.sentAt, message, previousRequestId: messages[index - 1]?.requestId })),
+    ...sessions.map((event): ThreadItem => ({ kind: "session", at: event.createdAt, event })),
+  ];
+  if (sessions.length === 0) {
+    return items;
+  }
+  return items
+    .map((item, position) => ({ item, position }))
+    .sort((first, second) => new Date(first.item.at).getTime() - new Date(second.item.at).getTime() || first.position - second.position)
+    .map(({ item }) => item);
 }
 
 function formatMessageTime(value: string): string {

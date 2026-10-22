@@ -1,5 +1,6 @@
 "use client";
 
+import AddToCalendar from "./AddToCalendar";
 import type { AcademicEvent } from "@/types/events/eventTypes";
 import type { UserRole } from "@/types/shared/userRole";
 import { formatStoredValue } from "@/utils/displayFormatters";
@@ -75,6 +76,8 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <EventStatusBadge status={event.status} />
+
+              {event.status === "accepted" && <AddToCalendar event={event} />}
 
               {canCoordinatorCancel && (
                 <button
