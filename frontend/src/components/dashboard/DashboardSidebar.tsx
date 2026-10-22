@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import logoutIcon from "@/assets/log_out.png";
 import BrandLogo from "@/components/brand/BrandLogo";
-import { releaseDeviceBeforeSignOut } from "@/lib/push/pushClient";
+import { releaseDeviceBeforeSignOut } from "@/lib/push/signOutCleanup";
 import collapsedIcon from "@/assets/collapsed.png";
 import expandedIcon from "@/assets/expanded.png";
 import SidebarItem from "./SidebarItem";

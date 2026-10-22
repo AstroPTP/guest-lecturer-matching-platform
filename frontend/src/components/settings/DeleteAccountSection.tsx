@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { ActionResult } from "@/types/settings/settingsTypes";
 import { Field, SectionHeader } from "@/components/settings/settingsShared";
+import { releaseDeviceBeforeSignOut } from "@/lib/push/signOutCleanup";
 export default function DeleteAccountSection({ onDeleteAccount }: { onDeleteAccount: () => Promise<ActionResult> }) {
   const [showModal, setShowModal] = useState(false);
   return (
@@ -56,6 +57,9 @@ function DeleteAccountModal({ onClose, onDeleteAccount }: { onClose: () => void;
     }
 
     onClose();
+    // The server has dropped this account's devices, but this browser still
+    // holds the subscription, so release it here as on any other way out.
+    await releaseDeviceBeforeSignOut();
     // The account is gone, so end the session too rather than leaving a dead one behind.
     window.location.assign("/auth/logout");
   }

@@ -169,20 +169,3 @@ export async function turnOffPush(): Promise<void> {
     await subscription.unsubscribe().catch(() => false);
   }
 }
-
-/**
- * Stops this device receiving the signed-in person's notifications, before
- * they sign out. On a shared computer the next person to sign in would
- * otherwise see the previous person's messages arrive.
- *
- * Best effort and quick: it gives up after the timeout so signing out is never
- * held up, and it never throws.
- */
-export async function releaseDeviceBeforeSignOut(timeoutMs = 1500): Promise<void> {
-  if (!pushSupported()) {
-    return;
-  }
-  const finished = turnOffPush().catch(() => undefined);
-  const gaveUp = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
-  await Promise.race([finished, gaveUp]);
-}
