@@ -49,6 +49,17 @@ const GUIDES: Guide[] = [
     ],
   },
   {
+    title: "Control Suggested speakers",
+    steps: [
+      "Open Settings and find the Suggested speakers card. Suggested speakers is the ranked shortlist of guest lecturers a unit coordinator gets for a session.",
+      "Use the On/Off switch to turn it off for everyone. Coordinators then see a message that an administrator turned it off. If the server sets MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever the switch says.",
+      "Pick a preset for how the list is ranked: Balanced (65/20/15, the default), Topic first (80/10/10) or Share the work (50/30/20). The three numbers are topic fit, time since last session and fewer sessions so far.",
+      "Choose Custom to set your own three weights. They must add up to 100, and topic fit must be at least 50 so it always counts most.",
+      "Set the half-life: after that many days without a session, the time-since-last-session score has risen halfway to its maximum. A shorter half-life brings lecturers back sooner.",
+      "Choose Save, or Reset to defaults to go back to Balanced with a 90-day half-life. The change applies straight away and is recorded in the Audit Log with the old and new values.",
+    ],
+  },
+  {
     title: "Check who changed what",
     steps: [
       "Open Audit Log to see every administrator action and user report, newest first.",
