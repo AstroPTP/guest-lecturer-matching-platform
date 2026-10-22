@@ -60,6 +60,7 @@ export const prisma = {
   images: model(),
   events: model(),
   notifications: model(),
+  push_subscriptions: model(),
   audit_entries: model(),
   admin_settings: model(),
   availability: model(),
