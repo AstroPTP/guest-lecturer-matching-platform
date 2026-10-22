@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
 import { expertiseTopics } from "@/constants/profileOptions/shared";
 import { BackendError } from "@/lib/api/backendClient";
 import { expressInterest } from "@/services/discovery/matchService";
-import { getSuggestions } from "@/services/suggestions/suggestionsService";
+import { getSuggestions, getSuggestionsStatus } from "@/services/suggestions/suggestionsService";
 import type {
   LastSessionBand,
   SessionsBand,
@@ -60,6 +60,21 @@ function describeTopics(from: TopicsFrom, topics: string[]): string {
   return `Topics: ${topics.join(", ")}.`;
 }
 
+/** Shown when the feature is off for a reason the API did not explain, such as the server setting. */
+const SWITCHED_OFF_MESSAGE = "Suggested speakers is switched off right now.";
+
+/**
+ * The words for a 404 from this feature, or null if the error is something else.
+ * An administrator's switch sends its own sentence, with the code
+ * SUGGESTIONS_DISABLED; any other 404 means the route is off or missing.
+ */
+function switchedOffMessage(error: unknown): string | null {
+  if (!(error instanceof BackendError) || error.status !== 404) {
+    return null;
+  }
+  return error.code === "SUGGESTIONS_DISABLED" ? error.message : SWITCHED_OFF_MESSAGE;
+}
+
 /** What went wrong, in words a person can act on. */
 function describeError(error: unknown): string {
   if (error instanceof BackendError) {
@@ -68,9 +83,6 @@ function describeError(error: unknown): string {
     }
     if (error.status === 403) {
       return "Finish setting up your profile before asking for suggestions.";
-    }
-    if (error.status === 404) {
-      return "Suggested speakers is switched off right now.";
     }
   }
   return "Unable to load suggestions. Please try again.";
@@ -86,6 +98,22 @@ export default function SuggestionsPageContent() {
   const [result, setResult] = useState<SuggestionsResult | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Set when the API says the feature is off, in place of the form.
+  const [switchedOff, setSwitchedOff] = useState<string | null>(null);
+
+  // Ask first, so a coordinator is told it is off before filling in a form.
+  useEffect(() => {
+    let active = true;
+    getSuggestionsStatus().catch((error: unknown) => {
+      const message = switchedOffMessage(error);
+      if (active && message) {
+        setSwitchedOff(message);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function toggleTopic(topic: string) {
     setTopics((current) => (current.includes(topic) ? current.filter((item) => item !== topic) : [...current, topic]));
@@ -110,8 +138,14 @@ export default function SuggestionsPageContent() {
     try {
       setResult(await getSuggestions({ date, startTime, endTime, topics }));
     } catch (error) {
-      console.error("Unable to load suggested speakers:", error);
       setResult(null);
+      const message = switchedOffMessage(error);
+      if (message) {
+        // It was switched off while the page was open.
+        setSwitchedOff(message);
+        return;
+      }
+      console.error("Unable to load suggested speakers:", error);
       setFormError(describeError(error));
     } finally {
       setIsLoading(false);
@@ -145,6 +179,27 @@ export default function SuggestionsPageContent() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  if (switchedOff) {
+    return (
+      <div className="mx-auto w-full max-w-5xl space-y-8 pb-10">
+        <header className="rounded-2xl bg-white p-8 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Unit Coordinator</p>
+          <h1 className="mt-2 text-3xl font-bold text-[#242424]">Suggested speakers</h1>
+          <p role="status" className="mt-4 rounded-lg bg-gray-100 px-4 py-3 text-base text-gray-800">
+            {switchedOff}
+          </p>
+          <p className="mt-3 text-sm text-gray-700">
+            You can still find guest lecturers in{" "}
+            <Link href="/unit_coordinator/discovery" className="font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900">
+              Discovery
+            </Link>
+            .
+          </p>
+        </header>
+      </div>
+    );
   }
 
   return (

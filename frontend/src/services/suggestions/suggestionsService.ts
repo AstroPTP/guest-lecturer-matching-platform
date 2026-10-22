@@ -28,3 +28,12 @@ export async function getSuggestions(query: SuggestionsQuery = {}): Promise<Sugg
   const queryString = params.toString();
   return backendFetch<SuggestionsResult>(queryString ? `/suggestions?${queryString}` : "/suggestions");
 }
+
+/**
+ * Asks whether Suggested speakers is on. Answers when it is, and throws a
+ * BackendError with status 404 when it is not: the error carries the API's
+ * message, which for an administrator's switch is the sentence to show.
+ */
+export async function getSuggestionsStatus(): Promise<{ enabled: boolean }> {
+  return backendFetch<{ enabled: boolean }>("/suggestions/status");
+}
