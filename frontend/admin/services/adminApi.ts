@@ -259,6 +259,8 @@ const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategor
   'user.reactivated': { label: 'Account Reactivated', category: 'Account Management' },
   'user.reported': { label: 'User Reported', category: 'Account Management' },
   'report.resolved': { label: 'Report Resolved', category: 'Account Management' },
+  'user.held': { label: 'Account Held', category: 'Account Management' },
+  'user.released': { label: 'Account Released', category: 'Account Management' },
   'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
   'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
 };
@@ -323,15 +325,33 @@ export interface OpenReport {
   id: string;
   reason: string;
   reporterEmail: string | null;
+  reporterName: string | null;
+  reporterRole: string | null;
   reportedUserId: string | null;
   reportedEmail: string | null;
+  reportedName: string | null;
   reportedRole: string | null;
   reportedStatus: 'active' | 'deactivated';
+  /** The match the report was raised from; null for a report made without one. */
+  matchId: string | null;
+  /** How many different people have an open report from a match about this person. */
+  openReporters: number;
+  /** How many of those it takes to put the person on hold for everyone. */
+  holdThreshold: number;
+  /** True while the person is hidden from everyone and cannot message. */
+  onHold: boolean;
+  /** Why: enough different reporters ("threshold"), or an administrator ("admin"). */
+  holdReasons: ('threshold' | 'admin')[];
   reportedAt: string;
 }
 
 export async function getOpenReports(): Promise<OpenReport[]> {
   return backendFetch<OpenReport[]>('/admin/reports');
+}
+
+/** Holds the person a report is about, for everyone, until the reports are decided. */
+export async function holdReport(id: string): Promise<void> {
+  await backendFetch(`/admin/reports/${id}/hold`, { method: 'POST' });
 }
 
 export async function resolveReport(

@@ -196,5 +196,72 @@ describe('GuestSpeakersService', () => {
       });
       query.mockRestore();
     });
+
+    describe('after reports', () => {
+      /** Open reports as [reporter, reported] pairs; the double's viewer is user 1. */
+      function reports(pairs: [reporter: bigint, reported: string][]) {
+        jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce(
+          pairs.map(([actor, target], i) => ({
+            entry_id: BigInt(40 + i),
+            actor_user_id: actor,
+            target_id: target,
+            detail: { reason: 'asked for money', matchId: '6001' },
+            actor: null,
+          })) as never,
+        );
+      }
+
+      async function hiddenFromViewer() {
+        const query = jest.spyOn(prisma.guests, 'findMany');
+        await service.findAll('auth0|viewer');
+        const { where } = query.mock.calls[0][0] as {
+          where: { OR: unknown[]; AND: unknown[] };
+        };
+        query.mockRestore();
+        return where;
+      }
+
+      it('leaves out a guest the viewer has reported, but not guests with no account', async () => {
+        reports([[1n, '7']]);
+
+        const where = await hiddenFromViewer();
+
+        expect(where.AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+        ]);
+        // The deactivated-account rule is still there beside it.
+        expect(where.OR).toEqual([
+          { user_id: null },
+          { users: { is: { deletedat: null } } },
+        ]);
+      });
+
+      it('leaves out a guest who reported the viewer', async () => {
+        reports([[7n, '1']]);
+
+        expect((await hiddenFromViewer()).AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+        ]);
+      });
+
+      it('keeps a guest in for everyone else when only one person reported them', async () => {
+        reports([[8n, '7']]);
+
+        expect((await hiddenFromViewer()).AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [] } }] },
+        ]);
+      });
+
+      it('leaves a guest out for everyone once two different people reported them', async () => {
+        reports([
+          [8n, '7'],
+          [9n, '7'],
+        ]);
+
+        expect((await hiddenFromViewer()).AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+        ]);
+      });
+    });
   });
 });

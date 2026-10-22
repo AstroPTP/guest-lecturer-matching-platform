@@ -293,6 +293,69 @@ describe('MessagesService', () => {
     });
   });
 
+  describe('while a report keeps the two apart', () => {
+    /** Guest 7 (user 1 in the double) matched with coordinator 5 (user 55). */
+    function matched(reports: [reporter: bigint, reported: string][]) {
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ user_id: 55n } as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValue({ guest_id: 7n } as never);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6007n,
+        coordinator_id: 5n,
+        guest_id: 7n,
+        status: 'ACCEPTED',
+      } as never);
+      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce(
+        reports.map(([actor, target], i) => ({
+          entry_id: BigInt(40 + i),
+          actor_user_id: actor,
+          target_id: target,
+          detail: { reason: 'asked for money', matchId: '6007' },
+          actor: null,
+        })) as never,
+      );
+    }
+
+    it('refuses a new message and writes nothing', async () => {
+      matched([[55n, '1']]);
+      const create = jest.spyOn(prisma.messages, 'create');
+
+      await expect(service.send(userId, '5', 'Hello')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to open the thread', async () => {
+      matched([[1n, '55']]);
+      const read = jest.spyOn(prisma.messages, 'findMany');
+
+      await expect(service.findThread(userId, '5')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('still delivers when only one stranger has reported the other person', async () => {
+      matched([[900n, '55']]);
+      jest.spyOn(prisma.messages, 'create').mockResolvedValue({
+        message_id: 1n,
+        content: 'Hello',
+        sent_at: sentAt,
+        sent_by: 'guest',
+      } as never);
+
+      await expect(service.send(userId, '5', 'Hello')).resolves.toMatchObject({
+        text: 'Hello',
+        fromMe: true,
+      });
+    });
+  });
+
   describe('findSummaries', () => {
     it('returns the latest message for each match that has any', async () => {
       jest.spyOn(matchRequests, 'findAcceptedMatches').mockResolvedValue({

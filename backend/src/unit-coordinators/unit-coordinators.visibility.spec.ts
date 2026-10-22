@@ -15,4 +15,68 @@ describe('UnitCoordinatorsService.findAll visibility', () => {
       },
     });
   });
+
+  describe('after reports', () => {
+    /** Open reports as [reporter, reported] pairs; the double's viewer is user 1. */
+    function reports(pairs: [reporter: bigint, reported: string][]) {
+      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce(
+        pairs.map(([actor, target], i) => ({
+          entry_id: BigInt(40 + i),
+          actor_user_id: actor,
+          target_id: target,
+          detail: { reason: 'asked for money', matchId: '6001' },
+          actor: null,
+        })) as never,
+      );
+    }
+
+    async function filterSeenBy(viewer: string) {
+      const query = jest.spyOn(prisma.coordinators, 'findMany');
+      await new UnitCoordinatorsService().findAll(viewer);
+      return query.mock.calls[0][0];
+    }
+
+    it('leaves out a coordinator the viewer has reported, but not ones with no account', async () => {
+      reports([[1n, '7']]);
+
+      expect(await filterSeenBy('auth0|viewer')).toMatchObject({
+        where: {
+          AND: [{ OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] }],
+        },
+      });
+    });
+
+    it('leaves out a coordinator who reported the viewer', async () => {
+      reports([[7n, '1']]);
+
+      expect(await filterSeenBy('auth0|viewer')).toMatchObject({
+        where: {
+          AND: [{ OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] }],
+        },
+      });
+    });
+
+    it('keeps a coordinator in for everyone else when only one person reported them', async () => {
+      reports([[8n, '7']]);
+
+      expect(await filterSeenBy('auth0|viewer')).toMatchObject({
+        where: {
+          AND: [{ OR: [{ user_id: null }, { user_id: { notIn: [] } }] }],
+        },
+      });
+    });
+
+    it('leaves a coordinator out for everyone once two different people reported them', async () => {
+      reports([
+        [8n, '7'],
+        [9n, '7'],
+      ]);
+
+      expect(await filterSeenBy('auth0|viewer')).toMatchObject({
+        where: {
+          AND: [{ OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] }],
+        },
+      });
+    });
+  });
 });
