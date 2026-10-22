@@ -12,6 +12,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AppRole } from '../auth/roles';
+import { Roles } from '../auth/roles.decorator';
 import { toId } from '../prisma';
 import { ImagesService, MAX_IMAGE_SIZE_BYTES } from './images.service';
 
@@ -25,7 +27,8 @@ const photoUpload = FileInterceptor('file', {
 
 /**
  * Profile photo routes act on the caller's own profile only (`me`), so one
- * user can never replace another's photo.
+ * user can never replace another's photo, and each is limited to the role that
+ * owns that kind of profile.
  */
 @Controller()
 export class ImagesController {
@@ -41,6 +44,7 @@ export class ImagesController {
   }
 
   @Post('unit-coordinators/me/profile-image')
+  @Roles(AppRole.UnitCoordinator)
   @UseInterceptors(photoUpload)
   setCoordinatorImage(
     @CurrentUser() user: AuthenticatedUser,
@@ -50,11 +54,13 @@ export class ImagesController {
   }
 
   @Delete('unit-coordinators/me/profile-image')
+  @Roles(AppRole.UnitCoordinator)
   removeCoordinatorImage(@CurrentUser() user: AuthenticatedUser) {
     return this.images.removeProfileImage('coordinator', user.id);
   }
 
   @Post('guest-speakers/me/profile-image')
+  @Roles(AppRole.GuestSpeaker)
   @UseInterceptors(photoUpload)
   setGuestImage(
     @CurrentUser() user: AuthenticatedUser,
@@ -64,6 +70,7 @@ export class ImagesController {
   }
 
   @Delete('guest-speakers/me/profile-image')
+  @Roles(AppRole.GuestSpeaker)
   removeGuestImage(@CurrentUser() user: AuthenticatedUser) {
     return this.images.removeProfileImage('guest', user.id);
   }
