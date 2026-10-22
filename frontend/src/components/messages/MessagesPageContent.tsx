@@ -437,34 +437,36 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
           </div>
         )}
 
-        {selectedConversation ? (
-          <ChatThread
-            conversation={selectedConversation}
-            messages={messages}
-            messageText={messageText}
-            setMessageText={setMessageText}
-            onSubmit={handleSubmit}
-            onShowInfo={() => setShowInfoPanel(true)}
-            sessions={sessionsWith(sessions, userType, selectedConversation)}
-            viewer={userType}
-            busySessionId={busySessionId}
-            onAcceptSession={(eventId) => void respondToSession(eventId, acceptEvent)}
-            onDeclineSession={(eventId) => void respondToSession(eventId, declineEvent)}
-            onSchedule={userType === "unitCoordinator" && selectedConversation.kind !== "support" ? () => void handleSchedule(selectedConversation) : undefined}
-            isPreparingSession={isPreparingSession}
-            canReply={selectedConversation.kind !== "support" || Boolean(replyThread)}
-            attachment={attachment}
-            attachmentError={attachmentError}
-            onChooseAttachment={chooseAttachment}
-            onRemoveAttachment={() => {
-              setAttachment(null);
-              setAttachmentError(null);
-            }}
-            isSending={isSending}
-          />
-        ) : (
-          <EmptyChatState />
-        )}
+        <div className="min-h-0 flex-1">
+          {selectedConversation ? (
+            <ChatThread
+              conversation={selectedConversation}
+              messages={messages}
+              messageText={messageText}
+              setMessageText={setMessageText}
+              onSubmit={handleSubmit}
+              onShowInfo={() => setShowInfoPanel(true)}
+              sessions={sessionsWith(sessions, userType, selectedConversation)}
+              viewer={userType}
+              busySessionId={busySessionId}
+              onAcceptSession={(eventId) => void respondToSession(eventId, acceptEvent)}
+              onDeclineSession={(eventId) => void respondToSession(eventId, declineEvent)}
+              onSchedule={userType === "unitCoordinator" && selectedConversation.kind !== "support" ? () => void handleSchedule(selectedConversation) : undefined}
+              isPreparingSession={isPreparingSession}
+              canReply={selectedConversation.kind !== "support" || Boolean(replyThread)}
+              attachment={attachment}
+              attachmentError={attachmentError}
+              onChooseAttachment={chooseAttachment}
+              onRemoveAttachment={() => {
+                setAttachment(null);
+                setAttachmentError(null);
+              }}
+              isSending={isSending}
+            />
+          ) : (
+            <EmptyChatState />
+          )}
+        </div>
       </div>
 
       {showInfoPanel && selectedConversation && selectedConversation.kind !== "support" && (
