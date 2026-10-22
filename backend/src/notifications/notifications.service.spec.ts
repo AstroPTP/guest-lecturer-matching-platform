@@ -236,6 +236,23 @@ describe('NotificationsService', () => {
     );
   });
 
+  describe('countUnread', () => {
+    it("counts only the caller's own unread notifications", async () => {
+      const count = jest
+        .spyOn(prisma.notifications, 'count')
+        .mockResolvedValue(3);
+
+      await expect(service.countUnread(recipientId)).resolves.toBe(3);
+      expect(count).toHaveBeenCalledWith({
+        where: { user_id: 1n, read: false },
+      });
+    });
+
+    it('reports zero when nothing is unread', async () => {
+      await expect(service.countUnread(recipientId)).resolves.toBe(0);
+    });
+  });
+
   it("marks only the caller's unread notifications as read", async () => {
     const updateMany = jest.spyOn(prisma.notifications, 'updateMany');
 

@@ -11,13 +11,3 @@ export interface AppNotification {
   createdAt: string;
   read: boolean;
 }
-
-export interface CreateNotificationData {
-  id?: string;
-  recipientId: string;
-  type: NotificationType;
-  title: string;
-  description: string;
-  actionLabel: string;
-  href: string;
-}

@@ -103,6 +103,14 @@ export class NotificationsService {
     });
   }
 
+  /** How many of the caller's notifications are still unread. */
+  async countUnread(callerId: string): Promise<number> {
+    const userId = await resolveUserId(callerId);
+    return prisma.notifications.count({
+      where: { user_id: userId, read: false },
+    });
+  }
+
   async findByRecipient(recipientId: string): Promise<Notification[]> {
     const userId = await resolveUserId(recipientId);
     const rows = await prisma.notifications.findMany({
