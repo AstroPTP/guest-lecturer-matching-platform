@@ -8,6 +8,7 @@ import personIcon from "@/assets/person.png";
 import settingsIcon from "@/assets/settings.png";
 import type { DashboardMenuItem } from "@/components/dashboard/dashboardTypes";
 import type { UserRole } from "@/types/shared/userRole";
+import { MATCHING_SUGGESTIONS_ENABLED } from "@/config/features";
 import { getDashboardRoutes } from "@/config/routes";
 
 export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
@@ -23,6 +24,15 @@ export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
       href: routes.discovery,
       icon: <Image src={discoveryIcon} alt="" width={20} height={20} />,
     },
+    ...(role === "unitCoordinator" && MATCHING_SUGGESTIONS_ENABLED
+      ? [
+          {
+            label: "Suggestions",
+            href: routes.suggestions,
+            icon: <SuggestionsIcon />,
+          },
+        ]
+      : []),
     {
       label: "Match",
       href: routes.matches,
@@ -49,6 +59,22 @@ export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
       icon: <HelpIcon />,
     },
   ];
+}
+
+/** A star with a small spark, drawn inline because the icon set has none. */
+function SuggestionsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" width={20} height={20}>
+      <path
+        d="M11 3.5l2.2 5.3 5.3 2.2-5.3 2.2L11 18.5l-2.2-5.3L3.5 11l5.3-2.2z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M18.5 3.5v3M17 5h3" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 /** A question mark in a circle, drawn inline because the icon set has none. */
