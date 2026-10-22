@@ -6,6 +6,8 @@ import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getGuestLecturerExpertise, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
+import CustomTopicsField from "@/components/shared/CustomTopicsField";
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 export default function ExpertiseForm() {
   const router = useRouter();
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
@@ -27,7 +29,7 @@ export default function ExpertiseForm() {
         if (cancelled || !data) {
           return;
         }
-        setSelectedTopics(data.selectedTopics);
+        setSelectedTopics(withFixedTopicSpelling(data.selectedTopics));
         setExperienceLevel(data.experienceLevel);
         setHasSpeakingExperience(data.hasSpeakingExperience);
         setSpeakingDetails(data.speakingDetails);
@@ -121,7 +123,8 @@ export default function ExpertiseForm() {
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
 
           <p className="mt-2 text-sm text-gray-500">
-            Select one or more topics (up to 5) that you feel confident presenting on within the Faculty of Business and Law.
+            Select one or more topics (up to 5) that you feel confident presenting on within the Faculty of Business and Law. Choose Other to add up
+            to 3 of your own.
           </p>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -142,6 +145,7 @@ export default function ExpertiseForm() {
               );
             })}
           </div>
+          <CustomTopicsField selectedTopics={selectedTopics} onChange={setSelectedTopics} />
         </section>
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">

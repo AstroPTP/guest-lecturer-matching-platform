@@ -19,6 +19,7 @@ import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions,
 import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
+import CustomTopicsField from "@/components/shared/CustomTopicsField";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
   value: level.value,
@@ -435,12 +436,15 @@ function ExpertiseEditor({
 }) {
   return (
     <div className="space-y-7">
-      <ChoiceButtons
-        label="Expertise Topics (maximum 5)"
-        options={expertiseTopics.map((item) => ({ value: item, label: item }))}
-        selectedValues={draft.selectedTopics}
-        onToggle={onToggleTopic}
-      />
+      <div>
+        <ChoiceButtons
+          label="Expertise Topics (maximum 5)"
+          options={expertiseTopics.map((item) => ({ value: item, label: item }))}
+          selectedValues={draft.selectedTopics}
+          onToggle={onToggleTopic}
+        />
+        <CustomTopicsField compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
+      </div>
       <ChoiceButtons
         label="Required Experience Levels"
         options={experienceLevelOptions}

@@ -6,6 +6,8 @@ import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
+import CustomTopicsField from "@/components/shared/CustomTopicsField";
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 export default function ExpertiseForm() {
   const router = useRouter();
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
@@ -26,7 +28,7 @@ export default function ExpertiseForm() {
           return;
         }
 
-        setSelectedTopics(data.selectedTopics);
+        setSelectedTopics(withFixedTopicSpelling(data.selectedTopics));
         setExperienceLevelsRequired(data.experienceLevelsRequired);
         setIndustryRelevance(data.industryRelevance);
         setLearningObjective(data.learningObjective);
@@ -137,7 +139,9 @@ export default function ExpertiseForm() {
       <form onSubmit={handleSubmit} className="space-y-7">
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
-          <p className="mt-2 text-sm text-gray-500">Select up to 5 topics you would like a Guest Lecturer to address.</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Select up to 5 topics you would like a Guest Lecturer to address. Choose Other to add up to 3 of your own.
+          </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {expertiseTopics.map((topic) => {
               const isSelected = selectedTopics.includes(topic);
@@ -157,6 +161,7 @@ export default function ExpertiseForm() {
               );
             })}
           </div>
+          <CustomTopicsField selectedTopics={selectedTopics} onChange={setSelectedTopics} />
         </section>
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">

@@ -15,6 +15,7 @@ import { professionalFields, professionalRoles } from "@/constants/profileOption
 import { formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
+import CustomTopicsField from "@/components/shared/CustomTopicsField";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
@@ -539,6 +540,7 @@ function ExpertiseEditor({
             );
           })}
         </div>
+        <CustomTopicsField compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
       </div>
 
       <ProfileSelect
