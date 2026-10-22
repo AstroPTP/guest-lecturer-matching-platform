@@ -1,5 +1,4 @@
 import { Body, Controller, Delete, Get, Headers, Post } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import {
@@ -12,17 +11,6 @@ import {
   saveSubscription,
   sendTest,
 } from './push';
-
-/**
- * Counts test pushes against the signed-in person where the token has been
- * read, and against the address otherwise. Behind the web app's proxy every
- * person can arrive from the same address, which would make three a minute a
- * limit shared by everyone.
- */
-function perPerson(request: { user?: { id?: unknown }; ip?: string }): string {
-  const id = request.user?.id;
-  return typeof id === 'string' ? `user:${id}` : (request.ip ?? 'unknown');
-}
 
 /**
  * Sets up and tests pushed notifications for the signed-in person. Open to
@@ -61,9 +49,8 @@ export class PushController {
     return removeSubscription(user.id, dto.endpoint);
   }
 
-  // Each test reaches every device the person has, so it is limited tighter
-  // than the API as a whole.
-  @Throttle({ default: { limit: 3, ttl: 60_000, getTracker: perPerson } })
+  // Limited to three a minute per person inside sendTest, not here: the request
+  // throttler runs before sign-in is checked, so it can only count by address.
   @Post('test')
   test(@CurrentUser() user: AuthenticatedUser) {
     return sendTest(user.id);
