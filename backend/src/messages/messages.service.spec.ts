@@ -101,6 +101,53 @@ describe('MessagesService', () => {
     });
   });
 
+  describe('while a report about someone in the match is open', () => {
+    /** Guest 7 matched with coordinator 5 (user 55), who has an open report. */
+    function matchWithReportedCoordinator() {
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue({ user_id: 55n } as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValue({ guest_id: 7n } as never);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6007n,
+        coordinator_id: 5n,
+        guest_id: 7n,
+        status: 'ACCEPTED',
+      } as never);
+      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce([
+        {
+          entry_id: 40n,
+          target_id: '55',
+          detail: { reason: 'asked for money', matchId: '6007' },
+          actor: null,
+        },
+      ] as never);
+    }
+
+    it('refuses a new message and writes nothing', async () => {
+      matchWithReportedCoordinator();
+      const create = jest.spyOn(prisma.messages, 'create');
+
+      await expect(service.send(userId, '5', 'Hello')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('refuses to open the thread', async () => {
+      matchWithReportedCoordinator();
+      const read = jest.spyOn(prisma.messages, 'findMany');
+
+      await expect(service.findThread(userId, '5')).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
+      expect(read).not.toHaveBeenCalled();
+    });
+  });
+
   describe('findSummaries', () => {
     it('returns the latest message for each match that has any', async () => {
       jest.spyOn(matchRequests, 'findAcceptedMatches').mockResolvedValue({

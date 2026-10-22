@@ -8,6 +8,7 @@ import { isUniqueViolation } from '../common/prisma-errors';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { assertGuestCanBeContacted } from '../admin/platform-rules';
+import { openReportedUserIds } from '../admin/open-reports';
 
 export type Side = 'coordinator' | 'guest';
 
@@ -147,7 +148,9 @@ export class MatchRequestsService {
   }
 
   /**
-   * The caller's match with one profile; refused unless both sides agreed.
+   * The caller's match with one profile; refused unless both sides agreed, and
+   * refused while either person has an open report, so a reported account
+   * cannot message anyone, or be messaged, until an administrator decides.
    */
   async findAcceptedMatch(
     auth0Id: string,
@@ -159,14 +162,17 @@ export class MatchRequestsService {
       targetId,
       'You can only message people you have matched with.',
     );
+    await this.assertNeitherReported(caller, row);
 
     return { side: caller.side, matchId: row.match_id };
   }
 
   /**
    * The person on the other side of the caller's accepted match, for acting on
-   * them rather than messaging them, such as reporting. The counterpart's user
-   * id is null for a profile that was never linked to an account.
+   * them rather than messaging them, such as reporting. An open report does not
+   * refuse this: someone who was already reported can be reported again, and a
+   * reported person can still report. The counterpart's user id is null for a
+   * profile that was never linked to an account.
    */
   async findAcceptedCounterpart(
     auth0Id: string,
@@ -273,6 +279,33 @@ export class MatchRequestsService {
             select: { user_id: true },
           });
     return profile?.user_id ?? null;
+  }
+
+  /**
+   * Refuses when either person in a match has an open report. The message does
+   * not say which of the two it is, so it tells the reported person nothing the
+   * other person could not also see.
+   */
+  private async assertNeitherReported(
+    caller: CallerSide,
+    row: MatchRequestRow,
+  ): Promise<void> {
+    const reported = await openReportedUserIds();
+    if (reported.size === 0) {
+      return;
+    }
+
+    const counterpart = await this.counterpartUserId(caller, row);
+    if (
+      reported.has(caller.userId) ||
+      (counterpart !== null && reported.has(counterpart))
+    ) {
+      throw new ForbiddenException({
+        code: 'CONVERSATION_PAUSED',
+        message:
+          'Messaging with this person is paused while an administrator reviews a report. It resumes if the report is dismissed.',
+      });
+    }
   }
 
   private async resolveSide(auth0Id: string): Promise<CallerSide> {

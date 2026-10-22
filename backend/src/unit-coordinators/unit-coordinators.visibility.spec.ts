@@ -15,4 +15,24 @@ describe('UnitCoordinatorsService.findAll visibility', () => {
       },
     });
   });
+
+  it('leaves out coordinators with an open report, but not ones with no account', async () => {
+    jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce([
+      {
+        entry_id: 4n,
+        target_id: '7',
+        detail: { reason: 'asked for money', matchId: '6001' },
+        actor: null,
+      },
+    ] as never);
+    const query = jest.spyOn(prisma.coordinators, 'findMany');
+
+    await new UnitCoordinatorsService().findAll();
+
+    expect(query.mock.calls[0][0]).toMatchObject({
+      where: {
+        AND: [{ OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] }],
+      },
+    });
+  });
 });

@@ -196,5 +196,32 @@ describe('GuestSpeakersService', () => {
       });
       query.mockRestore();
     });
+
+    it('leaves out guests with an open report, but not guests with no account', async () => {
+      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce([
+        {
+          entry_id: 4n,
+          target_id: '7',
+          detail: { reason: 'asked for money', matchId: '6001' },
+          actor: null,
+        },
+      ] as never);
+      const query = jest.spyOn(prisma.guests, 'findMany');
+
+      await service.findAll();
+
+      const { where } = query.mock.calls[0][0] as {
+        where: { OR: unknown[]; AND: unknown[] };
+      };
+      expect(where.AND).toEqual([
+        { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+      ]);
+      // The deactivated-account rule is still there beside it.
+      expect(where.OR).toEqual([
+        { user_id: null },
+        { users: { is: { deletedat: null } } },
+      ]);
+      query.mockRestore();
+    });
   });
 });
