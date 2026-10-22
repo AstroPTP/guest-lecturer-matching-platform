@@ -181,6 +181,11 @@ export class UnitCoordinatorsService {
    */
   async findAll() {
     const coordinators = await prisma.coordinators.findMany({
+      // A coordinator whose account an administrator has deactivated is left
+      // out, as deactivated guest lecturers are.
+      where: {
+        OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+      },
       orderBy: { coordinator_id: 'asc' },
     });
     const userIds = coordinators.flatMap((coordinator) =>

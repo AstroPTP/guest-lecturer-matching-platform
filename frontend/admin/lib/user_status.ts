@@ -8,13 +8,13 @@ export const verificationStatusOptions: readonly VerificationStatus[] = [
 export const accountStatusOptions: readonly AccountStatus[] = [
   AccountStatus.Active,
   AccountStatus.Suspended,
-  AccountStatus.Inactive,
 ];
 
+/** CSS tokens, so the status colours follow the light and dark themes. */
 export const statusColors: Record<VerificationStatus | AccountStatus, string> = {
-  [VerificationStatus.UnderReview]: "#d97706",
-  [VerificationStatus.Verified]: "#15803d",
-  [AccountStatus.Active]: "#2563eb",
-  [AccountStatus.Suspended]: "#dc2626",
-  [AccountStatus.Inactive]: "#6b7280",
+  [VerificationStatus.UnderReview]: "var(--c-d97706)",
+  [VerificationStatus.Verified]: "var(--c-15803d)",
+  [AccountStatus.Active]: "var(--c-2563eb)",
+  [AccountStatus.Suspended]: "var(--c-dc2626)",
+  [AccountStatus.Inactive]: "var(--c-6b7280)",
 };

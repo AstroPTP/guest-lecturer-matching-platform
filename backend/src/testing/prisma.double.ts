@@ -23,6 +23,7 @@ function model(): Record<string, AnyFn> {
     delete: () => Promise.resolve({}),
     createMany: () => Promise.resolve({ count: 0 }),
     deleteMany: () => Promise.resolve({ count: 0 }),
+    count: () => Promise.resolve(0),
   };
 }
 
@@ -37,6 +38,8 @@ export const prisma = {
   messages: model(),
   events: model(),
   notifications: model(),
+  audit_entries: model(),
+  admin_settings: model(),
   availability: model(),
   user_expertise: model(),
 };

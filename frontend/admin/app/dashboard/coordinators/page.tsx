@@ -1,22 +1,47 @@
-import { EngagementDirectory } from "@/components/EngagementDirectory";
-import { coordinatorDirectory } from "@/data/engagement_leaders";
+"use client";
 
-export default function CoordinatorDirectoryPage() {
+import { useEffect, useState } from "react";
+import { EngagementDirectory } from "@/components/EngagementDirectory";
+import { getCoordinators, type CoordinatorSummary } from "@/services/adminApi";
+
+export default function CoordinatorsPage() {
+  const [rows, setRows] = useState<CoordinatorSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const data = await getCoordinators();
+        if (active) setRows(data);
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (isLoading) {
+    return <p className="control-empty">Loading coordinators…</p>;
+  }
+
   return (
     <EngagementDirectory
-      description="Complete unit coordinator directory ranked by guest lecturer participation."
-      detailLabel="Unit"
-      primaryMetricLabel="Guest Lecturers"
-      rows={coordinatorDirectory.map((coordinator) => ({
-        id: coordinator.id,
-        name: coordinator.name,
-        detail: coordinator.unit,
-        href: "/dashboard/coordinators/" + encodeURIComponent(coordinator.id),
-        primaryMetric: coordinator.guestLecturers.toString(),
-        secondaryMetric: coordinator.eventsHosted.toString(),
+      title="Unit coordinators"
+      description="Every unit coordinator, with the contact requests they have sent."
+      detailLabel="Faculty"
+      primaryMetricLabel="Requests sent"
+      secondaryMetricLabel="Accepted"
+      rows={rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        detail: row.faculty,
+        primaryMetric: String(row.requests),
+        secondaryMetric: String(row.accepted),
+        href: row.userId ? `/dashboard/users/${encodeURIComponent(`#UC-${row.userId}`)}` : undefined,
       }))}
-      secondaryMetricLabel="Events Hosted"
-      title="Unit Coordinator Directory"
     />
   );
 }

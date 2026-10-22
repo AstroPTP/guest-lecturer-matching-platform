@@ -1,55 +1,95 @@
 "use client";
 
 import Image, { type StaticImageData } from "next/image";
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import groupIcon from "@/assets/group.png";
-import notificationIcon from "@/assets/notification.png";
 import ruleIcon from "@/assets/rule.png";
-import schoolIcon from "@/assets/school.png";
-import { defaultAdminConfiguration, notificationSettingDefinitions, registrationSettingDefinitions} from "@/data/settings";
-import type { AdminConfiguration } from "@/types/admin";
+import { getSettings, saveSettings, type PlatformSettings } from "@/services/adminApi";
 
 const settingsNav: Array<{ label: string; href: string; icon: StaticImageData }> = [
   { label: "General", href: "#general", icon: ruleIcon },
-  { label: "Registration", href: "#registration", icon: groupIcon },
-  { label: "Notifications", href: "#notifications", icon: notificationIcon },
+  { label: "Matching rules", href: "#rules", icon: groupIcon },
 ];
 
+type Editable = Omit<PlatformSettings, "updatedAt">;
+
+/**
+ * Platform settings. Only settings the server enforces are shown: approval
+ * decides who coordinators can see, and the contact limit is checked whenever
+ * a coordinator sends a request. Every change is written to the audit log.
+ */
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState("#general");
-  const [configuration, setConfiguration] = useState<AdminConfiguration>(defaultAdminConfiguration);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<PlatformSettings | null>(null);
+  const [draft, setDraft] = useState<Editable | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
-  function saveConfiguration(event: React.FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const current = await getSettings();
+        if (active) {
+          setSaved(current);
+          setDraft(current);
+        }
+      } catch (error) {
+        if (active) setErrorMessage(error instanceof Error ? error.message : "Settings could not be loaded.");
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+    if (!draft) return;
+    setIsSaving(true);
+    setNotice("");
+    setErrorMessage("");
+    try {
+      const next = await saveSettings({
+        systemName: draft.systemName,
+        supportEmail: draft.supportEmail,
+        requireAdminApproval: draft.requireAdminApproval,
+        contactLimitDays: draft.contactLimitDays,
+      });
+      setSaved(next);
+      setDraft(next);
+      setNotice("Settings saved.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Settings could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
-  function discardChanges() {
-    setConfiguration(defaultAdminConfiguration);
-    setSaved(false);
+  if (!draft || !saved) {
+    return <p className="control-empty">{errorMessage || "Loading settings…"}</p>;
   }
+
+  const update = <K extends keyof Editable>(key: K, value: Editable[K]) =>
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
 
   return (
-    <form className="settings-page" onSubmit={saveConfiguration}>
+    <form className="settings-page" onSubmit={(event) => void submit(event)}>
       <header className="settings-heading">
-        <h1>Configuration</h1>
-        <p>Manage platform identity, account registration and user notifications.</p>
+        <h1>Settings</h1>
+        <p>
+          Last changed{" "}
+          {new Date(saved.updatedAt).toLocaleString("en-AU", { dateStyle: "medium", timeStyle: "short" })}.
+          Every change is recorded in the audit log.
+        </p>
       </header>
 
       <div className="settings-layout">
-        <nav className="settings-local-nav" aria-label="Configuration sections">
+        <nav className="settings-local-nav" aria-label="Settings sections">
           {settingsNav.map((item) => (
-            <a
-              aria-current={activeSection === item.href ? "location" : undefined}
-              className={activeSection === item.href ? "active" : ""}
-              href={item.href}
-              key={item.label}
-              onClick={() => setActiveSection(item.href)}
-            >
+            <a href={item.href} key={item.href}>
               <Image alt="" aria-hidden="true" src={item.icon} />
-              <span>{item.label}</span>
+              {item.label}
             </a>
           ))}
         </nav>
@@ -57,18 +97,19 @@ export default function SettingsPage() {
         <div className="settings-sections">
           <section className="settings-card" id="general">
             <header>
-              <h2>General Configuration</h2>
-              <p>Core Curtin University identity and support details for the platform.</p>
+              <h2>General</h2>
+              <p>How the platform names itself and where users go for help.</p>
             </header>
             <div className="settings-field">
               <label htmlFor="system-name">System name</label>
               <div>
                 <input
                   id="system-name"
-                  onChange={(event) => setConfiguration((current) => ({ ...current, systemName: event.target.value }))}
-                  value={configuration.systemName}
+                  maxLength={120}
+                  onChange={(event) => update("systemName", event.target.value)}
+                  required
+                  value={draft.systemName}
                 />
-                <small>This name appears in browser tabs and system-wide headers.</small>
               </div>
             </div>
             <div className="settings-field">
@@ -76,108 +117,62 @@ export default function SettingsPage() {
               <div>
                 <input
                   id="support-email"
-                  onChange={(event) => setConfiguration((current) => ({ ...current, supportEmail: event.target.value }))}
+                  onChange={(event) => update("supportEmail", event.target.value)}
+                  required
                   type="email"
-                  value={configuration.supportEmail}
+                  value={draft.supportEmail}
                 />
-                <small>Primary address for user support requests and platform enquiries.</small>
-              </div>
-            </div>
-            <div className="settings-field branding-field">
-              <span>University logo</span>
-              <div>
-                <label className="logo-upload">
-                  <Image alt="" aria-hidden="true" src={schoolIcon} />
-                  <span>{configuration.universityLogo ?? "Upload logo"}</span>
-                  <input
-                    accept="image/*"
-                    onChange={(event) =>
-                      setConfiguration((current) => ({
-                        ...current,
-                        universityLogo: event.target.files?.[0]?.name ?? null,
-                      }))
-                    }
-                    type="file"
-                  />
-                </label>
-                <small>Upload the Curtin University logo used in platform headers.</small>
+                <small>Where users are told to send questions.</small>
               </div>
             </div>
           </section>
 
-          <section className="settings-card" id="registration">
+          <section className="settings-card" id="rules">
             <header>
-              <h2>Registration Configuration</h2>
-              <p>Control account registration, verification and approval requirements.</p>
+              <h2>Matching rules</h2>
+              <p>Rules applied when coordinators look for and contact guest lecturers.</p>
             </header>
             <div className="protocol-list">
-              {registrationSettingDefinitions.map((setting) => (
-                <Protocol
-                  checked={configuration.registration[setting.key]}
-                  description={setting.description}
-                  key={setting.key}
-                  label={setting.label}
-                  onChange={() =>
-                    setConfiguration((current) => ({
-                      ...current,
-                      registration: {
-                        ...current.registration,
-                        [setting.key]: !current.registration[setting.key],
-                      },
-                    }))
-                  }
-                />
-              ))}
+              <Protocol
+                checked={draft.requireAdminApproval}
+                description="New guest lecturer profiles stay hidden from coordinators until approved in the verification queue. Profiles already visible stay visible."
+                label="Require admin approval"
+                onChange={() => update("requireAdminApproval", !draft.requireAdminApproval)}
+              />
             </div>
-            <div className="settings-field registration-deadline-field">
-              <label htmlFor="registration-deadline">Registration deadline</label>
+            <div className="settings-field">
+              <label htmlFor="contact-limit">Contact limit (days)</label>
               <div>
                 <input
-                  id="registration-deadline"
-                  onChange={(event) =>
-                    setConfiguration((current) => ({
-                      ...current,
-                      registration: { ...current.registration, deadline: event.target.value },
-                    }))
-                  }
-                  type="date"
-                  value={configuration.registration.deadline}
+                  id="contact-limit"
+                  max={365}
+                  min={0}
+                  onChange={(event) => update("contactLimitDays", Number(event.target.value))}
+                  required
+                  type="number"
+                  value={draft.contactLimitDays}
                 />
-                <small>Users cannot register after this date.</small>
+                <small>
+                  A guest lecturer can receive one contact request in this many days, from any coordinator. 90 is
+                  about three months. 0 turns the limit off.
+                </small>
               </div>
-            </div>
-          </section>
-
-          <section className="settings-card" id="notifications">
-            <header>
-              <h2>Notification Configuration</h2>
-              <p>Control the notifications delivered to platform users.</p>
-            </header>
-            <div className="protocol-list">
-              {notificationSettingDefinitions.map((setting) => (
-                <Protocol
-                  checked={configuration.notifications[setting.key]}
-                  description={setting.description}
-                  key={setting.key}
-                  label={setting.label}
-                  onChange={() =>
-                    setConfiguration((current) => ({
-                      ...current,
-                      notifications: {
-                        ...current.notifications,
-                        [setting.key]: !current.notifications[setting.key],
-                      },
-                    }))
-                  }
-                />
-              ))}
             </div>
           </section>
 
           <footer className="settings-actions">
-            {saved && <span role="status">Configuration saved successfully.</span>}
-            <button onClick={discardChanges} type="button">Discard changes</button>
-            <button className="save-settings" type="submit">Save configuration</button>
+            {notice && <span role="status">{notice}</span>}
+            {errorMessage && (
+              <span className="error" role="alert">
+                {errorMessage}
+              </span>
+            )}
+            <button onClick={() => setDraft(saved)} type="button">
+              Discard changes
+            </button>
+            <button className="save-settings" disabled={isSaving} type="submit">
+              {isSaving ? "Saving…" : "Save settings"}
+            </button>
           </footer>
         </div>
       </div>
@@ -198,10 +193,13 @@ function Protocol({
 }) {
   return (
     <div className="protocol-row">
-      <p><strong>{label}</strong><small>{description}</small></p>
+      <p>
+        <strong>{label}</strong>
+        <small>{description}</small>
+      </p>
       <button
         aria-checked={checked}
-        aria-label={label + ": " + (checked ? "enabled" : "disabled")}
+        aria-label={label + ": " + (checked ? "on" : "off")}
         className={"settings-toggle " + (checked ? "enabled" : "")}
         onClick={onChange}
         role="switch"

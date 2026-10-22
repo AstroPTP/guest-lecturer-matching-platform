@@ -183,5 +183,18 @@ describe('GuestSpeakersService', () => {
     it('returns what the database holds', async () => {
       await expect(service.findAll()).resolves.toEqual([]);
     });
+
+    it('leaves out guests whose account has been deactivated', async () => {
+      const query = jest.spyOn(prisma.guests, 'findMany');
+
+      await service.findAll();
+
+      expect(query.mock.calls[0][0]).toMatchObject({
+        where: {
+          OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+        },
+      });
+      query.mockRestore();
+    });
   });
 });
