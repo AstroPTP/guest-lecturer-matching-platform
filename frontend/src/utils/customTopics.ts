@@ -22,9 +22,15 @@ export function tidyTopic(topic: string): string {
   return topic.trim().replace(/\s+/g, " ");
 }
 
+// Lower-cases A to Z only, as the backend does, so a look-alike such as the
+// Kelvin sign is not taken for the "k" of a fixed topic.
+function asciiLowerCase(text: string): string {
+  return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
 function findFixedTopic(topic: string): string | undefined {
-  const name = topic.toLowerCase();
-  return expertiseTopics.find((fixed) => fixed.toLowerCase() === name);
+  const name = asciiLowerCase(topic);
+  return expertiseTopics.find((fixed) => asciiLowerCase(fixed) === name);
 }
 
 export function isCustomTopic(topic: string): boolean {
@@ -35,6 +41,10 @@ export function isCustomTopic(topic: string): boolean {
 // shows as the selected "Accounting" chip.
 export function withFixedTopicSpelling(topics: string[]): string[] {
   return topics.map((topic) => findFixedTopic(topic) ?? topic);
+}
+
+export function expertiseWithFixedTopicSpelling<T extends { selectedTopics: string[] }>(expertise: T): T {
+  return { ...expertise, selectedTopics: withFixedTopicSpelling(expertise.selectedTopics) };
 }
 
 // Why a new custom topic cannot be added to the selected ones, or "" if it can.

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   FIXED_EXPERTISE_TOPICS,
+  tidyTopics,
   topicKey,
   topicListProblem,
 } from './expertise-topics';
@@ -22,13 +23,47 @@ describe('topicKey', () => {
   });
 });
 
+// "Banking & Finance" with the Kelvin sign (U+212A) in place of the "k".
+// String.toLowerCase turns that sign into an ASCII "k".
+const KELVIN_BANKING = 'Ban\u212Aing & Finance';
+
+describe('tidyTopics', () => {
+  it('trims topics and collapses their inner spaces', () => {
+    expect(tidyTopics(['  Supply   Chain '])).toEqual(['Supply Chain']);
+  });
+
+  it('spells a fixed topic in any letter case as the fixed list does', () => {
+    expect(
+      tidyTopics(['ACCOUNTING', 'risk management', '  banking  &  FINANCE ']),
+    ).toEqual(['Accounting', 'Risk Management', 'Banking & Finance']);
+  });
+
+  it('does not treat a non-ASCII look-alike as a fixed topic', () => {
+    expect(KELVIN_BANKING.toLowerCase()).toBe('banking & finance');
+    expect(tidyTopics([KELVIN_BANKING])).toEqual([KELVIN_BANKING]);
+  });
+
+  it('leaves values that are not strings and lists that are not arrays', () => {
+    expect(tidyTopics([42, null])).toEqual([42, null]);
+    expect(tidyTopics('Accounting')).toBe('Accounting');
+  });
+});
+
 describe('topicListProblem', () => {
-  it('accepts every fixed topic as it is stored today', () => {
+  it('accepts every fixed topic in the fixed spelling', () => {
     expect(topicListProblem([...FIXED_EXPERTISE_TOPICS])).toBeNull();
   });
 
-  it('accepts fixed topics in another letter case', () => {
-    expect(topicListProblem(['ACCOUNTING', 'risk management'])).toBeNull();
+  it('treats a fixed topic in another spelling as a custom one', () => {
+    expect(topicListProblem(['ACCOUNTING'])).toBe(
+      'has a custom topic that repeats a fixed topic',
+    );
+  });
+
+  it('refuses a non-ASCII look-alike of a fixed topic', () => {
+    expect(topicListProblem([KELVIN_BANKING])).toBe(
+      "has a custom topic with characters other than letters, numbers, spaces and & - / ' .",
+    );
   });
 
   it('accepts an empty list', () => {
@@ -111,8 +146,8 @@ describe('topicListProblem', () => {
     );
   });
 
-  it('refuses the same fixed topic twice in different letter case', () => {
-    expect(topicListProblem(['Accounting', 'ACCOUNTING'])).toBe(
+  it('refuses the same fixed topic twice', () => {
+    expect(topicListProblem(['Accounting', 'Accounting'])).toBe(
       'lists the same topic more than once',
     );
   });
@@ -161,13 +196,52 @@ describe.each([
     throw new Error('expected the request to be refused');
   }
 
-  it('passes a list saved before custom topics existed through unchanged', async () => {
+  it('passes five fixed topics in the fixed spelling through unchanged', async () => {
+    const fiveFixed = FIXED_EXPERTISE_TOPICS.slice(0, 5);
     const result = (await pipe.transform(
-      makeBody([...FIXED_EXPERTISE_TOPICS]),
+      makeBody([...fiveFixed]),
       body(metatype),
     )) as { selectedTopics: string[] };
 
-    expect(result.selectedTopics).toEqual(FIXED_EXPERTISE_TOPICS);
+    expect(result.selectedTopics).toEqual(fiveFixed);
+  });
+
+  it('stores a fixed topic in any letter case with the fixed spelling', async () => {
+    const result = (await pipe.transform(
+      makeBody(['ACCOUNTING', 'banking & finance']),
+      body(metatype),
+    )) as { selectedTopics: string[] };
+
+    expect(result.selectedTopics).toEqual(['Accounting', 'Banking & Finance']);
+  });
+
+  it('answers a non-ASCII look-alike of a fixed topic with 400', async () => {
+    const error = await rejection([KELVIN_BANKING]);
+
+    expect(error.getStatus()).toBe(400);
+    expect(error.getResponse()).toMatchObject({
+      message: [
+        "selectedTopics has a custom topic with characters other than letters, numbers, spaces and & - / ' .",
+      ],
+    });
+  });
+
+  it('answers the same fixed topic in two letter cases with 400', async () => {
+    const error = await rejection(['Accounting', 'ACCOUNTING']);
+
+    expect(error.getStatus()).toBe(400);
+    expect(error.getResponse()).toMatchObject({
+      message: ['selectedTopics lists the same topic more than once'],
+    });
+  });
+
+  it('answers six topics with 400', async () => {
+    const error = await rejection(FIXED_EXPERTISE_TOPICS.slice(0, 6));
+
+    expect(error.getStatus()).toBe(400);
+    expect(error.getResponse()).toMatchObject({
+      message: ['selectedTopics must contain no more than 5 elements'],
+    });
   });
 
   it('trims custom topics and collapses their inner spaces', async () => {
@@ -241,7 +315,7 @@ describe('custom topics round trip', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  const topics = ['Accounting', ' Supply  Chain ', "R&D / Owner's Tax Credits"];
+  const topics = ['ACCOUNTING', ' Supply  Chain ', "R&D / Owner's Tax Credits"];
   const saved = ['Accounting', 'Supply Chain', "R&D / Owner's Tax Credits"];
 
   it('stores guest lecturer custom topics as expertise rows and reads them back', async () => {

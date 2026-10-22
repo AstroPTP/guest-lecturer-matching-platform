@@ -22,6 +22,8 @@ export const FIXED_EXPERTISE_TOPICS: readonly string[] = [
   'ESG & Sustainability',
 ];
 
+/** How many topics a profile may list, fixed and custom together. */
+export const MAX_TOPICS = 5;
 /** How many topics of their own a profile may add to the fixed ones. */
 export const MAX_CUSTOM_TOPICS = 3;
 export const CUSTOM_TOPIC_MIN_LENGTH = 2;
@@ -40,28 +42,42 @@ export function topicKey(topic: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-const FIXED_TOPIC_NAMES = new Set(
-  FIXED_EXPERTISE_TOPICS.map((topic) => topic.toLowerCase()),
+/**
+ * Lower-cases A to Z only. String.toLowerCase also folds look-alikes such as
+ * the Kelvin sign into "k", which would let them pass as a fixed topic.
+ */
+function asciiLowerCase(text: string): string {
+  return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
+}
+
+const FIXED_TOPIC_NAMES = new Set(FIXED_EXPERTISE_TOPICS);
+const FIXED_TOPIC_BY_LOWER_CASE = new Map(
+  FIXED_EXPERTISE_TOPICS.map((topic) => [asciiLowerCase(topic), topic]),
 );
 const FIXED_TOPIC_KEYS = new Set(FIXED_EXPERTISE_TOPICS.map(topicKey));
 
 /**
- * Trims each topic and collapses the spaces inside it. Values that are not
- * strings are left for the type validators to report.
+ * Trims each topic, collapses the spaces inside it, and spells a fixed topic
+ * in any letter case as the fixed list does, so "ACCOUNTING" is stored as
+ * "Accounting". Values that are not strings are left for the type validators.
  */
 export function tidyTopics(value: unknown): unknown {
   if (!Array.isArray(value)) {
     return value;
   }
-  return value.map((topic: unknown) =>
-    typeof topic === 'string' ? topic.trim().replace(/\s+/g, ' ') : topic,
-  );
+  return value.map((topic: unknown) => {
+    if (typeof topic !== 'string') {
+      return topic;
+    }
+    const tidy = topic.trim().replace(/\s+/g, ' ');
+    return FIXED_TOPIC_BY_LOWER_CASE.get(asciiLowerCase(tidy)) ?? tidy;
+  });
 }
 
 /**
- * Why a topic list cannot be saved, or null when it can. A fixed topic is
- * accepted in any letter case, so lists saved before custom topics existed
- * still pass. Anything else is a custom topic and has to meet its rules.
+ * Why a topic list cannot be saved, or null when it can. A fixed topic must be
+ * spelled exactly as the fixed list spells it, which tidyTopics takes care of.
+ * Anything else is a custom topic and has to meet its rules.
  */
 export function topicListProblem(topics: readonly unknown[]): string | null {
   const seen = new Set<string>();
@@ -73,7 +89,7 @@ export function topicListProblem(topics: readonly unknown[]): string | null {
     }
     const key = topicKey(topic);
 
-    if (!FIXED_TOPIC_NAMES.has(topic.toLowerCase())) {
+    if (!FIXED_TOPIC_NAMES.has(topic)) {
       customCount += 1;
       if (
         topic.length < CUSTOM_TOPIC_MIN_LENGTH ||
