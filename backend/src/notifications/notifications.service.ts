@@ -90,10 +90,10 @@ export class NotificationsService {
         list.map((notice) => this.toRowData(admin.userid, notice)),
       ),
     });
-    void pushToUsers(
-      admins.map((admin) => admin.userid),
-      notice,
-    );
+    const adminIds = admins.map((admin) => admin.userid);
+    for (const notice of list) {
+      void pushToUsers(adminIds, notice);
+    }
     return count;
   }
 

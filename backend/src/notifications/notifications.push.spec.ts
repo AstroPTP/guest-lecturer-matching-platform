@@ -295,6 +295,29 @@ describe('NotificationsService and pushed notifications', () => {
       });
     });
 
+    it('sends each of several notices to every administrator', async () => {
+      jest
+        .spyOn(prisma.users, 'findMany')
+        .mockResolvedValue([{ userid: 7n }, { userid: 8n }] as never);
+      jest
+        .spyOn(prisma.notifications, 'createMany')
+        .mockResolvedValue({ count: 4 });
+
+      await expect(
+        service.createForAdmins([
+          notice,
+          { ...notice, title: 'Session withdrawn', href: '/admin/events/2' },
+        ]),
+      ).resolves.toBe(4);
+      await settle();
+
+      expect(sent().map((message) => message.title)).toEqual([
+        'Session cancelled',
+        'Session withdrawn',
+      ]);
+      expect(lookup).toHaveBeenCalledTimes(2);
+    });
+
     it('sends nothing when there is no active administrator', async () => {
       await expect(service.createForAdmins(notice)).resolves.toBe(0);
       await settle();
