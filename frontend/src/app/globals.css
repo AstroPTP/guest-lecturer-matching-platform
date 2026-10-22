@@ -117,6 +117,12 @@ body {
   :root:not([data-theme="light"]) .to-teal-50 { --tw-gradient-to: #0d0f13; }
   :root:not([data-theme="light"]) img[src*="static%2Fmedia%2F"][src*=".png"],
   :root:not([data-theme="light"]) img[src*="/static/media/"][src$=".png"] { filter: invert(1) hue-rotate(180deg); }
+  /* A control filled with a dark colour in light mode is filled with a light colour here, so its
+     black glyph has to stay black: inverting it, as the rule above does for icons on the page
+     surface, would draw white on a light fill. Same icon images only, so photos and logos are
+     untouched. */
+  :root:not([data-theme="light"]) :is(.bg-\[\#2d2d2d\], .bg-black, .bg-gray-900, .bg-blue-600, .bg-teal-600) img[src*="static%2Fmedia%2F"][src*=".png"],
+  :root:not([data-theme="light"]) :is(.bg-\[\#2d2d2d\], .bg-black, .bg-gray-900, .bg-blue-600, .bg-teal-600) img[src*="/static/media/"][src$=".png"] { filter: none; }
 }
 
 :root[data-theme="dark"] {
@@ -208,4 +214,10 @@ body {
 :root[data-theme="dark"] .to-teal-50 { --tw-gradient-to: #0d0f13; }
 :root[data-theme="dark"] img[src*="static%2Fmedia%2F"][src*=".png"],
 :root[data-theme="dark"] img[src*="/static/media/"][src$=".png"] { filter: invert(1) hue-rotate(180deg); }
+/* A control filled with a dark colour in light mode is filled with a light colour here, so its
+   black glyph has to stay black: inverting it, as the rule above does for icons on the page
+   surface, would draw white on a light fill. Same icon images only, so photos and logos are
+   untouched. */
+:root[data-theme="dark"] :is(.bg-\[\#2d2d2d\], .bg-black, .bg-gray-900, .bg-blue-600, .bg-teal-600) img[src*="static%2Fmedia%2F"][src*=".png"],
+:root[data-theme="dark"] :is(.bg-\[\#2d2d2d\], .bg-black, .bg-gray-900, .bg-blue-600, .bg-teal-600) img[src*="/static/media/"][src$=".png"] { filter: none; }
 /* dark-theme:end */
