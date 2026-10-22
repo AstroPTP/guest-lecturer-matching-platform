@@ -45,7 +45,7 @@ describe('GuestSpeakersController behaviour', () => {
 
   // The caller's id comes from the verified token, never the request, so
   // every route must pass user.id through rather than anything from the body.
-  it('acts as the signed-in user on every profile route, and lists all speakers without needing one', async () => {
+  it('acts as the signed-in user on every profile route, including the speaker list, which depends on who is asking', async () => {
     const find = jest.spyOn(service, 'findByUserId').mockResolvedValue(null);
     const basic = jest
       .spyOn(service, 'saveBasicInformation')
@@ -65,14 +65,14 @@ describe('GuestSpeakersController behaviour', () => {
     await controller.saveExpertise(dto, user);
     await controller.saveEngagement(dto, user);
     await controller.saveConsent(dto, user);
-    await expect(controller.findAll()).resolves.toEqual([]);
+    await expect(controller.findAll(user)).resolves.toEqual([]);
 
     expect(find).toHaveBeenCalledWith('auth0|jane');
     expect(basic).toHaveBeenCalledWith('auth0|jane', dto);
     expect(expertise).toHaveBeenCalledWith('auth0|jane', dto);
     expect(engagement).toHaveBeenCalledWith('auth0|jane', dto);
     expect(consent).toHaveBeenCalledWith('auth0|jane', dto);
-    expect(list).toHaveBeenCalledWith();
+    expect(list).toHaveBeenCalledWith('auth0|jane');
   });
 
   describe('request validation', () => {
