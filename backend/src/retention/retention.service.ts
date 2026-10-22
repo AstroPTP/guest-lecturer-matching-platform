@@ -232,10 +232,11 @@ export class RetentionService {
    * outcome.
    *
    * One batch removes up to `batchSize` match messages and up to `batchSize`
-   * support messages, and then any attached files the removed support
-   * messages leave with nothing pointing at them. All of it is in the one
-   * transaction, so a file is never deleted while a message still refers to
-   * it, and never left behind when its message goes.
+   * support messages, then any attached files the removed support messages
+   * leave with nothing pointing at them, then any support thread they leave
+   * with no messages. All of it is in the one transaction, so a file is never
+   * deleted while a message still refers to it, and never left behind when its
+   * message goes.
    *
    * The lock is a transaction-level advisory lock taken inside the same
    * transaction as the delete, not a session-level one. The database can sit
@@ -269,9 +270,12 @@ export class RetentionService {
           LIMIT ${batchSize}
         )`;
 
-      // RETURNING hands back the files these messages pointed at, which is
-      // how the files that are now unreferenced are found.
-      const removed = await tx.$queryRaw<{ attachment_id: bigint | null }[]>`
+      // RETURNING hands back the files these messages pointed at and the
+      // threads they were in, which is how the files that are now
+      // unreferenced and the threads that are now empty are found.
+      const removed = await tx.$queryRaw<
+        { attachment_id: bigint | null; thread_id: bigint }[]
+      >`
         DELETE FROM support_messages
         WHERE message_id IN (
           SELECT message_id FROM support_messages
@@ -279,7 +283,7 @@ export class RetentionService {
           ORDER BY sent_at, message_id
           LIMIT ${batchSize}
         )
-        RETURNING attachment_id`;
+        RETURNING attachment_id, thread_id`;
       const attachmentIds = removed.flatMap((row) =>
         row.attachment_id === null ? [] : [row.attachment_id],
       );
@@ -291,6 +295,19 @@ export class RetentionService {
             AND NOT EXISTS (
               SELECT 1 FROM support_messages m
               WHERE m.attachment_id = a.attachment_id
+            )`;
+      }
+      const threadIds = [...new Set(removed.map((row) => row.thread_id))];
+      if (threadIds.length > 0) {
+        // A request left with no messages has nothing to show, and keeping the
+        // subject of a conversation that has been purged would defeat the
+        // purge. Only threads this batch emptied are looked at.
+        await tx.$executeRaw`
+          DELETE FROM support_threads t
+          WHERE t.thread_id = ANY(${threadIds}::bigint[])
+            AND NOT EXISTS (
+              SELECT 1 FROM support_messages m
+              WHERE m.thread_id = t.thread_id
             )`;
       }
       return { acquired: true, deleted, supportDeleted: removed.length };

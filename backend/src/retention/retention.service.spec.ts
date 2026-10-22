@@ -83,25 +83,36 @@ function fakeDatabase(
      * that batch deleted, null for a message with no file.
      */
     supportBatches?: (bigint | null)[][];
+    /**
+     * For each support batch, the thread of each message it deleted, in the
+     * same order. Every message is in thread 7 unless this says otherwise.
+     */
+    supportThreads?: bigint[][];
   } = {},
 ) {
   const remaining = [...(options.batches ?? [])];
   const remainingSupport = [...(options.supportBatches ?? [])];
+  const remainingThreads = [...(options.supportThreads ?? [])];
   const lockResults = [...(options.lockResults ?? [])];
   const lock = jest.fn((..._args: unknown[]) =>
     Promise.resolve([
       { acquired: lockResults.shift() ?? options.locked ?? true },
     ]),
   );
-  const supportDelete = jest.fn((..._args: unknown[]) =>
-    Promise.resolve(
-      (remainingSupport.shift() ?? []).map((id) => ({ attachment_id: id })),
-    ),
-  );
+  const supportDelete = jest.fn((..._args: unknown[]) => {
+    const threads = remainingThreads.shift() ?? [];
+    return Promise.resolve(
+      (remainingSupport.shift() ?? []).map((id, index) => ({
+        attachment_id: id,
+        thread_id: threads[index] ?? 7n,
+      })),
+    );
+  });
   const messagesDelete = jest.fn((..._args: unknown[]) =>
     Promise.resolve(remaining.shift() ?? 0),
   );
   const attachmentDelete = jest.fn((..._args: unknown[]) => Promise.resolve(0));
+  const threadDelete = jest.fn((..._args: unknown[]) => Promise.resolve(0));
   const textOf = (strings: TemplateStringsArray) => strings.join('?');
   const tx = {
     // The lock and the support delete both come through $queryRaw; they are
@@ -115,7 +126,9 @@ function fakeDatabase(
       (strings: TemplateStringsArray, ...values: unknown[]) =>
         textOf(strings).includes('support_attachments')
           ? attachmentDelete(strings, ...values)
-          : messagesDelete(strings, ...values),
+          : textOf(strings).includes('support_threads')
+            ? threadDelete(strings, ...values)
+            : messagesDelete(strings, ...values),
     ),
   };
   const queryRaw = jest.spyOn(prisma, '$queryRaw').mockImplementation(((
@@ -148,6 +161,8 @@ function fakeDatabase(
     supportDelete,
     /** The delete of files no support message refers to any more. */
     attachmentDelete,
+    /** The delete of support threads left with no messages. */
+    threadDelete,
     /** The lock, as run on the transaction client. */
     lockQuery: lock,
     rootExecuteRaw,
@@ -430,6 +445,43 @@ describe('RetentionService support messages', () => {
     expect(text).toContain('NOT EXISTS');
     expect(text).toContain('m.attachment_id = a.attachment_id');
     expect(db.rootExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('deletes the threads the removed messages leave empty, in the same transaction', async () => {
+    const db = fakeDatabase({
+      supportBatches: [[null, null, null], []],
+      supportThreads: [[7n, 7n, 8n]],
+    });
+
+    await service.purge();
+
+    expect(db.threadDelete).toHaveBeenCalledTimes(1);
+    const { text, values } = sqlOf(db.threadDelete.mock.calls[0]);
+    expect(text).toMatch(/^DELETE FROM support_threads t WHERE/);
+    // Each thread once, however many of its messages went.
+    expect(values).toEqual([[7n, 8n]]);
+    // Only a thread with no message left; one still holding newer messages stays.
+    expect(text).toContain('NOT EXISTS');
+    expect(text).toContain('m.thread_id = t.thread_id');
+    expect(db.rootExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('deletes the empty threads after the messages and the files', async () => {
+    const db = fakeDatabase({ supportBatches: [[11n], []] });
+
+    await service.purge();
+
+    const order = (mock: jest.Mock) => mock.mock.invocationCallOrder[0];
+    expect(order(db.supportDelete)).toBeLessThan(order(db.attachmentDelete));
+    expect(order(db.attachmentDelete)).toBeLessThan(order(db.threadDelete));
+  });
+
+  it('does not look for empty threads when no support message was removed', async () => {
+    const db = fakeDatabase({ batches: [4, 0], supportBatches: [] });
+
+    await service.purge();
+
+    expect(db.threadDelete).not.toHaveBeenCalled();
   });
 
   it('does not touch the attachments table when no removed message had a file', async () => {
