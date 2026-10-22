@@ -22,9 +22,8 @@ import {
  * Two obligations, pulling in opposite directions, and both have to be met:
  *
  *   - the client gets exactly four fields and nothing else: no stack, no file
- *     path, no SQL, no dependency name (INF-01);
- *   - the server log keeps the full detail, or nothing is diagnosable
- *     (checklist INF-02).
+ *     path, no SQL, no dependency name;
+ *   - the server log keeps the full detail, or nothing is diagnosable.
  *
  * The correlation id appears in both, so a user quoting the id from their
  * error screen can be matched to the stack trace that produced it. It is the
@@ -45,7 +44,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     // Method and path only. Never the body, the query string or the headers.
     // Request payloads and credentials must not be logged, and an
-    // Authorization header in a log file is a credential at rest (INF-06).
+    // Authorization header in a log file is a credential at rest.
     const context = `${request.method} ${request.path} -> ${status} ${code} [${correlationId}]`;
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
