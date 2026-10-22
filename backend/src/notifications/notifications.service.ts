@@ -127,6 +127,46 @@ export class NotificationsService {
   }
 
   /**
+   * Raises one notice for each of the given people, except those who were sent
+   * the same one (same type, title and href) in the last day. One read finds
+   * who already has it and one insert writes the rest, so the number of
+   * queries does not grow with the number of people.
+   *
+   * Returns how many were written.
+   */
+  async createUnlessRecentForUsers(
+    userIds: bigint[],
+    notice: AdminNotice,
+  ): Promise<number> {
+    const unique = [...new Set(userIds)];
+    if (unique.length === 0) {
+      return 0;
+    }
+
+    const earlier = await prisma.notifications.findMany({
+      where: {
+        user_id: { in: unique },
+        type: notice.type,
+        title: notice.title,
+        href: notice.href,
+        created_at: { gte: new Date(Date.now() - REPEAT_WINDOW_MS) },
+      },
+      select: { user_id: true },
+    });
+    const alreadyTold = new Set(earlier.map((row) => row.user_id));
+    const recipients = unique.filter((userId) => !alreadyTold.has(userId));
+    if (recipients.length === 0) {
+      return 0;
+    }
+
+    const { count } = await prisma.notifications.createMany({
+      data: recipients.map((userId) => this.toRowData(userId, notice)),
+    });
+    void pushToUsers(recipients, notice);
+    return count;
+  }
+
+  /**
    * Raises a notice, or, when the person still has an unread one with the same
    * type and href, moves that one back to the top of their list instead of
    * adding another. A run of messages in one conversation is then a single

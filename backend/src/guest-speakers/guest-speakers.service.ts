@@ -7,6 +7,7 @@ import { prisma, resolveUserId, splitName } from '../prisma';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { profileImageUrl } from '../images/images.service';
 import { orderGuestsForViewer } from '../suggestions/discovery-ranking';
+import { noticeCoordinatorsOfNewGuest } from '../suggestions/new-profile-notices';
 
 type GuestRow = NonNullable<
   Awaited<ReturnType<typeof prisma.guests.findUnique>>
@@ -167,14 +168,26 @@ export class GuestSpeakersService {
    * (schema gap), so the individual answers aren't stored; what is stored is
    * `users.consentstate`, which marks the profile as complete so a returning
    * user is sent to the dashboard instead of back through the wizard.
+   *
+   * Finishing the profile for the first time is when a guest becomes visible
+   * (once approved, if approval is required), so it is also when coordinators
+   * who share a topic are told. Saving consent again tells no one.
    */
   async saveConsent(auth0Id: string, _dto: ConsentDto) {
     const userId = await resolveUserId(auth0Id);
+    const before = await prisma.users.findUnique({
+      where: { userid: userId },
+      select: { consentstate: true },
+    });
 
     await prisma.users.update({
       where: { userid: userId },
       data: { consentstate: true },
     });
+
+    if (before?.consentstate !== true) {
+      await noticeCoordinatorsOfNewGuest(auth0Id, 'completed');
+    }
 
     return this.findByUserId(auth0Id);
   }

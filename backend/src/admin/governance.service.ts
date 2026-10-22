@@ -18,6 +18,7 @@ import {
 } from './open-reports';
 import { readSettings, recordAudit } from './platform-rules';
 import { MIN_FIT_WEIGHT_PERCENT } from '../suggestions/matching-settings';
+import { noticeCoordinatorsOfNewGuest } from '../suggestions/new-profile-notices';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
 
@@ -71,7 +72,11 @@ export class GovernanceService {
     const id = toId(guestId, 'guestId');
     const guest = await prisma.guests.findUnique({
       where: { guest_id: id },
-      select: { guest_id: true },
+      select: {
+        guest_id: true,
+        approved_at: true,
+        users: { select: { auth0Id: true } },
+      },
     });
     if (!guest) {
       throw new NotFoundException('No guest lecturer with that id.');
@@ -85,6 +90,11 @@ export class GovernanceService {
       type: 'guest',
       id: guestId,
     });
+    // The first approval is when a profile becomes visible while approval is
+    // required. Approving someone again changes nothing anyone can see.
+    if (guest.approved_at === null && guest.users) {
+      await noticeCoordinatorsOfNewGuest(guest.users.auth0Id, 'approved');
+    }
     return {
       guestId: updated.guest_id.toString(),
       approvedAt: updated.approved_at?.toISOString() ?? null,
