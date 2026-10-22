@@ -154,6 +154,12 @@ const guestLecturer: HelpContent = {
       feature: "suggestions",
     },
     {
+      question: "Why do I get 'New units match your expertise'?",
+      answer:
+        "A unit coordinator who needs a topic you speak on has just joined. Choose the notice to open Discovery and see who is looking. You get at most one of these a day.",
+      feature: "suggestions",
+    },
+    {
       question: "I dismissed a coordinator by mistake.",
       answer: "In Discovery, open Dismissed Profiles. You can restore them or express interest from there.",
     },
@@ -252,6 +258,12 @@ const unitCoordinator: HelpContent = {
       question: "Why is someone near the top?",
       answer:
         "They match your topics best. Lecturers who have waited longer, or been invited less often, also rank a little higher so everyone gets a turn.",
+      feature: "suggestions",
+    },
+    {
+      question: "Why does Discovery show some people first?",
+      answer:
+        "Discovery puts the best match first. Lecturers whose topics fit yours come first, and lecturers who have waited longer or been invited less often get a small lift so everyone gets a turn. Only the order changes: nobody is hidden and your filters work as before. If an administrator switches Suggested speakers off, Discovery goes back to the order people joined.",
       feature: "suggestions",
     },
     {
