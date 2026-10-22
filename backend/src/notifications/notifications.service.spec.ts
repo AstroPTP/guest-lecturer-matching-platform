@@ -184,12 +184,22 @@ describe('NotificationsService', () => {
       });
     });
 
-    it('locks on the person and conversation before it looks', async () => {
+    it('locks on the person and conversation before it looks, for the transaction only', async () => {
       const tx = inTransaction(0);
 
       await service.createOrRefreshUnread(dto);
       expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
-      const [, lockKey] = tx.$executeRaw.mock.calls[0] as [unknown, string];
+      const [sql, namespace, lockKey] = tx.$executeRaw.mock.calls[0] as [
+        string[],
+        number,
+        string,
+      ];
+      // The transaction-level form, which the end of the transaction releases.
+      expect(sql.join('?')).toContain('pg_advisory_xact_lock(');
+      expect(sql.join('?')).toContain('xact');
+      // A two-part key: this feature's number, then the person and conversation.
+      expect(Number.isInteger(namespace)).toBe(true);
+      expect(namespace).toBeLessThanOrEqual(2 ** 31 - 1);
       expect(lockKey).toBe('1:/guest_lecturer/messages?with=5');
       expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
         tx.notifications.updateMany.mock.invocationCallOrder[0],
@@ -238,18 +248,41 @@ describe('NotificationsService', () => {
 
   describe('countUnread', () => {
     it("counts only the caller's own unread notifications", async () => {
+      const find = jest
+        .spyOn(prisma.users, 'findUnique')
+        .mockResolvedValue({ userid: 7n } as never);
       const count = jest
         .spyOn(prisma.notifications, 'count')
         .mockResolvedValue(3);
 
       await expect(service.countUnread(recipientId)).resolves.toBe(3);
+      expect(find).toHaveBeenCalledWith({
+        where: { auth0Id: recipientId },
+        select: { userid: true },
+      });
       expect(count).toHaveBeenCalledWith({
-        where: { user_id: 1n, read: false },
+        where: { user_id: 7n, read: false },
       });
     });
 
     it('reports zero when nothing is unread', async () => {
+      jest
+        .spyOn(prisma.users, 'findUnique')
+        .mockResolvedValue({ userid: 7n } as never);
+
       await expect(service.countUnread(recipientId)).resolves.toBe(0);
+    });
+
+    it('reports zero without creating a user row for someone who has none', async () => {
+      jest.spyOn(prisma.users, 'findUnique').mockResolvedValue(null);
+      const upsert = jest.spyOn(prisma.users, 'upsert');
+      const create = jest.spyOn(prisma.users, 'create');
+      const count = jest.spyOn(prisma.notifications, 'count');
+
+      await expect(service.countUnread(recipientId)).resolves.toBe(0);
+      expect(count).not.toHaveBeenCalled();
+      expect(upsert).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
     });
   });
 

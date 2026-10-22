@@ -27,6 +27,13 @@ interface NotificationRow {
 const REPEAT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * First half of the notification lock's two-part key, so that it can only meet
+ * other locks taken with this same number. The second half names the person
+ * and conversation.
+ */
+const NOTIFICATION_LOCK_NAMESPACE = 0x6e6f7469;
+
+/**
  * Notifications, stored so they survive a restart. Recipients are addressed by
  * their Auth0 id, the same id the caller's token carries, and stored against
  * the numeric user row.
@@ -86,7 +93,7 @@ export class NotificationsService {
 
     await prisma.$transaction(async (tx) => {
       // cspell:disable-next-line -- hashtext is a Postgres function
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}::text))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${NOTIFICATION_LOCK_NAMESPACE}::int, hashtext(${lockKey}::text))`;
 
       const { count } = await tx.notifications.updateMany({
         where: {
@@ -105,9 +112,18 @@ export class NotificationsService {
 
   /** How many of the caller's notifications are still unread. */
   async countUnread(callerId: string): Promise<number> {
-    const userId = await resolveUserId(callerId);
+    // A lookup, not resolveUserId: that creates the user row when it is missing,
+    // and a read the page repeats every half minute should not write anything.
+    const user = await prisma.users.findUnique({
+      where: { auth0Id: callerId },
+      select: { userid: true },
+    });
+    if (!user) {
+      return 0;
+    }
+
     return prisma.notifications.count({
-      where: { user_id: userId, read: false },
+      where: { user_id: user.userid, read: false },
     });
   }
 

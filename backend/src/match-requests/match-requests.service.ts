@@ -362,9 +362,11 @@ export class MatchRequestsService {
         href: discovery + '?from=' + String(senderId),
       });
     } catch (error) {
+      // Only the error's name: a database error's message can quote the
+      // names and ids it was working with, and none of that belongs in a log.
       this.logger.warn(
         'Could not notify about a new request: ' +
-          (error instanceof Error ? error.message : String(error)),
+          (error instanceof Error ? error.name : 'UnknownError'),
       );
     }
   }

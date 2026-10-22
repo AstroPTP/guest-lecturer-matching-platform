@@ -552,7 +552,33 @@ describe('MatchRequestsService', () => {
       await expect(service.create(userId, '7')).resolves.toEqual(
         expect.objectContaining({ matchId: '6020', status: 'PENDING' }),
       );
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('connection'));
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs only the name of a failure, never its message or text', async () => {
+      const failure = Object.assign(
+        new Error('Unique constraint failed for ada.lee@example.com'),
+        { name: 'PrismaClientKnownRequestError' },
+      );
+      const notify = jest
+        .spyOn(notifications, 'createUnlessRecent')
+        .mockRejectedValueOnce(failure)
+        .mockRejectedValueOnce('Sam Tran sam@example.com');
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      for (let attempt = 0; attempt < 2; attempt++) {
+        askAs('coordinator', {
+          coordinator: coordinatorProfile,
+          guest: guestProfile,
+        });
+        await service.create(userId, '7');
+      }
+
+      expect(notify).toHaveBeenCalledTimes(2);
+      expect((warn.mock.calls as [string][]).map(([line]) => line)).toEqual([
+        'Could not notify about a new request: PrismaClientKnownRequestError',
+        'Could not notify about a new request: UnknownError',
+      ]);
     });
   });
 

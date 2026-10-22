@@ -244,7 +244,29 @@ describe('MessagesService', () => {
       await expect(service.send(userId, '7', 'Hello')).resolves.toEqual(
         expect.objectContaining({ id: '3', fromMe: true }),
       );
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('connection'));
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs only the name of a failure, never its message or text', async () => {
+      sendAs('coordinator');
+      const failure = Object.assign(
+        new Error('Unique constraint failed for ada.lee@example.com'),
+        { name: 'PrismaClientKnownRequestError' },
+      );
+      const notify = jest
+        .spyOn(notifications, 'createOrRefreshUnread')
+        .mockRejectedValueOnce(failure)
+        .mockRejectedValueOnce('Sam Tran sam@example.com');
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      await service.send(userId, '7', 'One');
+      await service.send(userId, '7', 'Two');
+
+      expect(notify).toHaveBeenCalledTimes(2);
+      expect((warn.mock.calls as [string][]).map(([line]) => line)).toEqual([
+        'Could not notify about a new message: PrismaClientKnownRequestError',
+        'Could not notify about a new message: UnknownError',
+      ]);
     });
 
     it('keeps one unread notice per conversation however many messages arrive', async () => {
