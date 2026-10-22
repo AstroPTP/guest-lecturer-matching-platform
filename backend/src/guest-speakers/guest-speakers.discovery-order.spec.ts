@@ -8,7 +8,10 @@ import { GuestSpeakersService } from './guest-speakers.service';
  * setting.
  */
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete process.env.MATCHING_SUGGESTIONS_ENABLED;
+});
 
 const DAY = 24 * 60 * 60 * 1000;
 const daysAgo = (days: number) => new Date(Date.now() - days * DAY);
@@ -127,6 +130,23 @@ describe('GuestSpeakersService.findAll order', () => {
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValue(settings({ suggestions_enabled: false }));
     const { profile, accepted } = seed();
+
+    expect(names(await service.findAll('auth0|coord'))).toEqual([
+      'Ada',
+      'Bea',
+      'Cy',
+    ]);
+    expect(profile).not.toHaveBeenCalled();
+    expect(accepted).not.toHaveBeenCalled();
+  });
+
+  it('keeps today’s order exactly when the server has Suggested speakers off, whatever the setting says', async () => {
+    process.env.MATCHING_SUGGESTIONS_ENABLED = 'false';
+    const upsert = jest
+      .spyOn(prisma.admin_settings, 'upsert')
+      .mockResolvedValue(settings());
+    const { profile, accepted } = seed();
+    upsert.mockClear();
 
     expect(names(await service.findAll('auth0|coord'))).toEqual([
       'Ada',

@@ -1,5 +1,5 @@
 import { prisma } from '../prisma';
-import { readMatchingSettings } from './matching-settings';
+import { readActiveMatchingSettings } from './matching-settings';
 import {
   exposureScore,
   fitScore,
@@ -259,8 +259,8 @@ export async function orderGuestsForViewer<G extends RankableGuest>(
   if (!viewerAuth0Id || guests.length < 2) {
     return guests;
   }
-  const settings = await readMatchingSettings();
-  if (!settings.enabled) {
+  const settings = await readActiveMatchingSettings();
+  if (!settings) {
     return guests;
   }
   const viewer = await prisma.coordinators.findFirst({
@@ -312,8 +312,8 @@ export async function orderCoordinatorsForViewer<C extends RankableCoordinator>(
   if (!viewerAuth0Id || coordinators.length < 2) {
     return coordinators;
   }
-  const settings = await readMatchingSettings();
-  if (!settings.enabled) {
+  const settings = await readActiveMatchingSettings();
+  if (!settings) {
     return coordinators;
   }
   const viewer = await prisma.guests.findFirst({

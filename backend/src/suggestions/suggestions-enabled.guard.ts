@@ -1,24 +1,13 @@
 import { CanActivate, Injectable, NotFoundException } from '@nestjs/common';
-import { readMatchingSettings } from './matching-settings';
+import { readMatchingSettings, suggestionsEnabled } from './matching-settings';
+
+// Kept importable from here, where it was first written.
+export { suggestionsEnabled };
 
 /** The code and words an administrator's switch gives the 404, which the page shows. */
 export const SUGGESTIONS_DISABLED_CODE = 'SUGGESTIONS_DISABLED';
 export const SUGGESTIONS_DISABLED_MESSAGE =
   'Suggested speakers is turned off by an administrator.';
-
-/**
- * Whether Suggested speakers is switched on.
- *
- * On unless MATCHING_SUGGESTIONS_ENABLED is set to "false". An unset, empty
- * or misspelled value leaves it on, so a typo can never switch a feature off
- * by accident. Read when a request arrives, not at boot, because it is
- * optional and has a default; there is nothing to fail fast about.
- */
-export function suggestionsEnabled(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
-  return env.MATCHING_SUGGESTIONS_ENABLED?.trim().toLowerCase() !== 'false';
-}
 
 /**
  * Answers 404 when the feature is off, as though the route did not exist.

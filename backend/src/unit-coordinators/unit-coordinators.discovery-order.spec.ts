@@ -8,7 +8,10 @@ import { UnitCoordinatorsService } from './unit-coordinators.service';
  * setting.
  */
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete process.env.MATCHING_SUGGESTIONS_ENABLED;
+});
 
 const settings = (overrides: Record<string, unknown> = {}) =>
   ({
@@ -142,6 +145,20 @@ describe('UnitCoordinatorsService.findAll order', () => {
     jest
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValue(settings({ suggestions_enabled: false }));
+    const { profile } = seed();
+
+    expect(names(await service.findAll('auth0|guest'))).toEqual([
+      'Ada',
+      'Bea',
+      'Cy',
+      'Di',
+    ]);
+    expect(profile).not.toHaveBeenCalled();
+  });
+
+  it('keeps today’s order exactly when the server has Suggested speakers off, whatever the setting says', async () => {
+    process.env.MATCHING_SUGGESTIONS_ENABLED = 'false';
+    jest.spyOn(prisma.admin_settings, 'upsert').mockResolvedValue(settings());
     const { profile } = seed();
 
     expect(names(await service.findAll('auth0|guest'))).toEqual([

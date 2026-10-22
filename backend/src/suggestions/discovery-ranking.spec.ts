@@ -20,7 +20,10 @@ import {
   type WeeklyAvailability,
 } from './scoring';
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete process.env.MATCHING_SUGGESTIONS_ENABLED;
+});
 
 const NOW = new Date('2026-10-22T00:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -573,6 +576,41 @@ describe('orderGuestsForViewer', () => {
     expect(accepted).not.toHaveBeenCalled();
   });
 
+  it.each(['false', 'FALSE', ' false '])(
+    'returns the guests exactly as given when the server has MATCHING_SUGGESTIONS_ENABLED=%j, even with the setting on',
+    async (value) => {
+      process.env.MATCHING_SUGGESTIONS_ENABLED = value;
+      const { settings, profile, topics, accepted } = stub();
+
+      const ordered = await orderGuestsForViewer(
+        guests,
+        expertise,
+        'auth0|coord',
+        NOW,
+      );
+
+      expect(ordered).toBe(guests);
+      expect(ids(ordered)).toEqual([1, 2, 3]);
+      // The hard switch is answered without reading the database.
+      expect(settings).not.toHaveBeenCalled();
+      expect(profile).not.toHaveBeenCalled();
+      expect(topics).not.toHaveBeenCalled();
+      expect(accepted).not.toHaveBeenCalled();
+    },
+  );
+
+  it('treats a misspelled server switch as on', async () => {
+    process.env.MATCHING_SUGGESTIONS_ENABLED = 'flase';
+    stub();
+    const ordered = await orderGuestsForViewer(
+      guests,
+      expertise,
+      'auth0|coord',
+      NOW,
+    );
+    expect(ids(ordered)).toEqual([3, 2, 1]);
+  });
+
   it('treats a missing setting as on, as Suggested speakers does', async () => {
     stub();
     jest
@@ -735,6 +773,28 @@ describe('orderCoordinatorsForViewer', () => {
     expect(ordered).toBe(coordinators);
     expect(profile).not.toHaveBeenCalled();
   });
+
+  it.each(['false', 'FALSE', ' false '])(
+    'returns the coordinators exactly as given when the server has MATCHING_SUGGESTIONS_ENABLED=%j, even with the setting on',
+    async (value) => {
+      process.env.MATCHING_SUGGESTIONS_ENABLED = value;
+      const { profile, topics } = stub();
+      const settings = jest.spyOn(prisma.admin_settings, 'upsert');
+
+      const ordered = await orderCoordinatorsForViewer(
+        coordinators,
+        expertise,
+        availability,
+        'auth0|guest',
+      );
+
+      expect(ordered).toBe(coordinators);
+      expect(coordinatorIds(ordered)).toEqual([1, 2, 3]);
+      expect(settings).not.toHaveBeenCalled();
+      expect(profile).not.toHaveBeenCalled();
+      expect(topics).not.toHaveBeenCalled();
+    },
+  );
 
   it('leaves the order alone for a viewer who is not a guest', async () => {
     stub({ viewer: null });

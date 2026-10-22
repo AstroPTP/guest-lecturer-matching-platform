@@ -33,6 +33,20 @@ export interface MatchingSettings {
 }
 
 /**
+ * Whether the server has Suggested speakers switched on.
+ *
+ * On unless MATCHING_SUGGESTIONS_ENABLED is set to "false". An unset, empty
+ * or misspelled value leaves it on, so a typo can never switch a feature off
+ * by accident. Read when a request arrives, not at boot, because it is
+ * optional and has a default; there is nothing to fail fast about.
+ */
+export function suggestionsEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.MATCHING_SUGGESTIONS_ENABLED?.trim().toLowerCase() !== 'false';
+}
+
+/**
  * The administrator's Suggested speakers settings, read through the shared
  * settings reader so there is one place that knows how the row is fetched.
  *
@@ -52,4 +66,26 @@ export async function readMatchingSettings(): Promise<MatchingSettings> {
     ),
     halfLifeDays: row.suggestions_half_life_days ?? d.halfLifeDays,
   };
+}
+
+/**
+ * The settings while Suggested speakers is on, or null when either switch has
+ * it off: MATCHING_SUGGESTIONS_ENABLED=false on the server, which wins over
+ * everything and is answered without reading the database, or the
+ * administrator's switch in Settings.
+ *
+ * Everything that changes what a person sees because the feature is on asks
+ * here, so the server switch cannot be ignored by one of them.
+ */
+export async function readActiveMatchingSettings(): Promise<MatchingSettings | null> {
+  if (!suggestionsEnabled()) {
+    return null;
+  }
+  const settings = await readMatchingSettings();
+  return settings.enabled ? settings : null;
+}
+
+/** Whether Suggested speakers is on under both switches. */
+export async function suggestionsOn(): Promise<boolean> {
+  return (await readActiveMatchingSettings()) !== null;
 }
