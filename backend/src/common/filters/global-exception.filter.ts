@@ -10,6 +10,11 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { monitoringStore } from '../../monitoring/monitoring.store';
 import { ErrorCode, ErrorEnvelope } from '../error-codes';
+import {
+  acceptInboundCorrelationId,
+  CORRELATION_HEADER,
+  currentCorrelationId,
+} from '../request-context';
 
 /**
  * Turns every error into the four-field envelope.
@@ -22,7 +27,8 @@ import { ErrorCode, ErrorEnvelope } from '../error-codes';
  *     (checklist INF-02).
  *
  * The correlation id appears in both, so a user quoting the id from their
- * error screen can be matched to the stack trace that produced it.
+ * error screen can be matched to the stack trace that produced it. It is the
+ * same id the request's JSON log line and any audit entry carry (NFR-20).
  */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -100,20 +106,19 @@ function numericUserIdOf(request: Request): number | null {
 }
 
 /**
- * Reuses an inbound correlation id so one identifier follows a request across
- * the frontend and backend logs (checklist REP-06), and mints one otherwise.
+ * The id the request middleware already settled on, so the envelope, the log
+ * line and the response header all agree.
  *
- * Length-capped because this value is echoed back and written to logs, and an
- * unbounded client-supplied string is a log-injection and storage problem.
+ * The rest is for an error that arrives with no request context, which means
+ * the middleware did not run for it: reuse a well-formed inbound id (checklist
+ * REP-06) and otherwise mint one, so an envelope never goes out without an id.
  */
 function resolveCorrelationId(request: Request): string {
-  const inbound = request.header('x-correlation-id');
-
-  if (typeof inbound === 'string' && /^[\w-]{1,64}$/.test(inbound)) {
-    return inbound;
-  }
-
-  return randomUUID();
+  return (
+    currentCorrelationId() ??
+    acceptInboundCorrelationId(request.header(CORRELATION_HEADER)) ??
+    randomUUID()
+  );
 }
 
 function resolveStatus(exception: unknown): HttpStatus {
@@ -207,6 +212,10 @@ function defaultCodeFor(status: HttpStatus): ErrorCode {
       return ErrorCode.AuthzInsufficientRole;
     case HttpStatus.BAD_REQUEST:
       return ErrorCode.ValidationFailed;
+    case HttpStatus.NOT_FOUND:
+      return ErrorCode.NotFound;
+    case HttpStatus.CONFLICT:
+      return ErrorCode.Conflict;
     case HttpStatus.TOO_MANY_REQUESTS:
       return ErrorCode.RateLimitExceeded;
     case HttpStatus.PAYLOAD_TOO_LARGE:
@@ -224,6 +233,10 @@ function defaultMessageFor(status: HttpStatus): string {
       return 'You do not have permission to perform this action';
     case HttpStatus.BAD_REQUEST:
       return 'The request could not be processed';
+    case HttpStatus.NOT_FOUND:
+      return 'The requested resource was not found';
+    case HttpStatus.CONFLICT:
+      return 'The request conflicts with the current state of the resource';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'Too many requests';
     case HttpStatus.PAYLOAD_TOO_LARGE:
