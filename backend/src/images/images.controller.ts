@@ -34,10 +34,17 @@ const photoUpload = FileInterceptor('file', {
 export class ImagesController {
   constructor(private readonly images: ImagesService) {}
 
-  /** Serves raw image bytes. Used as the `src` of an <img> tag. */
+  /**
+   * Serves raw image bytes. Used as the `src` of an <img> tag. Any signed-in
+   * role may ask, but only for a photo the service says they may see.
+   */
   @Get('images/:id')
-  async getImage(@Param('id') id: string, @Res() res: Response) {
-    const image = await this.images.get(toId(id, 'id'));
+  async getImage(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const image = await this.images.getVisibleTo(toId(id, 'id'), user.id);
     res.setHeader('Content-Type', image.mime_type);
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(image.image_data);
