@@ -14,6 +14,8 @@ export type Side = 'coordinator' | 'guest';
 interface CallerSide {
   side: Side;
   ownId: bigint;
+  /** users.userid of the caller. */
+  userId: bigint;
 }
 
 /** A match request as the caller sees it: who it is with, and where it stands. */
@@ -144,28 +146,48 @@ export class MatchRequestsService {
     };
   }
 
-  /** The caller's match with one profile; refused unless both sides agreed. */
+  /**
+   * The caller's match with one profile; refused unless both sides agreed.
+   */
   async findAcceptedMatch(
     auth0Id: string,
     targetId: string,
   ): Promise<{ side: Side; matchId: bigint }> {
     const caller = await this.resolveSide(auth0Id);
-    const row = await prisma.match_requests.findUnique({
-      where: {
-        coordinator_id_guest_id: this.toPair(
-          caller,
-          toId(targetId, 'targetId'),
-        ),
-      },
-    });
-    if (row?.status !== 'ACCEPTED') {
-      throw new ForbiddenException({
-        code: ErrorCode.AuthzInsufficientRole,
-        message: 'You can only message people you have matched with.',
-      });
-    }
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only message people you have matched with.',
+    );
 
     return { side: caller.side, matchId: row.match_id };
+  }
+
+  /**
+   * The person on the other side of the caller's accepted match, for acting on
+   * them rather than messaging them, such as reporting. The counterpart's user
+   * id is null for a profile that was never linked to an account.
+   */
+  async findAcceptedCounterpart(
+    auth0Id: string,
+    targetId: string,
+  ): Promise<{
+    matchId: bigint;
+    callerUserId: bigint;
+    counterpartUserId: bigint | null;
+  }> {
+    const caller = await this.resolveSide(auth0Id);
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only report someone you have matched with.',
+    );
+
+    return {
+      matchId: row.match_id,
+      callerUserId: caller.userId,
+      counterpartUserId: await this.counterpartUserId(caller, row),
+    };
   }
 
   /** Withdraws a request or ends a match; the messages under it cascade. */
@@ -212,6 +234,47 @@ export class MatchRequestsService {
     await this.notifyUnmatch(pair, caller.side);
   }
 
+  /** The caller's row with one profile, refused with `message` unless ACCEPTED. */
+  private async requireAcceptedRow(
+    caller: CallerSide,
+    targetId: string,
+    message: string,
+  ): Promise<MatchRequestRow> {
+    const row = await prisma.match_requests.findUnique({
+      where: {
+        coordinator_id_guest_id: this.toPair(
+          caller,
+          toId(targetId, 'targetId'),
+        ),
+      },
+    });
+    if (row?.status !== 'ACCEPTED') {
+      throw new ForbiddenException({
+        code: ErrorCode.AuthzInsufficientRole,
+        message,
+      });
+    }
+    return row;
+  }
+
+  /** users.userid of the other side of a match, if their profile has one. */
+  private async counterpartUserId(
+    caller: CallerSide,
+    row: MatchRequestRow,
+  ): Promise<bigint | null> {
+    const profile =
+      caller.side === 'coordinator'
+        ? await prisma.guests.findUnique({
+            where: { guest_id: row.guest_id },
+            select: { user_id: true },
+          })
+        : await prisma.coordinators.findUnique({
+            where: { coordinator_id: row.coordinator_id },
+            select: { user_id: true },
+          });
+    return profile?.user_id ?? null;
+  }
+
   private async resolveSide(auth0Id: string): Promise<CallerSide> {
     const userId = await resolveUserId(auth0Id);
 
@@ -220,7 +283,11 @@ export class MatchRequestsService {
       select: { coordinator_id: true },
     });
     if (coordinator) {
-      return { side: 'coordinator', ownId: coordinator.coordinator_id };
+      return {
+        side: 'coordinator',
+        ownId: coordinator.coordinator_id,
+        userId,
+      };
     }
 
     const guest = await prisma.guests.findUnique({
@@ -228,7 +295,7 @@ export class MatchRequestsService {
       select: { guest_id: true },
     });
     if (guest) {
-      return { side: 'guest', ownId: guest.guest_id };
+      return { side: 'guest', ownId: guest.guest_id, userId };
     }
 
     throw new ForbiddenException(

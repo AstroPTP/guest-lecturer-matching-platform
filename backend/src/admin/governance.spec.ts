@@ -1,9 +1,16 @@
 import 'reflect-metadata';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { prisma } from '../prisma';
 import { ROLES_KEY } from '../auth/roles.decorator';
+import { MatchRequestsService } from '../match-requests/match-requests.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AdminService } from './admin.service';
 import { GovernanceService } from './governance.service';
 import { ModerationController } from './moderation.controller';
@@ -111,6 +118,36 @@ describe('CreateReportDto', () => {
   });
 });
 
+describe('CreateReportDto bodies', () => {
+  const check = (body: object) =>
+    validate(plainToInstance(CreateReportDto, body), {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+
+  it('accepts a profile id with a reason', async () => {
+    expect(await check({ targetId: '12', reason: 'asked for money' })).toEqual(
+      [],
+    );
+  });
+
+  it('still accepts the user id body', async () => {
+    expect(
+      await check({ reportedUserId: '5', reason: 'asked for money' }),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [{ reason: 'asked for money' }],
+    [{ targetId: '12; DROP', reason: 'asked for money' }],
+    [{ targetId: '12', reason: 'no' }],
+    [{ targetId: '12', reason: 'x'.repeat(1001) }],
+    [{ targetId: '12', reason: 'asked for money', reporterId: '3' }],
+  ])('rejects %p', async (body) => {
+    expect((await check(body)).length).toBeGreaterThan(0);
+  });
+});
+
 describe('ModerationController', () => {
   it('is open to any signed-in account, unlike the admin routes', () => {
     expect(
@@ -121,7 +158,10 @@ describe('ModerationController', () => {
 
 describe('GovernanceService', () => {
   const admin = new AdminService();
-  const service = new GovernanceService(admin);
+  const service = new GovernanceService(
+    admin,
+    new MatchRequestsService(new NotificationsService()),
+  );
 
   it('approves a profile and records who did it', async () => {
     jest
@@ -177,6 +217,240 @@ describe('GovernanceService', () => {
     await expect(
       service.report('auth0|me', { reportedUserId: '5', reason: 'testing' }),
     ).rejects.toThrow('You cannot report yourself.');
+  });
+
+  describe('reporting the person on the other side of a match', () => {
+    const reason = 'asked me to pay a fee first';
+    const auditRow = {
+      entry_id: 31n,
+      occurred_at: new Date('2026-10-20T01:00:00.000Z'),
+    };
+
+    /** Signs in as coordinator 5, matched (or not) with guest 3001 whose account is user 77. */
+    function asCoordinator(
+      match: { status: string } | null,
+      guest: { user_id: bigint | null } | null = { user_id: 77n },
+    ) {
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValueOnce({ coordinator_id: 5n } as never);
+      const lookup = jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockResolvedValue(
+          match
+            ? ({
+                match_id: 6001n,
+                coordinator_id: 5n,
+                guest_id: 3001n,
+                ...match,
+              } as never)
+            : null,
+        );
+      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValue(guest as never);
+      const audit = jest
+        .spyOn(prisma.audit_entries, 'create')
+        .mockResolvedValue(auditRow as never);
+      return { lookup, audit };
+    }
+
+    it('stores the report against the other person account and the match', async () => {
+      const { audit } = asCoordinator({ status: 'ACCEPTED' });
+
+      const result = await service.report('auth0|me', {
+        targetId: '3001',
+        reason,
+      });
+
+      expect(result).toEqual({
+        id: '31',
+        createdAt: '2026-10-20T01:00:00.000Z',
+      });
+      expect(audit.mock.calls[0][0]).toMatchObject({
+        data: {
+          action: 'user.reported',
+          target_type: 'user',
+          target_id: '77',
+          detail: { reason, matchId: '6001' },
+        },
+      });
+    });
+
+    it.each([
+      ['pending', { status: 'PENDING' }],
+      ['rejected', { status: 'REJECTED' }],
+      ['ended', { status: 'UNMATCHED' }],
+      ['never made', null],
+    ])('refuses when the match is %s', async (_label, match) => {
+      const { audit } = asCoordinator(match);
+
+      await expect(
+        service.report('auth0|me', { targetId: '3001', reason }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(audit).not.toHaveBeenCalled();
+    });
+
+    it('only ever looks in matches the caller is part of', async () => {
+      // A guest cannot name some other coordinator's match: the pair is built
+      // from their own profile, so the other half is the only thing they pick.
+      jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValueOnce({ guest_id: 7n } as never);
+      const lookup = jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockResolvedValue(null);
+
+      await expect(
+        service.report('auth0|me', { targetId: '5', reason }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(lookup).toHaveBeenCalledWith({
+        where: {
+          coordinator_id_guest_id: { coordinator_id: 5n, guest_id: 7n },
+        },
+      });
+    });
+
+    it('will not let someone report themselves through their own match', async () => {
+      // The double resolves every caller to user 1.
+      const { audit } = asCoordinator({ status: 'ACCEPTED' }, { user_id: 1n });
+
+      await expect(
+        service.report('auth0|me', { targetId: '3001', reason }),
+      ).rejects.toThrow('You cannot report yourself.');
+      expect(audit).not.toHaveBeenCalled();
+    });
+
+    it('says so when the other profile has no account behind it', async () => {
+      const { audit } = asCoordinator(
+        { status: 'ACCEPTED' },
+        { user_id: null },
+      );
+
+      await expect(
+        service.report('auth0|me', { targetId: '3001', reason }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(audit).not.toHaveBeenCalled();
+    });
+
+    it('refuses a body that names the person twice', async () => {
+      const { lookup, audit } = asCoordinator({ status: 'ACCEPTED' });
+
+      await expect(
+        service.report('auth0|me', {
+          targetId: '3001',
+          reportedUserId: '9',
+          reason,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(lookup).not.toHaveBeenCalled();
+      expect(audit).not.toHaveBeenCalled();
+    });
+
+    it('still takes a report about someone who is already reported', async () => {
+      const { audit } = asCoordinator({ status: 'ACCEPTED' });
+      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValue([
+        {
+          entry_id: 20n,
+          target_id: '77',
+          detail: { reason: 'earlier', matchId: '9' },
+          actor: null,
+        },
+      ] as never);
+
+      await service.report('auth0|me', { targetId: '3001', reason });
+
+      expect(audit).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the user id body working, without a match behind it', async () => {
+      jest
+        .spyOn(prisma.users, 'findUnique')
+        .mockResolvedValue({ userid: 9n, auth0Id: 'auth0|other' } as never);
+      const audit = jest
+        .spyOn(prisma.audit_entries, 'create')
+        .mockResolvedValue(auditRow as never);
+
+      await service.report('auth0|me', { reportedUserId: '9', reason });
+
+      const { data } = audit.mock.calls[0][0] as {
+        data: { target_id: string; detail: object };
+      };
+      expect(data.target_id).toBe('9');
+      expect(data.detail).toEqual({ reason });
+    });
+  });
+
+  it('shows who reported whom, from which match, and whether they are kept out', async () => {
+    jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce([
+      {
+        entry_id: 8n,
+        actor_user_id: 2n,
+        target_id: '77',
+        detail: { reason: 'asked for a fee', matchId: '6001' },
+        occurred_at: new Date('2026-10-20T01:00:00.000Z'),
+        actor: { email: 'coord@example.com' },
+      },
+      {
+        entry_id: 9n,
+        actor_user_id: null,
+        target_id: '78',
+        detail: { reason: 'sent through the old body' },
+        occurred_at: new Date('2026-10-21T01:00:00.000Z'),
+        actor: null,
+      },
+    ] as never);
+    jest.spyOn(prisma.users, 'findMany').mockResolvedValue([
+      {
+        userid: 2n,
+        email: 'coord@example.com',
+        role: 'unit_coordinator',
+        deletedat: null,
+      },
+      {
+        userid: 77n,
+        email: 'guest@example.com',
+        role: 'guest_speaker',
+        deletedat: null,
+      },
+      {
+        userid: 78n,
+        email: 'other@example.com',
+        role: 'guest_speaker',
+        deletedat: new Date(),
+      },
+    ] as never);
+    jest
+      .spyOn(prisma.guests, 'findMany')
+      .mockResolvedValue([
+        { user_id: 77n, first_name: 'Greta', last_name: 'Guest' },
+      ] as never);
+    jest
+      .spyOn(prisma.coordinators, 'findMany')
+      .mockResolvedValue([
+        { user_id: 2n, first_name: 'Carl', last_name: null },
+      ] as never);
+
+    const [matched, plain] = await service.openReports();
+
+    expect(matched).toMatchObject({
+      id: '8',
+      reporterName: 'Carl',
+      reporterRole: 'unit_coordinator',
+      reporterEmail: 'coord@example.com',
+      reportedName: 'Greta Guest',
+      reportedRole: 'guest_speaker',
+      reportedStatus: 'active',
+      matchId: '6001',
+      reportedIsBlocked: true,
+    });
+    expect(plain).toMatchObject({
+      reporterName: null,
+      reportedName: null,
+      reportedStatus: 'deactivated',
+      matchId: null,
+      reportedIsBlocked: false,
+    });
   });
 
   it('leaves resolved reports out of the queue', async () => {

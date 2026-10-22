@@ -5,7 +5,9 @@ import {
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
 import { prisma, toId } from '../prisma';
+import { MatchRequestsService } from '../match-requests/match-requests.service';
 import { AdminService } from './admin.service';
+import { blocksReportedUser, findOpenReports } from './open-reports';
 import { readSettings, recordAudit } from './platform-rules';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
@@ -22,7 +24,10 @@ const fullName = (
  */
 @Injectable()
 export class GovernanceService {
-  constructor(private readonly admin: AdminService) {}
+  constructor(
+    private readonly admin: AdminService,
+    private readonly matchRequests: MatchRequestsService,
+  ) {}
 
   /** Guest lecturer profiles not yet approved, oldest first. */
   async pendingReviews() {
@@ -178,8 +183,29 @@ export class GovernanceService {
   /**
    * Lets any signed-in user report another. Stored in the audit trail, which
    * is append-only, so the person reported cannot remove the report.
+   *
+   * A report that names a profile (`targetId`) is only accepted from someone
+   * in an accepted match with that profile, and the person reported is found
+   * from the match rather than taken from the caller. While it is open it
+   * keeps that person out of Discovery and out of messaging.
    */
   async report(reporter: string, dto: CreateReportDto) {
+    if (dto.targetId !== undefined && dto.reportedUserId !== undefined) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'Send either targetId or reportedUserId, not both.',
+      });
+    }
+    if (dto.targetId !== undefined) {
+      return this.reportMatchedPerson(reporter, dto.targetId, dto.reason);
+    }
+    if (dto.reportedUserId === undefined) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'Say who you are reporting.',
+      });
+    }
+
     const reported = await prisma.users.findUnique({
       where: { userid: toId(dto.reportedUserId, 'reportedUserId') },
       select: { userid: true, auth0Id: true },
@@ -193,11 +219,48 @@ export class GovernanceService {
         message: 'You cannot report yourself.',
       });
     }
+    return this.storeReport(reporter, dto.reportedUserId, {
+      reason: dto.reason,
+    });
+  }
+
+  private async reportMatchedPerson(
+    reporter: string,
+    targetId: string,
+    reason: string,
+  ) {
+    const match = await this.matchRequests.findAcceptedCounterpart(
+      reporter,
+      targetId,
+    );
+    if (match.counterpartUserId === null) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'That person has no account to report.',
+      });
+    }
+    if (match.counterpartUserId === match.callerUserId) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'You cannot report yourself.',
+      });
+    }
+    return this.storeReport(reporter, match.counterpartUserId.toString(), {
+      reason,
+      matchId: match.matchId.toString(),
+    });
+  }
+
+  private async storeReport(
+    reporter: string,
+    reportedUserId: string,
+    detail: { reason: string; matchId?: string },
+  ) {
     const entry = await recordAudit(
       reporter,
       'user.reported',
-      { type: 'user', id: dto.reportedUserId },
-      { reason: dto.reason },
+      { type: 'user', id: reportedUserId },
+      detail,
     );
     return {
       id: entry.entry_id.toString(),
@@ -205,42 +268,61 @@ export class GovernanceService {
     };
   }
 
-  /** Reports nobody has resolved yet, oldest first. */
+  /**
+   * Reports nobody has resolved yet, oldest first. Each says who reported
+   * whom, in what role, and which match it came from, and whether the person
+   * reported is currently active and kept out of Discovery and messaging.
+   */
   async openReports() {
-    const [reports, resolutions] = await Promise.all([
-      prisma.audit_entries.findMany({
-        where: { action: 'user.reported' },
-        orderBy: { occurred_at: 'asc' },
-        include: { actor: { select: { email: true } } },
+    const open = await findOpenReports();
+
+    const userIds = [
+      ...new Set(
+        open.flatMap((r) => {
+          const ids: bigint[] = [];
+          if (typeof r.actor_user_id === 'bigint') ids.push(r.actor_user_id);
+          if (r.target_id) ids.push(toId(r.target_id, 'id'));
+          return ids;
+        }),
+      ),
+    ];
+    const names = { first_name: true, last_name: true, user_id: true };
+    const [people, guests, coordinators] = await Promise.all([
+      prisma.users.findMany({
+        where: { userid: { in: userIds } },
+        select: { userid: true, email: true, role: true, deletedat: true },
       }),
-      prisma.audit_entries.findMany({
-        where: { action: 'report.resolved' },
-        select: { target_id: true },
+      prisma.guests.findMany({
+        where: { user_id: { in: userIds } },
+        select: names,
+      }),
+      prisma.coordinators.findMany({
+        where: { user_id: { in: userIds } },
+        select: names,
       }),
     ]);
-    const resolved = new Set(resolutions.map((r) => r.target_id));
-    const open = reports.filter((r) => !resolved.has(r.entry_id.toString()));
-
-    const reportedIds = [
-      ...new Set(open.flatMap((r) => (r.target_id ? [r.target_id] : []))),
-    ];
-    const people = await prisma.users.findMany({
-      where: { userid: { in: reportedIds.map((id) => toId(id, 'id')) } },
-      select: { userid: true, email: true, role: true, deletedat: true },
-    });
     const byId = new Map(people.map((p) => [p.userid.toString(), p]));
+    const nameOf = new Map(
+      [...guests, ...coordinators].map((p) => [String(p.user_id), fullName(p)]),
+    );
 
     return open.map((r) => {
       const person = r.target_id ? byId.get(r.target_id) : undefined;
-      const detail = (r.detail ?? {}) as { reason?: string };
+      const reporter = byId.get(String(r.actor_user_id));
+      const detail = (r.detail ?? {}) as { reason?: string; matchId?: string };
       return {
         id: r.entry_id.toString(),
         reason: detail.reason ?? '',
         reporterEmail: r.actor?.email ?? null,
+        reporterName: nameOf.get(String(r.actor_user_id)) ?? null,
+        reporterRole: reporter?.role ?? null,
         reportedUserId: r.target_id,
         reportedEmail: person?.email ?? null,
+        reportedName: nameOf.get(String(r.target_id)) ?? null,
         reportedRole: person?.role ?? null,
         reportedStatus: person?.deletedat ? 'deactivated' : 'active',
+        matchId: detail.matchId ?? null,
+        reportedIsBlocked: blocksReportedUser(r.detail),
         reportedAt: r.occurred_at.toISOString(),
       };
     });

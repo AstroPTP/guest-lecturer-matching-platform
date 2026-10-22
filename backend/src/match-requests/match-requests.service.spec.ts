@@ -416,4 +416,39 @@ describe('MatchRequestsService', () => {
       expect(notify).not.toHaveBeenCalled();
     });
   });
+  describe('findAcceptedCounterpart', () => {
+    it('names the other person account and the match', async () => {
+      signInAsCoordinator(5n);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6001n,
+        coordinator_id: 5n,
+        guest_id: 3001n,
+        status: 'ACCEPTED',
+      } as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValue({ user_id: 77n } as never);
+
+      await expect(
+        service.findAcceptedCounterpart(userId, '3001'),
+      ).resolves.toEqual({
+        matchId: 6001n,
+        callerUserId: 1n,
+        counterpartUserId: 77n,
+      });
+    });
+
+    it('refuses without an accepted match, in its own words', async () => {
+      signInAsCoordinator(5n);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue(null);
+
+      await expect(
+        service.findAcceptedCounterpart(userId, '3001'),
+      ).rejects.toMatchObject({
+        response: {
+          message: 'You can only report someone you have matched with.',
+        },
+      });
+    });
+  });
 });
