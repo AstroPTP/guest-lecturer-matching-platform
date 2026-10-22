@@ -6,6 +6,7 @@ import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { profileImageUrl } from '../images/images.service';
+import { orderGuestsForViewer } from '../suggestions/discovery-ranking';
 
 type GuestRow = NonNullable<
   Awaited<ReturnType<typeof prisma.guests.findUnique>>
@@ -184,6 +185,9 @@ export class GuestSpeakersService {
    * Deactivated accounts are left out, and so are unapproved profiles while
    * an administrator requires approval, anyone on hold after reports, and
    * anyone the viewer has an open report with.
+   *
+   * While Suggested speakers is on, a coordinator sees the best match first.
+   * Only the order changes: nobody is added or removed, and no score is returned.
    */
   async findAll(viewerAuth0Id?: string) {
     const guests = await prisma.guests.findMany({
@@ -200,7 +204,13 @@ export class GuestSpeakersService {
       prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
     ]);
 
-    return guests.map((guest) => {
+    const ordered = await orderGuestsForViewer(
+      guests,
+      expertiseRows,
+      viewerAuth0Id,
+    );
+
+    return ordered.map((guest) => {
       const hasUser = guest.user_id !== null;
       return {
         id: String(guest.guest_id),

@@ -5,6 +5,7 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { profileImageUrl } from '../images/images.service';
+import { orderCoordinatorsForViewer } from '../suggestions/discovery-ranking';
 import { visibleCoordinatorsWhere } from './coordinator-visibility';
 
 type CoordinatorRow = NonNullable<
@@ -181,6 +182,9 @@ export class UnitCoordinatorsService {
    * Every unit coordinator, from the database. What the discovery page lists.
    * Deactivated accounts, anyone on hold after reports, and anyone the viewer
    * has an open report with are left out.
+   *
+   * While Suggested speakers is on, a guest sees the best match first. Only the
+   * order changes: nobody is added or removed, and no score is returned.
    */
   async findAll(viewerAuth0Id?: string) {
     const coordinators = await prisma.coordinators.findMany({
@@ -197,7 +201,14 @@ export class UnitCoordinatorsService {
       prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
     ]);
 
-    return coordinators.map((coordinator) => {
+    const ordered = await orderCoordinatorsForViewer(
+      coordinators,
+      expertiseRows,
+      availabilityRows,
+      viewerAuth0Id,
+    );
+
+    return ordered.map((coordinator) => {
       const hasUser = coordinator.user_id !== null;
       return {
         id: String(coordinator.coordinator_id),
