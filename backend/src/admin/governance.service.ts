@@ -11,7 +11,10 @@ import { AdminService } from './admin.service';
 import {
   assertReporterWithinLimits,
   findOpenReports,
+  isMatchReport,
   loadModerationState,
+  lockReported,
+  lockReporter,
 } from './open-reports';
 import { readSettings, recordAudit } from './platform-rules';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -269,27 +272,36 @@ export class GovernanceService {
     );
   }
 
-  private async storeReport(
+  /**
+   * Checks the limits and stores the report in one transaction that holds a
+   * lock on the reporter. Without it, two reports sent together would both
+   * read the same count of open reports, both pass, and both be stored.
+   */
+  private storeReport(
     reporter: string,
     reporterUserId: bigint,
     reportedUserId: bigint,
     detail: { reason: string; matchId?: string },
   ) {
-    assertReporterWithinLimits(
-      await findOpenReports(),
-      reporterUserId,
-      reportedUserId,
-    );
-    const entry = await recordAudit(
-      reporter,
-      'user.reported',
-      { type: 'user', id: reportedUserId.toString() },
-      detail,
-    );
-    return {
-      id: entry.entry_id.toString(),
-      createdAt: entry.occurred_at.toISOString(),
-    };
+    return prisma.$transaction(async (tx) => {
+      await lockReporter(tx, reporterUserId);
+      assertReporterWithinLimits(
+        await findOpenReports(tx),
+        reporterUserId,
+        reportedUserId,
+      );
+      const entry = await recordAudit(
+        reporter,
+        'user.reported',
+        { type: 'user', id: reportedUserId.toString() },
+        detail,
+        tx,
+      );
+      return {
+        id: entry.entry_id.toString(),
+        createdAt: entry.occurred_at.toISOString(),
+      };
+    });
   }
 
   /**
@@ -363,8 +375,14 @@ export class GovernanceService {
   /**
    * Holds the person a report is about, for everyone, until an administrator
    * decides: they are left out of Discovery and cannot send or receive
-   * messages. Holding someone already held changes nothing. The hold ends when
-   * the last open report about them is decided.
+   * messages. It needs at least one open report raised from a match, because a
+   * report made without one proves nothing about the two ever dealing with
+   * each other.
+   *
+   * The hold names the reports open about the person now and counts only while
+   * one of them is. Holding someone already held for this report changes
+   * nothing. Taken under the person's lock, so it cannot interleave with a
+   * decision on one of their reports.
    */
   async hold(reportId: string, actor: string) {
     const report = await prisma.audit_entries.findFirst({
@@ -377,29 +395,53 @@ export class GovernanceService {
         message: 'No report with that id.',
       });
     }
+    const person = toId(report.target_id, 'id');
 
-    const state = await loadModerationState();
-    if (!state.reports.some((r) => r.entry_id === report.entry_id)) {
-      throw new ConflictException({
-        code: 'REPORT_ALREADY_DECIDED',
-        message: 'That report has already been decided.',
-      });
-    }
-    if (!state.adminHeld.has(toId(report.target_id, 'id'))) {
-      await recordAudit(
-        actor,
-        'user.held',
-        { type: 'user', id: report.target_id },
-        { reportId },
+    return prisma.$transaction(async (tx) => {
+      await lockReported(tx, person);
+      const state = await loadModerationState(tx);
+      if (!state.reports.some((r) => r.entry_id === report.entry_id)) {
+        throw new ConflictException({
+          code: 'REPORT_ALREADY_DECIDED',
+          message: 'That report has already been decided.',
+        });
+      }
+
+      const about = state.reports.filter(
+        (r) => r.target_id === person.toString(),
       );
-    }
-    return { id: reportId, held: true };
+      if (!about.some((r) => isMatchReport(r.detail))) {
+        throw new ConflictException({
+          code: 'HOLD_NEEDS_MATCH_REPORT',
+          message:
+            'A hold needs at least one open report raised from a match, and this person has none.',
+        });
+      }
+
+      const alreadyCovered =
+        state.adminHeld.has(person) &&
+        state.adminHolds.get(person)?.has(reportId);
+      if (!alreadyCovered) {
+        await recordAudit(
+          actor,
+          'user.held',
+          { type: 'user', id: person.toString() },
+          {
+            reportId,
+            reportIds: about.map((r) => r.entry_id.toString()),
+          },
+          tx,
+        );
+      }
+      return { id: reportId, held: true };
+    });
   }
 
   /**
    * Closes a report, optionally deactivating the account it is about. If that
    * leaves the person no longer on hold, whether from the threshold or from an
-   * administrator, the release is recorded.
+   * administrator, the release is recorded. All under the person's lock, so a
+   * hold, a decision and a release for the same person run one after another.
    */
   async resolveReport(
     reportId: string,
@@ -413,29 +455,36 @@ export class GovernanceService {
     if (!report) {
       throw new NotFoundException('No report with that id.');
     }
-    const before = await loadModerationState();
-    if (outcome === 'deactivated' && report.target_id) {
-      await this.admin.setStatus(report.target_id, 'deactivated', actor);
-    }
-    await recordAudit(
-      actor,
-      'report.resolved',
-      { type: 'report', id: reportId },
-      { outcome },
-    );
+    const person = report.target_id ? toId(report.target_id, 'id') : null;
 
-    if (report.target_id) {
-      const person = toId(report.target_id, 'id');
-      const after = await loadModerationState();
-      if (before.held.has(person) && !after.held.has(person)) {
-        await recordAudit(
-          actor,
-          'user.released',
-          { type: 'user', id: report.target_id },
-          { reportId, outcome },
-        );
+    await prisma.$transaction(async (tx) => {
+      if (person !== null) await lockReported(tx, person);
+      const before = await loadModerationState(tx);
+
+      if (outcome === 'deactivated' && report.target_id) {
+        await this.admin.setStatus(report.target_id, 'deactivated', actor);
       }
-    }
+      await recordAudit(
+        actor,
+        'report.resolved',
+        { type: 'report', id: reportId },
+        { outcome },
+        tx,
+      );
+
+      if (person !== null) {
+        const after = await loadModerationState(tx);
+        if (before.held.has(person) && !after.held.has(person)) {
+          await recordAudit(
+            actor,
+            'user.released',
+            { type: 'user', id: person.toString() },
+            { reportId, outcome },
+            tx,
+          );
+        }
+      }
+    });
     return { id: reportId, outcome };
   }
 }

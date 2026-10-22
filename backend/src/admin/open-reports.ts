@@ -1,5 +1,9 @@
 import { ConflictException } from '@nestjs/common';
 import { prisma, resolveUserId } from '../prisma';
+import type { Prisma } from '../../generated/prisma/client';
+
+/** The root client or a transaction's: either can run these reads. */
+type Db = Prisma.TransactionClient;
 
 /**
  * Reports nobody has decided yet, and what they do to the people involved.
@@ -20,8 +24,49 @@ import { prisma, resolveUserId } from '../prisma';
  *  - It can put the person on hold, which hides them from everyone and stops
  *    them sending or receiving messages. That needs open reports from at least
  *    REPORT_HOLD_THRESHOLD different people, or an administrator placing the
- *    hold ('user.held', lifted by 'user.released').
+ *    hold ('user.held', lifted by 'user.released'). An administrator's hold
+ *    names the reports that were open when it was placed, and counts only
+ *    while one of those is still open, so it cannot outlive the complaint it
+ *    was placed for and catch out a later, unrelated report.
  */
+
+/**
+ * Namespaces for the two advisory locks below. They are the first argument of
+ * pg_advisory_xact_lock(int, int), so a person's id in one namespace never
+ * clashes with the same id in the other.
+ */
+const REPORTER_LOCK_NAMESPACE = 0x52_50_01;
+const REPORTED_LOCK_NAMESPACE = 0x52_50_02;
+
+/**
+ * Takes a lock on one person that lasts until the transaction ends, waiting
+ * if another transaction holds it. A transaction-level lock rather than a
+ * session one, because the database can sit behind a transaction-mode pooler:
+ * the transaction pins one connection, so the lock and the statements it
+ * protects share it, and nothing is left held when the connection is returned.
+ * The id is folded into 32 bits, which only ever makes two people share a
+ * lock, never lets one go unprotected.
+ */
+async function lockPerson(tx: Db, namespace: number, person: bigint) {
+  const key = Number(BigInt.asIntN(32, person));
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${namespace}::int, ${key}::int)`;
+}
+
+/**
+ * Serialises one person's reports, so that two sent together cannot both pass
+ * the limit check before either is stored.
+ */
+export function lockReporter(tx: Db, reporter: bigint) {
+  return lockPerson(tx, REPORTER_LOCK_NAMESPACE, reporter);
+}
+
+/**
+ * Serialises holding, deciding and releasing for one person who has been
+ * reported, so that the steps of one decision cannot interleave with another's.
+ */
+export function lockReported(tx: Db, reported: bigint) {
+  return lockPerson(tx, REPORTED_LOCK_NAMESPACE, reported);
+}
 
 export const DEFAULT_REPORT_HOLD_THRESHOLD = 2;
 
@@ -55,8 +100,8 @@ export function isMatchReport(detail: unknown): boolean {
 }
 
 /** Open reports, oldest first, with the reporter's email. */
-export async function findOpenReports() {
-  const reports = await prisma.audit_entries.findMany({
+export async function findOpenReports(db: Db = prisma) {
+  const reports = await db.audit_entries.findMany({
     where: { action: 'user.reported' },
     orderBy: { occurred_at: 'asc' },
     include: { actor: { select: { email: true } } },
@@ -65,7 +110,7 @@ export async function findOpenReports() {
 
   // Only decisions about these reports matter, so the second read is bounded
   // by the number of reports rather than by everything ever resolved.
-  const resolutions = await prisma.audit_entries.findMany({
+  const resolutions = await db.audit_entries.findMany({
     where: {
       action: 'report.resolved',
       target_id: { in: reports.map((r) => r.entry_id.toString()) },
@@ -88,7 +133,12 @@ export interface ModerationState {
   reporters: Map<bigint, Set<bigint>>;
   /** Per person, everyone they have an open report with, either way round. */
   blockedWith: Map<bigint, Set<bigint>>;
-  /** People an administrator has held and not released. */
+  /**
+   * For each person an administrator has held and not released, the ids of the
+   * reports that were open when they did.
+   */
+  adminHolds: Map<bigint, Set<string>>;
+  /** Those people whose hold still counts: one of its reports is still open. */
   adminHeld: Set<bigint>;
   /** People held for everybody, and why. */
   held: Map<bigint, HoldReason[]>;
@@ -99,6 +149,14 @@ export interface ModerationState {
 function toUserId(value: string | null): bigint | null {
   if (!value || !/^\d+$/.test(value)) return null;
   return BigInt(value);
+}
+
+/** The report ids a 'user.held' entry names; none when it names none. */
+function reportIdsOf(detail: unknown): Set<string> {
+  const ids = (detail as { reportIds?: unknown } | null)?.reportIds;
+  return new Set(
+    Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : [],
+  );
 }
 
 function addTo(map: Map<bigint, Set<bigint>>, key: bigint, value: bigint) {
@@ -112,11 +170,14 @@ function addTo(map: Map<bigint, Set<bigint>>, key: bigint, value: bigint) {
  * blocked from whom and who is held. Does a single read when nobody has been
  * reported, which is nearly always.
  */
-export async function loadModerationState(): Promise<ModerationState> {
+export async function loadModerationState(
+  db: Db = prisma,
+): Promise<ModerationState> {
   const state: ModerationState = {
-    reports: await findOpenReports(),
+    reports: await findOpenReports(db),
     reporters: new Map(),
     blockedWith: new Map(),
+    adminHolds: new Map(),
     adminHeld: new Set(),
     held: new Map(),
     threshold: readReportHoldThreshold(),
@@ -138,20 +199,27 @@ export async function loadModerationState(): Promise<ModerationState> {
   }
 
   // Oldest first, so the last entry for a person is their current state.
-  const marks = await prisma.audit_entries.findMany({
+  const marks = await db.audit_entries.findMany({
     where: { action: { in: ['user.held', 'user.released'] } },
     orderBy: { entry_id: 'asc' },
-    select: { action: true, target_id: true },
+    select: { action: true, target_id: true, detail: true },
   });
   for (const mark of marks) {
     const person = toUserId(mark.target_id);
     if (person === null) continue;
-    if (mark.action === 'user.held') state.adminHeld.add(person);
-    else state.adminHeld.delete(person);
+    if (mark.action === 'user.held') {
+      state.adminHolds.set(person, reportIdsOf(mark.detail));
+    } else {
+      state.adminHolds.delete(person);
+    }
+  }
+  const openIds = new Set(state.reports.map((r) => r.entry_id.toString()));
+  for (const [person, covered] of state.adminHolds) {
+    if ([...covered].some((id) => openIds.has(id))) state.adminHeld.add(person);
   }
 
-  // A hold only means something while a report is open: it bridges the wait
-  // for a decision, and ends with the last report.
+  // An administrator's hold bridges the wait for a decision on the reports it
+  // was placed for, and ends with the last of them.
   for (const person of reported) {
     const reasons: HoldReason[] = [];
     if ((state.reporters.get(person)?.size ?? 0) >= state.threshold) {

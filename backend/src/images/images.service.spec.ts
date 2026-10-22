@@ -265,10 +265,16 @@ describe('ImagesService.getVisibleTo after reports', () => {
           (options.resolved ?? []).map((target_id) => ({ target_id })),
         );
       }
+      // A hold names the reports open about that person when it was placed.
       return Promise.resolve(
         (options.held ?? []).map((person) => ({
           action: 'user.held',
           target_id: person.toString(),
+          detail: {
+            reportIds: (reports as { entry_id: bigint; target_id: string }[])
+              .filter((r) => r.target_id === person.toString())
+              .map((r) => r.entry_id.toString()),
+          },
         })),
       );
     }) as never);

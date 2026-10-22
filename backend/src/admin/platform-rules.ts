@@ -9,7 +9,7 @@ import type { Prisma } from '../../generated/prisma/client';
  * apply a rule need one import, not a module dependency.
  */
 
-/** The settings row. Upserted so the first read cannot race another. */
+/** The settings row. Written as an upsert so the first read cannot race another. */
 export function readSettings() {
   return prisma.admin_settings.upsert({
     where: { id: 1 },
@@ -74,15 +74,17 @@ export async function recordAudit(
   action: string,
   target: { type?: string; id?: string },
   detail?: Prisma.InputJsonValue,
+  /** A transaction's client, to write the entry as part of that transaction. */
+  db: Prisma.TransactionClient = prisma,
 ) {
   const actor = actorAuth0Id
-    ? await prisma.users.findFirst({
+    ? await db.users.findFirst({
         where: { auth0Id: actorAuth0Id },
         select: { userid: true },
       })
     : null;
 
-  return prisma.audit_entries.create({
+  return db.audit_entries.create({
     data: {
       actor_user_id: actor?.userid ?? null,
       action,

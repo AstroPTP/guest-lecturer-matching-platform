@@ -31,7 +31,12 @@ const report = (
   actor: null,
 });
 
-const held = (target: string) => ({ action: 'user.held', target_id: target });
+/** A hold the administrator placed while `reportIds` were open about `target`. */
+const held = (target: string, ...reportIds: string[]) => ({
+  action: 'user.held',
+  target_id: target,
+  detail: { reportIds },
+});
 const released = (target: string) => ({
   action: 'user.released',
   target_id: target,
@@ -240,7 +245,7 @@ describe('loadModerationState', () => {
 
   describe('the hold from an administrator', () => {
     it('holds a person with one open report', async () => {
-      stubAudit([report(4n, 3n, '7')], [], [held('7')]);
+      stubAudit([report(4n, 3n, '7')], [], [held('7', '4')]);
 
       const state = await loadModerationState();
 
@@ -248,7 +253,11 @@ describe('loadModerationState', () => {
     });
 
     it('says both reasons when the threshold also applies', async () => {
-      stubAudit([report(4n, 3n, '7'), report(5n, 4n, '7')], [], [held('7')]);
+      stubAudit(
+        [report(4n, 3n, '7'), report(5n, 4n, '7')],
+        [],
+        [held('7', '4', '5')],
+      );
 
       expect((await loadModerationState()).held.get(7n)).toEqual([
         'threshold',
@@ -257,7 +266,7 @@ describe('loadModerationState', () => {
     });
 
     it('ends when the administrator releases them', async () => {
-      stubAudit([report(4n, 3n, '7')], [], [held('7'), released('7')]);
+      stubAudit([report(4n, 3n, '7')], [], [held('7', '4'), released('7')]);
 
       expect((await loadModerationState()).held.size).toBe(0);
     });
@@ -266,24 +275,66 @@ describe('loadModerationState', () => {
       stubAudit(
         [report(4n, 3n, '7')],
         [],
-        [held('7'), released('7'), held('7')],
+        [held('7', '4'), released('7'), held('7', '4')],
       );
 
       expect((await loadModerationState()).held.has(7n)).toBe(true);
     });
 
     it('holds only the person named, not whoever else is reported', async () => {
-      stubAudit([report(4n, 3n, '7'), report(5n, 3n, '8')], [], [held('7')]);
+      stubAudit(
+        [report(4n, 3n, '7'), report(5n, 3n, '8')],
+        [],
+        [held('7', '4')],
+      );
 
       const state = await loadModerationState();
 
       expect([...state.held.keys()]).toEqual([7n]);
     });
 
-    it('means nothing once the person has no open report left', async () => {
-      stubAudit([report(4n, 3n, '8')], [], [held('7')]);
+    it('counts while at least one of the reports it names is still open', async () => {
+      stubAudit(
+        [report(5n, 4n, '7')],
+        [],
+        [held('7', '4', '5')], // placed while 4 and 5 were open; 4 is decided
+      );
 
-      expect((await loadModerationState()).held.has(7n)).toBe(false);
+      expect((await loadModerationState()).held.get(7n)).toEqual(['admin']);
+    });
+
+    it('no longer counts once every report it names is decided', async () => {
+      // Placed for report 4, which is decided. Report 9 is a new complaint.
+      stubAudit([report(9n, 4n, '7')], [], [held('7', '4')]);
+
+      const state = await loadModerationState();
+
+      expect(state.held.has(7n)).toBe(false);
+      expect(state.adminHeld.has(7n)).toBe(false);
+    });
+
+    it('does not carry over to a later report once the first is decided', async () => {
+      stubAudit(
+        [report(9n, 4n, '7'), report(10n, 5n, '7')],
+        [],
+        [held('7', '4')],
+      );
+
+      // Two different people reported them, so the threshold holds them, but
+      // the administrator's old hold is not part of the reason.
+      expect((await loadModerationState()).held.get(7n)).toEqual(['threshold']);
+    });
+
+    it('counts for nothing when it names no reports', async () => {
+      stubAudit([report(4n, 3n, '7')], [], [held('7')]);
+
+      expect((await loadModerationState()).held.size).toBe(0);
+    });
+
+    it('is replaced by a newer hold on the same person', async () => {
+      stubAudit([report(9n, 4n, '7')], [], [held('7', '4'), held('7', '9')]);
+
+      expect((await loadModerationState()).held.get(7n)).toEqual(['admin']);
     });
   });
 });
@@ -318,7 +369,7 @@ describe('isConversationPaused', () => {
   });
 
   it('pauses a person an administrator holds', async () => {
-    const state = await stateFor([report(4n, 3n, '7')], [], [held('7')]);
+    const state = await stateFor([report(4n, 3n, '7')], [], [held('7', '4')]);
 
     expect(isConversationPaused(state, 9n, 7n)).toBe(true);
     expect(isConversationPaused(state, 7n, 9n)).toBe(true);
@@ -364,7 +415,7 @@ describe('notHiddenWhere', () => {
   });
 
   it('hides a person an administrator holds from everyone', async () => {
-    stubAudit([report(4n, 3n, '7')], [], [held('7')]);
+    stubAudit([report(4n, 3n, '7')], [], [held('7', '4')]);
 
     await expect(notHiddenWhere('auth0|viewer')).resolves.toEqual({
       OR: [{ user_id: null }, { user_id: { notIn: [7n] } }],

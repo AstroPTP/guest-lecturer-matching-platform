@@ -458,6 +458,8 @@ describe('MatchRequestsService', () => {
           heldPeople.map((target_id) => ({
             action: 'user.held',
             target_id,
+            // Placed for the report listed first, which is entry 40.
+            detail: { reportIds: ['40'] },
           })) as never,
         );
     }
