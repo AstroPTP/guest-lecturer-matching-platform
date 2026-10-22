@@ -16,6 +16,8 @@ const NOTIFICATION_ICONS = {
   event: emailIcon,
   message: messageIcon,
   profile: infoIcon,
+  // From a CCAE administrator, about the conversation in Messages.
+  admin: messageIcon,
 } satisfies Record<NotificationType, typeof matchIcon>;
 
 export default function NotificationsPageContent() {

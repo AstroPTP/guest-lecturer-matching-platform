@@ -91,13 +91,21 @@ async function forward(request: NextRequest, path: string[]) {
 
   // Pass the body and status straight through so the error envelope the
   // backend produced reaches the client unchanged.
+  const passed: Record<string, string> = {
+    'Content-Type': response.headers.get('content-type') ?? 'application/json',
+    // Per-user data; no shared cache may keep it.
+    'Cache-Control': 'no-store',
+  };
+  // A downloaded file arrives with how it may be shown (a PDF is a download,
+  // never displayed in the page) and a ban on type sniffing. Dropping either
+  // would let the browser decide for itself what the file is.
+  for (const name of ['content-disposition', 'x-content-type-options']) {
+    const value = response.headers.get(name);
+    if (value) passed[name] = value;
+  }
   return new NextResponse(response.body, {
     status: response.status,
-    headers: {
-      'Content-Type': response.headers.get('content-type') ?? 'application/json',
-      // Per-user data; no shared cache may keep it.
-      'Cache-Control': 'no-store',
-    },
+    headers: passed,
   });
 }
 

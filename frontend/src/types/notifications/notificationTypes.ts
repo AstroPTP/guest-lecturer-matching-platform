@@ -1,4 +1,4 @@
-export type NotificationType = "match" | "event" | "message" | "profile";
+export type NotificationType = "match" | "event" | "message" | "profile" | "admin";
 
 export interface AppNotification {
   id: string;
