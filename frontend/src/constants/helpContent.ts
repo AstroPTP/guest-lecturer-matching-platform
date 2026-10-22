@@ -23,10 +23,18 @@ export interface HelpFaq {
   answer: string;
 }
 
+/** A short explainer for one feature, shown as a list of plain sentences. */
+export interface HelpSection {
+  title: string;
+  lines: string[];
+}
+
 export interface HelpContent {
   intro: string;
   journey: HelpStep[];
   guides: HelpGuide[];
+  /** Shown only when the feature it describes is switched on. */
+  suggestions?: HelpSection;
   faqs: HelpFaq[];
 }
 
@@ -177,6 +185,17 @@ const unitCoordinator: HelpContent = {
       ],
     },
   ],
+  suggestions: {
+    title: "Suggested speakers",
+    lines: [
+      "Suggested speakers is a ranked shortlist of guest lecturers for one session. You enter the date, the time and the topics you need, and it lists the lecturers who suit that session, best first.",
+      "A lecturer is listed only when four things are true: they are eligible (a finished profile, consent to be matched, and not someone you dismissed or unmatched), they are available for the whole session, they share at least one of your topics, and they have a good record of delivering the sessions they accepted.",
+      "Lecturers who pass are ranked by a score. How well their topics fit your session counts most, then how long it has been since their last session, then how few sessions they have had so far.",
+      "Nobody is hidden for being popular. A lecturer with many sessions simply ranks lower, and moves back up as time passes.",
+      "The line above the list shows how many lecturers passed each rule, so you can see where the list narrowed. If it is empty, try a different time, a nearby date or more topics.",
+      "To act on a suggestion, choose Express interest. Once you are matched, invite the lecturer from Event.",
+    ],
+  },
   faqs: [
     {
       question: "Why can't I invite a lecturer to an event?",
