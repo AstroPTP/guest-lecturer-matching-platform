@@ -8,6 +8,7 @@ import { CcaeAdministratorsModule } from './ccae-administrators/ccae-administrat
 import { GuestSpeakersModule } from './guest-speakers/guest-speakers.module';
 import { MatchRequestsModule } from './match-requests/match-requests.module';
 import { MessagesModule } from './messages/messages.module';
+import { SuggestionsModule } from './suggestions/suggestions.module';
 import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.module';
 import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
@@ -29,6 +30,7 @@ import { ImagesModule } from './images/images.module';
     GuestSpeakersModule,
     MatchRequestsModule,
     MessagesModule,
+    SuggestionsModule,
     UnitCoordinatorsModule,
     UsersModule,
     EventsModule,
