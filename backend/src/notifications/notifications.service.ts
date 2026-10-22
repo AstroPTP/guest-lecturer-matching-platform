@@ -6,6 +6,7 @@ import {
 import { AppRole } from '../auth/roles';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { pushToUsers } from './push';
 
 export interface Notification extends CreateNotificationDto {
   id: string;
@@ -38,6 +39,11 @@ const NOTIFICATION_LOCK_NAMESPACE = 0x6e6f7469;
  * Notifications, stored so they survive a restart. Recipients are addressed by
  * their Auth0 id, the same id the caller's token carries, and stored against
  * the numeric user row.
+ *
+ * Every way of raising a notice also sends it to the recipient's phones and
+ * computers once it is stored. That send is started and left to finish on its
+ * own: the request that raised the notice neither waits for it nor hears of a
+ * failure in it.
  */
 @Injectable()
 export class NotificationsService {
@@ -46,6 +52,7 @@ export class NotificationsService {
     const row = await prisma.notifications.create({
       data: this.toRowData(userId, dto),
     });
+    void pushToUsers([userId], dto);
     return this.toNotification(dto.recipientId, row);
   }
 
@@ -68,6 +75,10 @@ export class NotificationsService {
     const { count } = await prisma.notifications.createMany({
       data: admins.map((admin) => this.toRowData(admin.userid, notice)),
     });
+    void pushToUsers(
+      admins.map((admin) => admin.userid),
+      notice,
+    );
     return count;
   }
 
@@ -96,6 +107,7 @@ export class NotificationsService {
     }
 
     await prisma.notifications.create({ data: this.toRowData(userId, dto) });
+    void pushToUsers([userId], dto);
     return true;
   }
 
@@ -131,6 +143,11 @@ export class NotificationsService {
         await tx.notifications.create({ data: this.toRowData(userId, dto) });
       }
     });
+
+    // Sent for a moved notice as well as a new one: the person asked to be told
+    // when someone replies, and a reply in a conversation they have not opened
+    // is still a reply. Sent after the transaction, once the notice is stored.
+    void pushToUsers([userId], dto);
   }
 
   /** How many of the caller's notifications are still unread. */

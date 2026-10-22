@@ -413,6 +413,9 @@ describe('deleteAccount', () => {
       availability: { deleteMany: jest.fn(() => record('availability')) },
       user_expertise: { deleteMany: jest.fn(() => record('user_expertise')) },
       notifications: { deleteMany: jest.fn(() => record('notifications')) },
+      push_subscriptions: {
+        deleteMany: jest.fn(() => record('push_subscriptions')),
+      },
       support_messages: {
         findMany: jest.fn(() => {
           order.push('support_messages.findMany');
@@ -472,6 +475,16 @@ describe('deleteAccount', () => {
     await deleteWith(tx);
 
     expect(tx.notifications.deleteMany).toHaveBeenCalledWith({
+      where: { user_id: 1n },
+    });
+  });
+
+  it("removes the caller's devices set up for pushed notifications", async () => {
+    const tx = deletionTransaction({});
+
+    await deleteWith(tx);
+
+    expect(tx.push_subscriptions.deleteMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
     });
   });
