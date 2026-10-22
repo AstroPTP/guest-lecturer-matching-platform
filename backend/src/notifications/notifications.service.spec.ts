@@ -295,4 +295,89 @@ describe('NotificationsService', () => {
       data: { read: true },
     });
   });
+
+  describe('createForAdmins', () => {
+    const notice = {
+      type: 'event' as const,
+      title: 'Guest lecture confirmed',
+      description: 'Talk, 2026-10-15 10:00 to 11:00, Dr. Smith with Jane Doe',
+      actionLabel: 'View events',
+      href: '/dashboard/events',
+    };
+
+    it('gives every active administrator the notice in one insert', async () => {
+      const findMany = jest
+        .spyOn(prisma.users, 'findMany')
+        .mockResolvedValue([{ userid: 7n }, { userid: 8n }] as never);
+      const createMany = jest
+        .spyOn(prisma.notifications, 'createMany')
+        .mockResolvedValue({ count: 2 });
+
+      await expect(service.createForAdmins(notice)).resolves.toBe(2);
+
+      expect(findMany).toHaveBeenCalledTimes(1);
+      expect(createMany).toHaveBeenCalledTimes(1);
+      expect(createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            user_id: 7n,
+            type: 'event',
+            title: 'Guest lecture confirmed',
+            description: notice.description,
+            action_label: 'View events',
+            href: '/dashboard/events',
+          },
+          {
+            user_id: 8n,
+            type: 'event',
+            title: 'Guest lecture confirmed',
+            description: notice.description,
+            action_label: 'View events',
+            href: '/dashboard/events',
+          },
+        ],
+      });
+    });
+
+    it('asks only for administrators whose account has not been deleted', async () => {
+      const findMany = jest
+        .spyOn(prisma.users, 'findMany')
+        .mockResolvedValue([{ userid: 7n }] as never);
+      jest
+        .spyOn(prisma.notifications, 'createMany')
+        .mockResolvedValue({ count: 1 });
+
+      await service.createForAdmins(notice);
+
+      expect(findMany).toHaveBeenCalledWith({
+        where: { role: 'ccae_admin', deletedat: null },
+        select: { userid: true },
+      });
+    });
+
+    it('writes for the administrators it is given and nobody else', async () => {
+      // The query leaves out a deleted administrator, so only these two arrive.
+      jest
+        .spyOn(prisma.users, 'findMany')
+        .mockResolvedValue([{ userid: 7n }, { userid: 9n }] as never);
+      const createMany = jest
+        .spyOn(prisma.notifications, 'createMany')
+        .mockResolvedValue({ count: 2 });
+
+      await service.createForAdmins(notice);
+
+      const { data } = createMany.mock.calls[0][0] as {
+        data: { user_id: bigint }[];
+      };
+      expect(data.map((row) => row.user_id)).toEqual([7n, 9n]);
+    });
+
+    it('writes nothing when there is no administrator to tell', async () => {
+      jest.spyOn(prisma.users, 'findMany').mockResolvedValue([]);
+      const createMany = jest.spyOn(prisma.notifications, 'createMany');
+
+      await expect(service.createForAdmins(notice)).resolves.toBe(0);
+      expect(createMany).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -1,8 +1,13 @@
+import 'reflect-metadata';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotificationsController } from './notifications.controller';
 import { NotificationsService } from './notifications.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { AppRole } from '../auth/roles';
+import { RolesGuard } from '../auth/roles.guard';
 
 describe('NotificationsController', () => {
   let controller: NotificationsController;
@@ -65,5 +70,57 @@ describe('NotificationsController', () => {
       success: true,
     });
     expect(markAllAsRead).toHaveBeenCalledWith('user-1');
+  });
+
+  describe('for an administrator', () => {
+    const admin: AuthenticatedUser = {
+      id: 'auth0|admin',
+      email: 'admin@test.com',
+      roles: [AppRole.CcaeAdmin],
+    };
+    const guard = new RolesGuard(new Reflector());
+
+    function contextFor(handler: object): ExecutionContext {
+      return {
+        getHandler: () => handler,
+        getClass: () => NotificationsController,
+        switchToHttp: () => ({ getRequest: () => ({ user: admin }) }),
+      } as unknown as ExecutionContext;
+    }
+
+    it.each([
+      'findMine',
+      'unreadCount',
+      'markAsRead',
+      'markAllAsRead',
+    ] as const)(
+      'lets the %s route through, as it is not limited to a role',
+      (name) => {
+        const handler = NotificationsController.prototype[name];
+        expect(guard.canActivate(contextFor(handler))).toBe(true);
+      },
+    );
+
+    it("counts the administrator's own unread notices, the figure the bell shows", async () => {
+      const countUnread = jest
+        .spyOn(service, 'countUnread')
+        .mockResolvedValue(3);
+
+      await expect(controller.unreadCount(admin)).resolves.toEqual({
+        count: 3,
+      });
+      expect(countUnread).toHaveBeenCalledWith('auth0|admin');
+    });
+
+    it('marks the whole inbox read for that administrator only', async () => {
+      const markAllAsRead = jest
+        .spyOn(service, 'markAllAsRead')
+        .mockResolvedValue(undefined);
+
+      await expect(controller.markAllAsRead(admin)).resolves.toEqual({
+        success: true,
+      });
+      expect(markAllAsRead).toHaveBeenCalledWith('auth0|admin');
+    });
   });
 });

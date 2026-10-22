@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import { AppRole } from '../auth/roles';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 
@@ -46,6 +47,28 @@ export class NotificationsService {
       data: this.toRowData(userId, dto),
     });
     return this.toNotification(dto.recipientId, row);
+  }
+
+  /**
+   * Raises one notice for every administrator whose account is still active,
+   * in a single insert, so either all of them have it or none do. Returns how
+   * many were notified.
+   */
+  async createForAdmins(
+    notice: Omit<CreateNotificationDto, 'recipientId'>,
+  ): Promise<number> {
+    const admins = await prisma.users.findMany({
+      where: { role: AppRole.CcaeAdmin, deletedat: null },
+      select: { userid: true },
+    });
+    if (admins.length === 0) {
+      return 0;
+    }
+
+    const { count } = await prisma.notifications.createMany({
+      data: admins.map((admin) => this.toRowData(admin.userid, notice)),
+    });
+    return count;
   }
 
   /**
@@ -161,7 +184,10 @@ export class NotificationsService {
     });
   }
 
-  private toRowData(userId: bigint, dto: CreateNotificationDto) {
+  private toRowData(
+    userId: bigint,
+    dto: Omit<CreateNotificationDto, 'recipientId'>,
+  ) {
     return {
       user_id: userId,
       type: dto.type,
