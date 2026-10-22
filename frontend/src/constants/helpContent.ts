@@ -51,6 +51,11 @@ const sharedFaqs: HelpFaq[] = [
     answer: "Open Settings. Account holds your details, and Password & Security lets you change your password.",
   },
   {
+    question: "How do I get notifications on my phone or computer?",
+    answer:
+      "Open Settings and choose Notifications, then turn them on for this device. On an iPhone or iPad, first tap Share and Add to Home Screen, open GLMP from the Home Screen, then turn them on (iOS 16.4 or later). On Android, use Install app from the browser menu, then allow notifications. On a computer, click Allow when your browser asks. If Notifications is not in Settings, they are not switched on for this site yet.",
+  },
+  {
     question: "How do I delete my account?",
     answer:
       "Open Settings and choose Delete Account. This cannot be undone: your profile, matches and messages are removed.",
