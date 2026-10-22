@@ -3,6 +3,12 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Curtin GLMP brand colours, used by components/brand/BrandLogo. The dark
+     set is in the dark-theme blocks below. */
+  --brand-navy: #0e3b66;
+  --brand-gold: #e9a93b;
+  --brand-subtitle: #5f6368;
 }
 
 @theme inline {
@@ -30,6 +36,9 @@ body {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --brand-navy: #8fbceb;
+    --brand-gold: #e9a93b;
+    --brand-subtitle: #aeb4bd;
     --background: #0d0f13;
     --foreground: #f2f4f7;
     --color-white: #171a20;
@@ -121,6 +130,9 @@ body {
 
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --brand-navy: #8fbceb;
+  --brand-gold: #e9a93b;
+  --brand-subtitle: #aeb4bd;
   --background: #0d0f13;
   --foreground: #f2f4f7;
   --color-white: #171a20;
