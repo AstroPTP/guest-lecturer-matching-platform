@@ -81,7 +81,11 @@ describe('EventsService', () => {
    * runs, and a later read sees what an earlier write left.
    */
   function fakeEvents(initialStatus = 'invitation-sent') {
-    let row = eventRow({ status: initialStatus });
+    let row = eventRow({
+      status: initialStatus,
+      // A confirmed session is one the guest lecturer has answered.
+      responded_at: initialStatus === 'accepted' ? createdAt : null,
+    });
     jest
       .spyOn(prisma.events, 'findUnique')
       .mockImplementation(() => Promise.resolve({ ...row }) as never);
@@ -130,11 +134,25 @@ describe('EventsService', () => {
   });
 
   describe('create', () => {
+    /** The two profiles of match 6007, which is where the names come from. */
+    function profilesAre(
+      coordinator: { first_name: string | null; last_name: string | null },
+      guest: { first_name: string | null; last_name: string | null },
+    ) {
+      return jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockResolvedValue({ coordinator, guest } as never);
+    }
+
     it("stores the event against the caller's match with the matched guest", async () => {
       matchRequests.findAcceptedMatch.mockResolvedValue({
         side: 'coordinator',
         matchId: 6007n,
       });
+      profilesAre(
+        { first_name: 'Dr.', last_name: 'Smith' },
+        { first_name: 'Jane', last_name: 'Doe' },
+      );
       const create = jest
         .spyOn(prisma.events, 'create')
         .mockResolvedValue(eventRow());
@@ -164,6 +182,10 @@ describe('EventsService', () => {
         side: 'coordinator',
         matchId: 6007n,
       });
+      profilesAre(
+        { first_name: 'Dr.', last_name: 'Smith' },
+        { first_name: 'Jane', last_name: 'Doe' },
+      );
       jest.spyOn(prisma.events, 'create').mockResolvedValue(eventRow());
 
       await service.create(dto, 'auth0|coordinator');
@@ -174,6 +196,76 @@ describe('EventsService', () => {
           title: 'New event invitation',
         }),
       );
+    });
+
+    it('stores the names from the two profiles and ignores the names the request carries', async () => {
+      matchRequests.findAcceptedMatch.mockResolvedValue({
+        side: 'coordinator',
+        matchId: 6007n,
+      });
+      const lookup = profilesAre(
+        { first_name: 'Ada', last_name: 'Lee' },
+        { first_name: 'Sam', last_name: 'Tran' },
+      );
+      const create = jest
+        .spyOn(prisma.events, 'create')
+        .mockResolvedValue(eventRow());
+
+      await service.create(
+        {
+          ...dto,
+          coordinatorName: 'Forged Coordinator',
+          guestLecturerName: 'Forged Guest <script>',
+        },
+        'auth0|coordinator',
+      );
+
+      // Read from the caller's own match, not from anything in the request.
+      expect(lookup).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { match_id: 6007n } }),
+      );
+      const { data } = create.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(data.coordinator_name).toBe('Ada Lee');
+      expect(data.guest_lecturer_name).toBe('Sam Tran');
+      expect(Object.values(data).map(String).join(' ')).not.toContain('Forged');
+    });
+
+    it('uses a role label for a profile that has no name', async () => {
+      matchRequests.findAcceptedMatch.mockResolvedValue({
+        side: 'coordinator',
+        matchId: 6007n,
+      });
+      profilesAre(
+        { first_name: null, last_name: null },
+        { first_name: '  ', last_name: null },
+      );
+      const create = jest
+        .spyOn(prisma.events, 'create')
+        .mockResolvedValue(eventRow());
+
+      await service.create(dto, 'auth0|coordinator');
+
+      const { data } = create.mock.calls[0][0] as {
+        data: Record<string, unknown>;
+      };
+      expect(data.coordinator_name).toBe('Unit Coordinator');
+      expect(data.guest_lecturer_name).toBe('Guest Lecturer');
+    });
+
+    it('does not store anything when the match cannot be read', async () => {
+      matchRequests.findAcceptedMatch.mockResolvedValue({
+        side: 'coordinator',
+        matchId: 6007n,
+      });
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue(null);
+      const create = jest.spyOn(prisma.events, 'create');
+
+      await expect(service.create(dto, 'auth0|coordinator')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(create).not.toHaveBeenCalled();
     });
 
     it('refuses a guest lecturer', async () => {
@@ -353,13 +445,14 @@ describe('EventsService', () => {
       );
     });
 
-    it('are told when the coordinator cancels an invitation', async () => {
+    it('are told an invitation was withdrawn when the coordinator cancels one nobody answered', async () => {
       respondTo('coordinator', 'invitation-sent', 'cancelled');
 
       await service.updateStatus('1', 'cancelled', 'auth0|coordinator');
 
+      expect(notificationsService.createForAdmins).toHaveBeenCalledTimes(1);
       expect(notificationsService.createForAdmins).toHaveBeenCalledWith(
-        noticeFor('Guest lecture cancelled'),
+        noticeFor('Guest lecture invitation withdrawn'),
       );
     });
 
@@ -556,8 +649,11 @@ describe('EventsService', () => {
       );
       expect(current().status).toBe('cancelled');
       expect(notificationsService.createForAdmins).toHaveBeenCalledTimes(1);
+      // It was never confirmed, so it is a withdrawn invitation, not a cancellation.
       expect(notificationsService.createForAdmins).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Guest lecture cancelled' }),
+        expect.objectContaining({
+          title: 'Guest lecture invitation withdrawn',
+        }),
       );
       expect(notificationsService.create).toHaveBeenCalledTimes(1);
       expect(notificationsService.create).toHaveBeenCalledWith(

@@ -114,6 +114,7 @@ body {
   :root:not([data-theme="light"]) .text-\[\#156874\] { color: #4fc3b8; }
   :root:not([data-theme="light"]) .border-\[\#156874\],
   :root:not([data-theme="light"]) .focus\:border-\[\#156874\]:focus { border-color: #4fc3b8; }
+  :root:not([data-theme="light"]) .focus-visible\:outline-\[\#156874\]:focus-visible { outline-color: #4fc3b8; }
   :root:not([data-theme="light"]) .text-\[\#EF4444\] { color: #ff8a8a; }
   :root:not([data-theme="light"]) .text-\[\#10B981\] { color: #5fd08a; }
   :root:not([data-theme="light"]) .bg-black\/40 { background-color: rgb(0 0 0 / 0.6); }
@@ -214,6 +215,7 @@ body {
 :root[data-theme="dark"] .text-\[\#156874\] { color: #4fc3b8; }
 :root[data-theme="dark"] .border-\[\#156874\],
 :root[data-theme="dark"] .focus\:border-\[\#156874\]:focus { border-color: #4fc3b8; }
+:root[data-theme="dark"] .focus-visible\:outline-\[\#156874\]:focus-visible { outline-color: #4fc3b8; }
 :root[data-theme="dark"] .text-\[\#EF4444\] { color: #ff8a8a; }
 :root[data-theme="dark"] .text-\[\#10B981\] { color: #5fd08a; }
 :root[data-theme="dark"] .bg-black\/40 { background-color: rgb(0 0 0 / 0.6); }

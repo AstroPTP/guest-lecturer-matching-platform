@@ -8,7 +8,8 @@ import {
 } from '@nestjs/common';
 import { CreateEventDto } from './dto/create-event.dto';
 import { buildEventIcs, minutesOfDay } from './event-calendar';
-import { buildPrefill, type EventPrefill } from './event-prefill';
+import { adminSessionNotice } from './event-notice';
+import { buildPrefill, displayName, type EventPrefill } from './event-prefill';
 import { ErrorCode } from '../common/error-codes';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MatchRequestsService } from '../match-requests/match-requests.service';
@@ -134,11 +135,24 @@ export class EventsService {
       });
     }
 
+    // Both names come from the two profiles, not from the request: they are
+    // shown to the other person, to administrators and in the calendar file.
+    const parties = await prisma.match_requests.findUnique({
+      where: { match_id: matchId },
+      select: {
+        coordinator: { select: { first_name: true, last_name: true } },
+        guest: { select: { first_name: true, last_name: true } },
+      },
+    });
+    if (!parties) {
+      throw new NotFoundException('Match not found');
+    }
+
     const row = await prisma.events.create({
       data: {
         match_id: matchId,
-        coordinator_name: dto.coordinatorName,
-        guest_lecturer_name: dto.guestLecturerName,
+        coordinator_name: displayName(parties.coordinator, 'Unit Coordinator'),
+        guest_lecturer_name: displayName(parties.guest, 'Guest Lecturer'),
         title: dto.title,
         description: dto.description,
         date: dto.date,
@@ -434,16 +448,9 @@ export class EventsService {
     status: 'accepted' | 'cancelled',
   ): Promise<void> {
     try {
-      await this.notificationsService.createForAdmins({
-        type: 'event',
-        title:
-          status === 'accepted'
-            ? 'Guest lecture confirmed'
-            : 'Guest lecture cancelled',
-        description: `${event.title}, ${event.date} ${event.start_time} to ${event.end_time}, ${event.coordinator_name} with ${event.guest_lecturer_name}`,
-        actionLabel: 'View events',
-        href: '/dashboard/events',
-      });
+      await this.notificationsService.createForAdmins(
+        adminSessionNotice(event, status),
+      );
     } catch (error) {
       this.logger.error(
         `Could not notify administrators that event ${event.event_id} was ${status}`,

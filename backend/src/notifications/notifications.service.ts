@@ -8,6 +8,15 @@ import { prisma, resolveUserId, toId } from '../prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { pushToUsers } from './push';
 
+/** A notice before it is addressed to anyone. */
+export type AdminNotice = Omit<CreateNotificationDto, 'recipientId'>;
+
+/**
+ * How many of a person's notifications are listed. The newest come first, so
+ * a long-lived inbox, such as an administrator's, shows what is recent.
+ */
+const INBOX_LIMIT = 100;
+
 export interface Notification extends CreateNotificationDto {
   id: string;
   createdAt: string;
@@ -57,13 +66,17 @@ export class NotificationsService {
   }
 
   /**
-   * Raises one notice for every administrator whose account is still active,
-   * in a single insert, so either all of them have it or none do. Returns how
-   * many were notified.
+   * Raises the notice, or each of the notices, for every administrator whose
+   * account is still active. The administrators are looked up once and every
+   * row goes in a single insert, so either all of them have it or none do.
+   * Returns how many rows were written.
    */
-  async createForAdmins(
-    notice: Omit<CreateNotificationDto, 'recipientId'>,
-  ): Promise<number> {
+  async createForAdmins(notices: AdminNotice | AdminNotice[]): Promise<number> {
+    const list = Array.isArray(notices) ? notices : [notices];
+    if (list.length === 0) {
+      return 0;
+    }
+
     const admins = await prisma.users.findMany({
       where: { role: AppRole.CcaeAdmin, deletedat: null },
       select: { userid: true },
@@ -73,7 +86,9 @@ export class NotificationsService {
     }
 
     const { count } = await prisma.notifications.createMany({
-      data: admins.map((admin) => this.toRowData(admin.userid, notice)),
+      data: admins.flatMap((admin) =>
+        list.map((notice) => this.toRowData(admin.userid, notice)),
+      ),
     });
     void pushToUsers(
       admins.map((admin) => admin.userid),
@@ -171,7 +186,10 @@ export class NotificationsService {
     const userId = await resolveUserId(recipientId);
     const rows = await prisma.notifications.findMany({
       where: { user_id: userId },
-      orderBy: { created_at: 'desc' },
+      // Rows written by one insert share a timestamp, so the id settles which
+      // of them is newer.
+      orderBy: [{ created_at: 'desc' }, { notification_id: 'desc' }],
+      take: INBOX_LIMIT,
     });
     return rows.map((row) => this.toNotification(recipientId, row));
   }
@@ -201,10 +219,7 @@ export class NotificationsService {
     });
   }
 
-  private toRowData(
-    userId: bigint,
-    dto: Omit<CreateNotificationDto, 'recipientId'>,
-  ) {
+  private toRowData(userId: bigint, dto: AdminNotice) {
     return {
       user_id: userId,
       type: dto.type,

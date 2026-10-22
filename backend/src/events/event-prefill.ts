@@ -49,7 +49,8 @@ export interface EventPrefill {
   sharedTopics: string[];
 }
 
-function fullName(
+/** A person's name from their profile columns, or `fallback` when they have none. */
+export function displayName(
   row: { first_name: string | null; last_name: string | null },
   fallback: string,
 ) {
@@ -149,8 +150,8 @@ export function buildPrefill(input: {
   coordinatorTopics: string[];
   guestTopics: string[];
 }): EventPrefill {
-  const coordinatorName = fullName(input.coordinator, 'the coordinator');
-  const guestLecturerName = fullName(input.guest, 'the guest lecturer');
+  const coordinatorName = displayName(input.coordinator, 'the coordinator');
+  const guestLecturerName = displayName(input.guest, 'the guest lecturer');
   const format = chooseFormat(input.coordinator, input.guest);
   const sharedTopics = sharedTopicsOf(
     input.coordinatorTopics,
