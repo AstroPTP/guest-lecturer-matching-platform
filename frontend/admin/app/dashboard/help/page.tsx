@@ -155,6 +155,20 @@ const FAQS = [
       "The lecturer was probably contacted recently and is inside the contact limit, so the request is refused until the limit has passed. You can change or turn off the limit in Settings.",
   },
   {
+    question: "What do the presets do?",
+    answer:
+      "They set how the Suggested speakers shortlist is ranked. Balanced favours the best topic match with a nudge towards fairness, Topic first favours the best topic match above all, and Share the work gives lecturers who have had fewer sessions a better chance.",
+  },
+  {
+    question: "What happens when I switch Suggested speakers off?",
+    answer:
+      "Coordinators see a message that an administrator turned it off, and the shortlist stops until you switch it back on. Discovery, matches and messages carry on as normal.",
+  },
+  {
+    question: "Is every change to Suggested speakers recorded?",
+    answer: "Yes. Each change to these settings goes into the Audit Log with who made it and the old and new values.",
+  },
+  {
     question: "Does deactivating an account delete anything?",
     answer: "No. The profile, matches and messages are kept, and the account can be reactivated at any time.",
   },

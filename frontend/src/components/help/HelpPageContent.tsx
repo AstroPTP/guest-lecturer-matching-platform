@@ -92,7 +92,9 @@ export default function HelpPageContent({ role, heroImage }: HelpPageContentProp
           Frequently asked questions
         </h2>
         <div className="mt-4 divide-y divide-gray-200">
-          {content.faqs.map((faq) => (
+          {content.faqs
+            .filter((faq) => faq.feature !== "suggestions" || MATCHING_SUGGESTIONS_ENABLED)
+            .map((faq) => (
             <details key={faq.question} className="group py-3">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md py-1 text-base font-medium text-[#242424] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">
                 {faq.question}
