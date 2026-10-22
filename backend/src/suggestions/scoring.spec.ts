@@ -5,16 +5,20 @@ import {
   WEIGHT_EXPOSURE,
   WEIGHT_FIT,
   WEIGHT_ROTATION,
-  coversSession,
   exposureScore,
   fitScore,
+  isAvailable,
   isReliable,
+  lastSessionBand,
   normaliseTopic,
   overlaps,
   parseClock,
   rankScore,
+  recordedAvailability,
   reliabilityScore,
+  roundTo,
   rotationScore,
+  sessionsBand,
   sharedTopics,
   weekdayOf,
   type WeeklyAvailability,
@@ -154,25 +158,30 @@ describe('exposureScore', () => {
 });
 
 describe('reliabilityScore', () => {
-  it('starts a newcomer at the neutral point, which passes', () => {
-    expect(reliabilityScore(0, 0)).toBe(RELIABILITY_NEUTRAL);
-    expect(isReliable(reliabilityScore(0, 0))).toBe(true);
+  it('puts a lecturer with no ratings at the neutral point, which passes', () => {
+    expect(reliabilityScore([])).toBe(RELIABILITY_NEUTRAL);
+    expect(isReliable(reliabilityScore([]))).toBe(true);
   });
 
-  it('rises with delivered sessions', () => {
-    expect(reliabilityScore(5, 0)).toBe(75);
-    expect(reliabilityScore(20, 0)).toBeGreaterThan(reliabilityScore(5, 0));
+  it('is a Bayesian average: neutral times trust, plus the ratings, over trust plus count', () => {
+    // (50 * 5 + 100 + 100) / (5 + 2)
+    expect(reliabilityScore([100, 100])).toBeCloseTo(450 / 7, 10);
   });
 
-  it('falls with broken commitments and fails the gate below the threshold', () => {
-    expect(reliabilityScore(0, 1)).toBeCloseTo(41.67, 2);
-    expect(isReliable(reliabilityScore(0, 1))).toBe(false);
-    expect(isReliable(reliabilityScore(0, 3))).toBe(false);
+  it('rises with good ratings and falls with poor ones', () => {
+    expect(reliabilityScore([100, 100, 100, 100, 100])).toBe(75);
+    expect(reliabilityScore([0, 0, 0, 0, 0])).toBe(25);
   });
 
-  it('lets a record of delivering outweigh one cancellation', () => {
-    expect(isReliable(reliabilityScore(1, 1))).toBe(true);
-    expect(isReliable(reliabilityScore(10, 3))).toBe(true);
+  it('moves only part of the way on one rating', () => {
+    expect(reliabilityScore([0])).toBeGreaterThan(RELIABILITY_THRESHOLD - 5);
+    expect(isReliable(reliabilityScore([0]))).toBe(false);
+    expect(isReliable(reliabilityScore([20]))).toBe(true);
+  });
+
+  it('keeps the gate: a poor record fails it and a good one passes', () => {
+    expect(isReliable(reliabilityScore([10, 10, 10, 10, 10]))).toBe(false);
+    expect(isReliable(reliabilityScore([90, 80, 70]))).toBe(true);
   });
 
   it('passes exactly at the threshold', () => {
@@ -245,111 +254,200 @@ describe('weekdayOf', () => {
   });
 });
 
-describe('coversSession', () => {
-  const WEDNESDAY = 3;
-  const at = (value: string) => parseClock(value) as number;
+describe('recordedAvailability', () => {
+  it('reads the ticked weekdays as 1 for Monday to 5 for Friday, and the hours as minutes', () => {
+    const recorded = recordedAvailability(
+      window({ monday: true, friday: true }, '09:00', '17:30'),
+    );
+    expect([...recorded.days].sort()).toEqual([1, 5]);
+    expect(recorded.window).toEqual({ startMinutes: 540, endMinutes: 1050 });
+  });
 
-  it('accepts a window that holds the whole session', () => {
+  it('reads no row as nothing recorded', () => {
+    const recorded = recordedAvailability(null);
+    expect(recorded.days.size).toBe(0);
+    expect(recorded.window).toBeNull();
+  });
+
+  it('has no window unless both hours are recorded', () => {
     expect(
-      coversSession(
-        window({ wednesday: true }, '09:00', '17:00'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
+      recordedAvailability(window({ monday: true }, '09:00', null)).window,
+    ).toBeNull();
+    expect(
+      recordedAvailability(window({ monday: true }, null, '17:00')).window,
+    ).toBeNull();
+  });
+});
+
+describe('isAvailable', () => {
+  const WEDNESDAY = 3;
+  const minutes = (from: string, to: string) => ({
+    startMinutes: parseClock(from) as number,
+    endMinutes: parseClock(to) as number,
+  });
+  const lecturer = (
+    days: Partial<Record<'monday' | 'wednesday' | 'friday', boolean>>,
+    from: string | null,
+    to: string | null,
+  ) => recordedAvailability(window(days, from, to));
+  const mwf = lecturer(
+    { monday: true, wednesday: true, friday: true },
+    '13:00',
+    '17:00',
+  );
+
+  it('accepts a session on an available day, inside the hours', () => {
+    expect(
+      isAvailable(mwf, {
+        weekday: WEDNESDAY,
+        window: minutes('14:00', '16:00'),
+      }),
     ).toBe(true);
+  });
+
+  it('rejects a session on a day the lecturer has not ticked', () => {
+    expect(
+      isAvailable(mwf, { weekday: 2, window: minutes('14:00', '16:00') }),
+    ).toBe(false);
   });
 
   it('accepts a session that fills the window exactly', () => {
     expect(
-      coversSession(
-        window({ wednesday: true }, '10:00', '11:00'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
+      isAvailable(mwf, { weekday: 1, window: minutes('13:00', '17:00') }),
     ).toBe(true);
   });
 
-  it('rejects a window that ends exactly as the session begins', () => {
+  it('rejects a window that finishes exactly as the session begins', () => {
+    const noon = lecturer({ wednesday: true }, '12:00', '14:00');
     expect(
-      coversSession(
-        window({ wednesday: true }, '08:00', '10:00'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
+      isAvailable(noon, {
+        weekday: WEDNESDAY,
+        window: minutes('14:00', '16:00'),
+      }),
     ).toBe(false);
   });
 
   it('rejects a window that starts exactly as the session ends', () => {
+    const later = lecturer({ wednesday: true }, '16:00', '18:00');
     expect(
-      coversSession(
-        window({ wednesday: true }, '11:00', '17:00'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
+      isAvailable(later, {
+        weekday: WEDNESDAY,
+        window: minutes('14:00', '16:00'),
+      }),
     ).toBe(false);
   });
 
   it('rejects a window that holds only part of the session', () => {
     expect(
-      coversSession(
-        window({ wednesday: true }, '09:00', '10:30'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
+      isAvailable(mwf, {
+        weekday: WEDNESDAY,
+        window: minutes('12:00', '14:00'),
+      }),
     ).toBe(false);
     expect(
-      coversSession(
-        window({ wednesday: true }, '10:30', '17:00'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
+      isAvailable(mwf, {
+        weekday: WEDNESDAY,
+        window: minutes('16:00', '18:00'),
+      }),
     ).toBe(false);
   });
 
-  it('rejects a day that is not ticked', () => {
-    expect(
-      coversSession(
-        window({ monday: true }, '09:00', '17:00'),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
-    ).toBe(false);
+  describe('an unspecified requirement is not a clash', () => {
+    it('lets everyone through the day check when no day is asked for', () => {
+      expect(isAvailable(mwf, { weekday: null, window: null })).toBe(true);
+      expect(
+        isAvailable(lecturer({ monday: true }, null, null), {
+          weekday: null,
+          window: null,
+        }),
+      ).toBe(true);
+    });
+
+    it('still checks the hours when only times are asked for', () => {
+      expect(
+        isAvailable(mwf, { weekday: null, window: minutes('14:00', '16:00') }),
+      ).toBe(true);
+      expect(
+        isAvailable(mwf, { weekday: null, window: minutes('08:00', '10:00') }),
+      ).toBe(false);
+    });
+
+    it('does not remove a lecturer with no hours recorded when no times are asked for', () => {
+      const noHours = lecturer({ wednesday: true }, null, null);
+      expect(isAvailable(noHours, { weekday: null, window: null })).toBe(true);
+      expect(isAvailable(noHours, { weekday: WEDNESDAY, window: null })).toBe(
+        true,
+      );
+    });
+
+    it('does not remove a lecturer with no row at all when nothing is asked for', () => {
+      expect(
+        isAvailable(recordedAvailability(null), {
+          weekday: null,
+          window: null,
+        }),
+      ).toBe(true);
+    });
   });
 
-  it('rejects weekends, which the table has no column for', () => {
-    const everyDay = window(
-      { monday: true, wednesday: true, friday: true },
-      '00:00',
-      '23:59',
-    );
-    expect(coversSession(everyDay, 0, at('10:00'), at('11:00'))).toBe(false);
-    expect(coversSession(everyDay, 6, at('10:00'), at('11:00'))).toBe(false);
+  describe('only when a time window is asked for does "no hours recorded" remove someone', () => {
+    it('removes a lecturer with days but no hours', () => {
+      const noHours = lecturer({ wednesday: true }, null, null);
+      expect(
+        isAvailable(noHours, {
+          weekday: WEDNESDAY,
+          window: minutes('10:00', '11:00'),
+        }),
+      ).toBe(false);
+      expect(
+        isAvailable(noHours, {
+          weekday: null,
+          window: minutes('10:00', '11:00'),
+        }),
+      ).toBe(false);
+    });
+
+    it('removes a lecturer with only one of the two hours', () => {
+      expect(
+        isAvailable(lecturer({ wednesday: true }, '09:00', null), {
+          weekday: WEDNESDAY,
+          window: minutes('10:00', '11:00'),
+        }),
+      ).toBe(false);
+    });
+
+    it('removes a lecturer with nothing recorded at all', () => {
+      expect(
+        isAvailable(recordedAvailability(null), {
+          weekday: null,
+          window: minutes('10:00', '11:00'),
+        }),
+      ).toBe(false);
+    });
   });
 
-  it('does not treat days with no hours as free', () => {
-    expect(
-      coversSession(
-        window({ wednesday: true }, null, null),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
-    ).toBe(false);
-    expect(
-      coversSession(
-        window({ wednesday: true }, '09:00', null),
-        WEDNESDAY,
-        at('10:00'),
-        at('11:00'),
-      ),
-    ).toBe(false);
+  describe('a lecturer who has recorded no days', () => {
+    it('is not removed by the day check', () => {
+      const noDays = lecturer({}, '09:00', '17:00');
+      expect(isAvailable(noDays, { weekday: WEDNESDAY, window: null })).toBe(
+        true,
+      );
+      expect(
+        isAvailable(noDays, {
+          weekday: WEDNESDAY,
+          window: minutes('10:00', '11:00'),
+        }),
+      ).toBe(true);
+    });
+  });
+
+  describe('weekends, which the table has no column for', () => {
+    it('remove every lecturer who has recorded any day', () => {
+      expect(isAvailable(mwf, { weekday: 0, window: null })).toBe(false);
+      expect(
+        isAvailable(mwf, { weekday: 6, window: minutes('10:00', '11:00') }),
+      ).toBe(false);
+    });
   });
 });
 
@@ -362,5 +460,59 @@ describe('overlaps', () => {
   it('is false when one finishes as the other starts', () => {
     expect(overlaps(600, 660, 660, 720)).toBe(false);
     expect(overlaps(660, 720, 600, 660)).toBe(false);
+  });
+});
+
+describe('lastSessionBand', () => {
+  const now = new Date('2026-10-22T00:00:00Z');
+  const daysAgo = (days: number) => new Date(now.getTime() - days * DAY);
+
+  it('is never for a lecturer with no session', () => {
+    expect(lastSessionBand(null, now)).toBe('never');
+  });
+
+  it('is within 30 days up to and including day 30, and for a date in the future', () => {
+    expect(lastSessionBand(now, now)).toBe('within 30 days');
+    expect(lastSessionBand(daysAgo(30), now)).toBe('within 30 days');
+    expect(lastSessionBand(new Date(now.getTime() + 5 * DAY), now)).toBe(
+      'within 30 days',
+    );
+  });
+
+  it('is 1 to 3 months from day 31 up to and including day 90', () => {
+    expect(lastSessionBand(daysAgo(31), now)).toBe('1 to 3 months');
+    expect(lastSessionBand(daysAgo(90), now)).toBe('1 to 3 months');
+  });
+
+  it('is over 3 months after that', () => {
+    expect(lastSessionBand(daysAgo(91), now)).toBe('over 3 months');
+    expect(lastSessionBand(daysAgo(900), now)).toBe('over 3 months');
+  });
+});
+
+describe('sessionsBand', () => {
+  it('steps none, 1 to 2, 3 to 5, 6 or more', () => {
+    expect([0, 1, 2, 3, 5, 6, 40].map(sessionsBand)).toEqual([
+      'none',
+      '1 to 2',
+      '1 to 2',
+      '3 to 5',
+      '3 to 5',
+      '6 or more',
+      '6 or more',
+    ]);
+  });
+
+  it('treats a negative count as none', () => {
+    expect(sessionsBand(-3)).toBe('none');
+  });
+});
+
+describe('roundTo', () => {
+  it('rounds to the places asked for', () => {
+    expect(roundTo(0.7071, 2)).toBe(0.71);
+    expect(roundTo(0.5388, 1)).toBe(0.5);
+    expect(roundTo(0.55, 1)).toBe(0.6);
+    expect(roundTo(0.825, 2)).toBe(0.83);
   });
 });

@@ -26,6 +26,7 @@ const answer: SuggestionsResult = {
     startTime: '10:00',
     endTime: '11:00',
     topics: ['Economics'],
+    topicsFrom: 'request',
   },
   stages: {
     considered: 1,
@@ -173,12 +174,38 @@ describe('SuggestionsController over HTTP', () => {
     expect(suggest.mock.calls[0][1].limit).toBe(3);
   });
 
+  it('accepts a request with everything blank', async () => {
+    const suggest = jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+
+    await request(server).get('/suggestions').expect(200);
+
+    const [asker, query] = suggest.mock.calls[0];
+    expect(asker).toBe('auth0|coord-1');
+    expect(query.date).toBeUndefined();
+    expect(query.startTime).toBeUndefined();
+    expect(query.endTime).toBeUndefined();
+    expect(query.topics).toBeUndefined();
+  });
+
   it.each([
-    ['no topics', '/suggestions?date=2026-10-28&startTime=10:00&endTime=11:00'],
-    [
-      'empty topics',
-      '/suggestions?date=2026-10-28&startTime=10:00&endTime=11:00&topics=,,',
-    ],
+    ['only a date', '/suggestions?date=2026-10-28'],
+    ['only times', '/suggestions?startTime=10:00&endTime=11:00'],
+    ['only topics', '/suggestions?topics=Economics'],
+    ['empty topics', '/suggestions?topics=,,'],
+    ['an empty topics parameter', '/suggestions?topics='],
+  ])('accepts %s', async (_label, url) => {
+    const suggest = jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+    await request(server).get(url).expect(200);
+    expect(suggest).toHaveBeenCalledTimes(1);
+  });
+
+  it('turns empty topics into an empty list', async () => {
+    const suggest = jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+    await request(server).get('/suggestions?topics=,,').expect(200);
+    expect(suggest.mock.calls[0][1].topics).toEqual([]);
+  });
+
+  it.each([
     [
       'too many topics',
       `/suggestions?date=2026-10-28&startTime=10:00&endTime=11:00&topics=${Array.from({ length: 11 }, (_, i) => `T${i}`).join(',')}`,
@@ -187,7 +214,6 @@ describe('SuggestionsController over HTTP', () => {
       'a very long topic',
       `/suggestions?date=2026-10-28&startTime=10:00&endTime=11:00&topics=${'x'.repeat(81)}`,
     ],
-    ['no date', '/suggestions?startTime=10:00&endTime=11:00&topics=Economics'],
     [
       'a badly formed date',
       '/suggestions?date=28-10-2026&startTime=10:00&endTime=11:00&topics=Economics',

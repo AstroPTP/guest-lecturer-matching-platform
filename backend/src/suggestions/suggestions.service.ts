@@ -12,17 +12,25 @@ import {
   type SuggestionsQueryDto,
 } from './dto/suggestions-query.dto';
 import {
-  coversSession,
   exposureScore,
   fitScore,
+  isAvailable,
   isReliable,
+  lastSessionBand,
   overlaps,
   parseClock,
   rankScore,
+  recordedAvailability,
   reliabilityScore,
+  roundTo,
   rotationScore,
+  sessionsBand,
   sharedTopics,
   weekdayOf,
+  type LastSessionBand,
+  type SessionsBand,
+  type TimeWindow,
+  type WeeklyAvailability,
 } from './scoring';
 
 /** Where the coordinator already stands with a suggested lecturer. */
@@ -32,6 +40,28 @@ export type SuggestionMatchStatus =
   | 'interest-received'
   | 'matched';
 
+/**
+ * The parts of a lecturer's score, rounded for the response. Fit comes from
+ * topics both sides have published, so it keeps two decimals. Rotation and
+ * exposure are derived from other coordinators' activity and are rounded to one
+ * decimal so they cannot be turned back into a date or a count. All are 0 to 1.
+ */
+export interface SuggestionScore {
+  fit: number;
+  rotation: number;
+  exposure: number;
+  total: number;
+}
+
+/**
+ * One suggested lecturer.
+ *
+ * Nothing here may let one coordinator read another's activity. The exact
+ * session count, the exact date of the last session and the reliability figure
+ * are all held back: the server ranks on the exact values and the response
+ * carries only coarse bands and rounded score parts. Do not add a field that
+ * is, or can be inverted to, one of them.
+ */
 export interface Suggestion {
   /** The same id Discovery and Matches use for this lecturer. */
   guestId: string;
@@ -42,17 +72,11 @@ export interface Suggestion {
   /** The requested topics this lecturer covers, as they wrote them. */
   sharedTopics: string[];
   matchStatus: SuggestionMatchStatus;
-  /** The ordering score, 0 to 100. */
-  score: number;
-  /** The three parts of the score, each 0 to 100, before weighting. */
-  fit: number;
-  rotation: number;
-  exposure: number;
-  /** Bayesian reliability, 0 to 100. A pass or fail gate, not part of score. */
-  reliability: number;
-  sessionsSoFar: number;
-  /** When the lecturer last matched with anyone, or null if never. */
-  lastSessionAt: string | null;
+  score: SuggestionScore;
+  /** How long since the lecturer last matched with anyone. */
+  lastSessionBand: LastSessionBand;
+  /** How many sessions the lecturer has had with anyone. */
+  sessionsBand: SessionsBand;
 }
 
 /**
@@ -68,12 +92,22 @@ export interface SuggestionStages {
   reliable: number;
 }
 
+/** Where the topics used for the search came from. */
+export type TopicsFrom = 'request' | 'profile' | 'none';
+
 export interface SuggestionsResult {
+  /** What the search used. A null was not asked for and so did not narrow it. */
   session: {
-    date: string;
-    startTime: string;
-    endTime: string;
+    date: string | null;
+    startTime: string | null;
+    endTime: string | null;
     topics: string[];
+    /**
+     * "request" when the caller named topics, "profile" when none were named
+     * and the coordinator's own expertise was used, "none" when neither exists
+     * and so no topic rule was applied.
+     */
+    topicsFrom: TopicsFrom;
   };
   stages: SuggestionStages;
   /** Best first, at most `limit`. `stages.reliable` is how many were ranked. */
@@ -91,23 +125,34 @@ const TIME_HOLDING_EVENT_STATUSES = ['invitation-sent', 'accepted'];
  *
  * Nothing is stored. There is no migration, no ranking table and no counter
  * to keep in step. How many sessions a lecturer has had, and when they last
- * had one, are read from the ACCEPTED rows of `match_requests` each time, and
- * a lecturer's record of delivering sessions is read from `events`. Those are
- * the same rows the Matches and Event pages show, so the list cannot disagree
- * with them or drift away from them.
+ * had one, are read from the ACCEPTED rows of `match_requests` each time. That
+ * is the same table the Matches page shows, so the list cannot disagree with it
+ * or drift away from it.
+ *
+ * Every part of the request is optional. No date means any day, no times means
+ * any time, and no topics means the coordinator's own expertise. An
+ * unspecified requirement is never a reason to remove someone.
  *
  * The rules, in order (the arithmetic is in ./scoring.ts):
  *
  *   1. Eligible: a finished profile, consent to be matched, an active account,
  *      and not dismissed or unmatched by this coordinator.
- *   2. Available: the lecturer's weekly window holds the whole session, and no
- *      open event of theirs overlaps it.
- *   3. Shares a topic: at least one of the requested topics.
- *   4. Reliable: a Bayesian record of delivering the sessions they accepted.
+ *   2. Available: isAvailable() for the day and times asked for, and no open
+ *      event of theirs overlaps them (checked only when both a date and times
+ *      are given).
+ *   3. Shares a topic: at least one of the topics in play. If there are none,
+ *      the rule is not applied.
+ *   4. Reliable: a Bayesian average of the lecturer's ratings. Ratings are not
+ *      stored yet, so every lecturer is given an empty list, sits at the
+ *      neutral 50 and passes. The gate is in place for when they are stored.
  *
  * Whoever passes is ranked by fit, then time since their last session, then
  * fewer sessions so far. Nobody is removed for being popular: a lecturer with
  * many sessions only ranks lower.
+ *
+ * The ranking uses exact values. The response does not: it carries bands and
+ * rounded score parts only, because the exact numbers would show one
+ * coordinator when another matched with a lecturer. See Suggestion.
  *
  * "Sessions so far" counts a lecturer's ACCEPTED matches with every
  * coordinator, not only this one, because the aim is to spread sessions across
@@ -122,7 +167,9 @@ export class SuggestionsService {
     now: Date = new Date(),
   ): Promise<SuggestionsResult> {
     const session = this.readSession(query);
-    const coordinatorId = await this.findCoordinatorId(auth0Id);
+    const { coordinatorId, userId: coordinatorUserId } =
+      await this.findCoordinator(auth0Id);
+    const topics = await this.topicsInPlay(query, coordinatorUserId);
 
     // Rule 1: eligible.
     const guests = await prisma.guests.findMany({
@@ -178,7 +225,8 @@ export class SuggestionsService {
       reliable: 0,
     };
 
-    // Rules 2 and 3 read three small tables for the eligible lecturers.
+    // Rules 2 and 3 read small tables for the eligible lecturers. The events
+    // are only needed to find a clash, which needs both a date and times.
     const eligibleUserIds = eligible.map((entry) => entry.userId);
     const eligibleGuestIds = eligible.map((entry) => entry.guest.guest_id);
     const [availabilityRows, expertiseRows, openEvents] = await Promise.all([
@@ -188,18 +236,20 @@ export class SuggestionsService {
       prisma.user_expertise.findMany({
         where: { user_id: { in: eligibleUserIds } },
       }),
-      prisma.events.findMany({
-        where: {
-          date: session.date,
-          status: { in: TIME_HOLDING_EVENT_STATUSES },
-          match: { guest_id: { in: eligibleGuestIds } },
-        },
-        select: {
-          start_time: true,
-          end_time: true,
-          match: { select: { guest_id: true } },
-        },
-      }),
+      session.date !== null && session.window !== null
+        ? prisma.events.findMany({
+            where: {
+              date: session.date,
+              status: { in: TIME_HOLDING_EVENT_STATUSES },
+              match: { guest_id: { in: eligibleGuestIds } },
+            },
+            select: {
+              start_time: true,
+              end_time: true,
+              match: { select: { guest_id: true } },
+            },
+          })
+        : Promise.resolve([]),
     ]);
 
     // Rule 2: available.
@@ -208,74 +258,60 @@ export class SuggestionsService {
       const start = parseClock(event.start_time);
       const end = parseClock(event.end_time);
       if (
+        session.window !== null &&
         start !== null &&
         end !== null &&
-        overlaps(session.startMinutes, session.endMinutes, start, end)
+        overlaps(
+          session.window.startMinutes,
+          session.window.endMinutes,
+          start,
+          end,
+        )
       ) {
         busyGuestIds.add(event.match.guest_id);
       }
     }
 
+    const required = { weekday: session.weekday, window: session.window };
     const available = eligible.filter((entry) => {
-      const windows = availabilityRows.filter(
+      if (busyGuestIds.has(entry.guest.guest_id)) {
+        return false;
+      }
+      const rows = availabilityRows.filter(
         (row) => row.user_id === entry.userId,
       );
-      return (
-        !busyGuestIds.has(entry.guest.guest_id) &&
-        windows.some((window) =>
-          coversSession(
-            window,
-            session.weekday,
-            session.startMinutes,
-            session.endMinutes,
-          ),
-        )
+      // A lecturer with no availability row has recorded nothing, which is
+      // what isAvailable() treats an empty record as.
+      const candidates: (WeeklyAvailability | null)[] =
+        rows.length > 0 ? rows : [null];
+      return candidates.some((row) =>
+        isAvailable(recordedAvailability(row), required),
       );
     });
     stages.available = available.length;
 
-    // Rule 3: shares a topic.
+    // Rule 3: shares a topic. With no topics in play there is nothing to share
+    // and nobody is removed; fit is then 0 for everyone.
     const relevant = available.flatMap((entry) => {
       const offered = expertiseRows
         .filter((row) => row.user_id === entry.userId)
         .map((row) => row.expertise);
-      const shared = sharedTopics(query.topics, offered);
+      if (topics.list.length === 0) {
+        return [{ ...entry, shared: [] as string[], fit: 0 }];
+      }
+      const shared = sharedTopics(topics.list, offered);
       return shared.length > 0
-        ? [{ ...entry, shared, fit: fitScore(query.topics, offered) }]
+        ? [{ ...entry, shared, fit: fitScore(topics.list, offered) }]
         : [];
     });
     stages.sharesTopic = relevant.length;
 
-    // Rule 4: reliable. Read only for the lecturers still in the running.
+    // The sessions behind rotation and exposure, for the lecturers still in.
     const relevantGuestIds = relevant.map((entry) => entry.guest.guest_id);
-    const [record, acceptedMatches] = await Promise.all([
-      prisma.events.findMany({
-        where: {
-          match: { guest_id: { in: relevantGuestIds } },
-          OR: [
-            { status: 'completed' },
-            // Accepted by the lecturer, then cancelled. A cancelled invitation
-            // they never answered is not a broken commitment.
-            { status: 'cancelled', responded_at: { not: null } },
-          ],
-        },
-        select: { status: true, match: { select: { guest_id: true } } },
-      }),
-      prisma.match_requests.findMany({
-        where: { guest_id: { in: relevantGuestIds }, status: 'ACCEPTED' },
-        select: { guest_id: true, requested_at: true, updated_at: true },
-      }),
-    ]);
-
-    const completedBy = new Map<bigint, number>();
-    const brokenBy = new Map<bigint, number>();
-    for (const event of record) {
-      const tally = event.status === 'completed' ? completedBy : brokenBy;
-      tally.set(
-        event.match.guest_id,
-        (tally.get(event.match.guest_id) ?? 0) + 1,
-      );
-    }
+    const acceptedMatches = await prisma.match_requests.findMany({
+      where: { guest_id: { in: relevantGuestIds }, status: 'ACCEPTED' },
+      select: { guest_id: true, requested_at: true, updated_at: true },
+    });
 
     const sessionsBy = new Map<bigint, number>();
     const lastSessionBy = new Map<bigint, Date>();
@@ -289,13 +325,10 @@ export class SuggestionsService {
       }
     }
 
+    // Rule 4: reliable, then the exact score. Everything in `ranked` is exact.
     const ranked = relevant.flatMap((entry) => {
       const guestId = entry.guest.guest_id;
-      const reliability = reliabilityScore(
-        completedBy.get(guestId) ?? 0,
-        brokenBy.get(guestId) ?? 0,
-      );
-      if (!isReliable(reliability)) {
+      if (!isReliable(reliabilityScore(this.ratingsOf(guestId)))) {
         return [];
       }
 
@@ -307,26 +340,27 @@ export class SuggestionsService {
       return [
         {
           entry,
-          reliability,
           sessionsSoFar,
           lastSessionAt,
           rotation,
           exposure,
-          score: rankScore(entry.fit, rotation, exposure),
+          total: rankScore(entry.fit, rotation, exposure),
         },
       ];
     });
     stages.reliable = ranked.length;
 
+    // The order is settled here, on the exact values, before anything is rounded.
     ranked.sort(
       (a, b) =>
-        b.score - a.score ||
+        b.total - a.total ||
         b.entry.fit - a.entry.fit ||
         (a.lastSessionAt?.getTime() ?? 0) - (b.lastSessionAt?.getTime() ?? 0) ||
         a.sessionsSoFar - b.sessionsSoFar ||
         (a.entry.guest.guest_id < b.entry.guest.guest_id ? -1 : 1),
     );
 
+    // Only now are the exact values turned into what may leave the server.
     const suggestions = ranked
       .slice(0, query.limit ?? DEFAULT_LIMIT)
       .map((item): Suggestion => {
@@ -339,44 +373,96 @@ export class SuggestionsService {
           photoUrl: profileImageUrl(guest.profile_image_id),
           sharedTopics: item.entry.shared,
           matchStatus: this.matchStatusOf(ownMatchByGuest.get(guest.guest_id)),
-          score: toPercent(item.score),
-          fit: toPercent(item.entry.fit),
-          rotation: toPercent(item.rotation),
-          exposure: toPercent(item.exposure),
-          reliability: Math.round(item.reliability * 10) / 10,
-          sessionsSoFar: item.sessionsSoFar,
-          lastSessionAt: item.lastSessionAt?.toISOString() ?? null,
+          score: {
+            fit: roundTo(item.entry.fit, 2),
+            rotation: roundTo(item.rotation, 1),
+            exposure: roundTo(item.exposure, 1),
+            total: roundTo(item.total, 2),
+          },
+          lastSessionBand: lastSessionBand(item.lastSessionAt, now),
+          sessionsBand: sessionsBand(item.sessionsSoFar),
         };
       });
 
     return {
       session: {
-        date: query.date,
-        startTime: query.startTime,
-        endTime: query.endTime,
-        topics: query.topics,
+        date: session.date,
+        startTime: query.startTime ?? null,
+        endTime: query.endTime ?? null,
+        topics: topics.list,
+        topicsFrom: topics.from,
       },
       stages,
       suggestions,
     };
   }
 
-  /** Checks the date and times, which the DTO can only check the shape of. */
-  private readSession(query: SuggestionsQueryDto) {
-    const weekday = weekdayOf(query.date);
-    const startMinutes = parseClock(query.startTime);
-    const endMinutes = parseClock(query.endTime);
+  /**
+   * Checks the date and times, which the DTO can only check the shape of.
+   * Anything not given stays null, and null means "not asked for".
+   */
+  private readSession(query: SuggestionsQueryDto): {
+    date: string | null;
+    weekday: number | null;
+    window: TimeWindow | null;
+  } {
+    let weekday: number | null = null;
+    if (query.date !== undefined) {
+      weekday = weekdayOf(query.date);
+      if (weekday === null) {
+        throw this.badRequest('date is not a real calendar date');
+      }
+    }
 
-    if (weekday === null) {
-      throw this.badRequest('date is not a real calendar date');
+    let window: TimeWindow | null = null;
+    if (query.startTime !== undefined || query.endTime !== undefined) {
+      if (query.startTime === undefined || query.endTime === undefined) {
+        throw this.badRequest('give both startTime and endTime, or neither');
+      }
+      const startMinutes = parseClock(query.startTime);
+      const endMinutes = parseClock(query.endTime);
+      if (startMinutes === null || endMinutes === null) {
+        throw this.badRequest('startTime and endTime must be HH:MM');
+      }
+      if (endMinutes <= startMinutes) {
+        throw this.badRequest('endTime must be later than startTime');
+      }
+      window = { startMinutes, endMinutes };
     }
-    if (startMinutes === null || endMinutes === null) {
-      throw this.badRequest('startTime and endTime must be HH:MM');
+
+    return { date: query.date ?? null, weekday, window };
+  }
+
+  /**
+   * The topics the search is about. Those the caller named, or, when it named
+   * none, the coordinator's own expertise from their profile. If the profile
+   * has none either, the list is empty and no topic rule is applied.
+   */
+  private async topicsInPlay(
+    query: SuggestionsQueryDto,
+    coordinatorUserId: bigint,
+  ): Promise<{ list: string[]; from: TopicsFrom }> {
+    if (query.topics && query.topics.length > 0) {
+      return { list: query.topics, from: 'request' };
     }
-    if (endMinutes <= startMinutes) {
-      throw this.badRequest('endTime must be later than startTime');
-    }
-    return { date: query.date, weekday, startMinutes, endMinutes };
+    const own = await prisma.user_expertise.findMany({
+      where: { user_id: coordinatorUserId },
+    });
+    const list = own.map((row) => row.expertise);
+    return { list, from: list.length > 0 ? 'profile' : 'none' };
+  }
+
+  /**
+   * A lecturer's ratings, each 0 to 100.
+   *
+   * Ratings are not stored yet, so this is always empty and every lecturer
+   * stays at the neutral 50 and passes the reliability gate. Cancelled
+   * sessions are deliberately not used in their place: a cancellation cannot
+   * be attributed to the lecturer or the coordinator. Read real ratings here
+   * once there is somewhere to keep them.
+   */
+  private ratingsOf(_guestId: bigint): readonly number[] {
+    return [];
   }
 
   private badRequest(message: string): BadRequestException {
@@ -390,7 +476,9 @@ export class SuggestionsService {
    * The caller's coordinator profile. A read only: it never creates the user
    * row, so asking for suggestions cannot leave a half-made account behind.
    */
-  private async findCoordinatorId(auth0Id: string): Promise<bigint> {
+  private async findCoordinator(
+    auth0Id: string,
+  ): Promise<{ coordinatorId: bigint; userId: bigint }> {
     const user = await prisma.users.findUnique({
       where: { auth0Id },
       select: { userid: true },
@@ -401,12 +489,12 @@ export class SuggestionsService {
           select: { coordinator_id: true },
         })
       : null;
-    if (!coordinator) {
+    if (!user || !coordinator) {
       throw new ForbiddenException(
         'Complete your profile before asking for suggested speakers.',
       );
     }
-    return coordinator.coordinator_id;
+    return { coordinatorId: coordinator.coordinator_id, userId: user.userid };
   }
 
   private matchStatusOf(
@@ -423,9 +511,4 @@ export class SuggestionsService {
       ? 'interest-sent'
       : 'interest-received';
   }
-}
-
-/** A 0 to 1 value as a percentage with one decimal place. */
-function toPercent(value: number): number {
-  return Math.round(value * 1000) / 10;
 }

@@ -9,7 +9,7 @@
  *
  *   1. eligible        decided in the service, from the profile and the
  *                      coordinator's own history with the lecturer
- *   2. available       coversSession(), plus a clash check against events
+ *   2. available       isAvailable(), plus a clash check against events
  *   3. shares a topic  fitScore() > 0
  *   4. reliable        isReliable(), a pass or fail gate that never enters
  *                      the ordering
@@ -133,6 +133,55 @@ export function exposureScore(sessionsSoFar: number): number {
   return 1 / (1 + Math.max(0, sessionsSoFar));
 }
 
+/** How long ago a lecturer last had a session, in coarse steps. */
+export type LastSessionBand =
+  | 'never'
+  | 'within 30 days'
+  | '1 to 3 months'
+  | 'over 3 months';
+
+/** How many sessions a lecturer has had, in coarse steps. */
+export type SessionsBand = 'none' | '1 to 2' | '3 to 5' | '6 or more';
+
+/**
+ * The lecturer's last session as a band, for the response.
+ *
+ * The exact date is never returned. A coordinator who could read it, or the
+ * exact rotation term it produces, could work out when another coordinator
+ * matched with that lecturer. The server ranks on the exact value and only
+ * the band leaves it.
+ */
+export function lastSessionBand(
+  lastSessionAt: Date | null,
+  now: Date,
+): LastSessionBand {
+  if (!lastSessionAt) {
+    return 'never';
+  }
+  const days = (now.getTime() - lastSessionAt.getTime()) / MS_PER_DAY;
+  if (days <= 30) {
+    return 'within 30 days';
+  }
+  return days <= 90 ? '1 to 3 months' : 'over 3 months';
+}
+
+/** The number of sessions as a band, for the response. See lastSessionBand. */
+export function sessionsBand(sessionsSoFar: number): SessionsBand {
+  if (sessionsSoFar <= 0) {
+    return 'none';
+  }
+  if (sessionsSoFar <= 2) {
+    return '1 to 2';
+  }
+  return sessionsSoFar <= 5 ? '3 to 5' : '6 or more';
+}
+
+/** Rounds to a number of decimal places. */
+export function roundTo(value: number, places: number): number {
+  const factor = Math.pow(10, places);
+  return Math.round(value * factor) / factor;
+}
+
 /** The ordering score, 0 to 1. Reliability is deliberately not part of it. */
 export function rankScore(
   fit: number,
@@ -145,22 +194,26 @@ export function rankScore(
 }
 
 /**
- * Bayesian average of a lecturer's record, 0 to 100.
+ * A lecturer's reliability as a Bayesian average of their ratings, 0 to 100:
+ * (neutral * trust + sum of ratings) / (trust + number of ratings).
  *
- * Starts at the neutral 50 worth `RELIABILITY_TRUST` observations, then each
- * completed session pulls towards 100 and each broken commitment towards 0.
- * A newcomer sits at 50 and passes. A long record moves the number; a lone
- * data point cannot swing it far, which is the point of averaging this way.
+ * A lecturer with no ratings sits exactly at the neutral 50 and passes the
+ * gate. Good ratings pull them up and poor ones down, and the trust constant
+ * decides how much evidence it takes to move them. A lone rating cannot swing
+ * the number far, which is the point of averaging this way.
  *
- * @param completed Sessions the lecturer delivered.
- * @param broken Sessions the lecturer accepted that were later cancelled.
+ * Ratings are not stored yet, so the service passes an empty list and
+ * everybody stays at 50. This function and the gate are in place for the day
+ * they are. Do not feed it anything else: a cancelled session cannot be
+ * attributed to the lecturer or the coordinator, so it is not a rating.
+ *
+ * @param ratings Each rating on a 0 to 100 scale.
  */
-export function reliabilityScore(completed: number, broken: number): number {
-  const done = Math.max(0, completed);
-  const lost = Math.max(0, broken);
+export function reliabilityScore(ratings: readonly number[]): number {
+  const total = ratings.reduce((sum, rating) => sum + rating, 0);
   return (
-    (RELIABILITY_TRUST * RELIABILITY_NEUTRAL + 100 * done) /
-    (RELIABILITY_TRUST + done + lost)
+    (RELIABILITY_TRUST * RELIABILITY_NEUTRAL + total) /
+    (RELIABILITY_TRUST + ratings.length)
   );
 }
 
@@ -168,7 +221,7 @@ export function isReliable(score: number): boolean {
   return score >= RELIABILITY_THRESHOLD;
 }
 
-/** The weekday columns the availability table stores, Monday to Friday. */
+/** The weekday columns the availability table stores, Monday (1) to Friday (5). */
 export interface WeeklyAvailability {
   monday: boolean | null;
   tuesday: boolean | null;
@@ -180,14 +233,31 @@ export interface WeeklyAvailability {
 }
 
 const WEEKDAY_COLUMNS = [
-  null, // Sunday
   'monday',
   'tuesday',
   'wednesday',
   'thursday',
   'friday',
-  null, // Saturday
 ] as const;
+
+/** A time range as minutes after midnight. */
+export interface TimeWindow {
+  startMinutes: number;
+  endMinutes: number;
+}
+
+/** What a lecturer has recorded: the weekdays (1 to 5) and the hours. */
+export interface RecordedAvailability {
+  days: ReadonlySet<number>;
+  window: TimeWindow | null;
+}
+
+/** What a session asks for. Anything left null is not asked for. */
+export interface RequiredAvailability {
+  /** 0 for Sunday to 6 for Saturday. */
+  weekday: number | null;
+  window: TimeWindow | null;
+}
 
 /** Minutes after midnight for "HH:MM", or null if it is not a valid time. */
 export function parseClock(value: string): number | null {
@@ -226,33 +296,68 @@ export function weekdayOf(date: string): number | null {
   return isReal ? parsed.getUTCDay() : null;
 }
 
+/** Reads one availability row into the days and hours it records. */
+export function recordedAvailability(
+  row: WeeklyAvailability | null,
+): RecordedAvailability {
+  const days = new Set<number>();
+  if (row) {
+    WEEKDAY_COLUMNS.forEach((column, index) => {
+      if (row[column]) {
+        days.add(index + 1);
+      }
+    });
+  }
+  const window =
+    row?.available_from && row.available_to
+      ? {
+          startMinutes: minutesOfTimeColumn(row.available_from),
+          endMinutes: minutesOfTimeColumn(row.available_to),
+        }
+      : null;
+  return { days, window };
+}
+
 /**
- * Whether a lecturer's weekly window holds the whole session.
+ * Whether a lecturer can take a session, as a hard yes or no.
  *
- * The weekday must be ticked and the window must run from at or before the
- * start to at or after the end. A window that finishes exactly as the session
- * begins does not hold it: they are gone before it starts.
+ * An unspecified requirement is not a clash. With no day asked for, everyone
+ * passes the day check. With no start and end time asked for, a lecturer with
+ * no hours recorded is NOT removed. Only when a time window is asked for does
+ * "no hours recorded" remove someone, because we cannot show the session is
+ * covered. A coordinator browsing with no session in mind should see everybody.
  *
- * A lecturer who ticked days but gave no hours is not treated as free. The
- * list would otherwise offer people whose availability nobody has stated.
+ * When a day is asked for, a lecturer who has recorded days must have it
+ * ticked. The table has no weekend columns, so a Saturday or Sunday removes
+ * every lecturer who has recorded any day. A lecturer who has recorded no days
+ * at all is not removed by the day check, for the same reason as above.
+ *
+ * When a window is asked for it must sit entirely inside the lecturer's hours.
+ * A window that finishes exactly as the session begins does not hold it.
  */
-export function coversSession(
-  availability: WeeklyAvailability,
-  weekday: number,
-  startMinutes: number,
-  endMinutes: number,
+export function isAvailable(
+  lecturer: RecordedAvailability,
+  required: RequiredAvailability,
 ): boolean {
-  const column = WEEKDAY_COLUMNS[weekday];
-  if (!column || !availability[column]) {
-    return false;
+  if (required.weekday !== null) {
+    if (lecturer.days.size > 0 && !lecturer.days.has(required.weekday)) {
+      return false;
+    }
   }
-  if (!availability.available_from || !availability.available_to) {
-    return false;
+
+  if (required.window) {
+    if (!lecturer.window) {
+      return false;
+    }
+    if (
+      required.window.startMinutes < lecturer.window.startMinutes ||
+      required.window.endMinutes > lecturer.window.endMinutes
+    ) {
+      return false;
+    }
   }
-  return (
-    minutesOfTimeColumn(availability.available_from) <= startMinutes &&
-    endMinutes <= minutesOfTimeColumn(availability.available_to)
-  );
+
+  return true;
 }
 
 /** Whether two time ranges overlap. Touching at an end point is not overlap. */

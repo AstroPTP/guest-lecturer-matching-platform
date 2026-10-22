@@ -50,6 +50,8 @@ interface World {
   accepted: { guest_id: bigint; requested_at: Date; updated_at: Date | null }[];
   availability: Record<string, unknown>[];
   expertise: { user_id: bigint; expertise: string }[];
+  /** The signed-in coordinator is user 1. Their own topics. */
+  coordinatorTopics: string[];
   events: {
     date: string;
     status: string;
@@ -73,6 +75,7 @@ function build(specs: LecturerSpec[]): World & { ids: Record<string, bigint> } {
     accepted: [],
     availability: [],
     expertise: [],
+    coordinatorTopics: [],
     events: [],
     ids: {},
   };
@@ -193,6 +196,16 @@ function install(world: World) {
   jest.spyOn(prisma.user_expertise, 'findMany').mockImplementation(((args: {
     where: Where;
   }) => {
+    // The coordinator's own topics are asked for by a single user id; the
+    // lecturers' by a list.
+    if (typeof args.where.user_id === 'bigint') {
+      return Promise.resolve(
+        world.coordinatorTopics.map((expertise) => ({
+          user_id: 1n,
+          expertise,
+        })),
+      );
+    }
     const wanted = idList(args.where.user_id);
     return Promise.resolve(
       world.expertise.filter((row) => wanted.includes(row.user_id)),
@@ -202,25 +215,16 @@ function install(world: World) {
   jest.spyOn(prisma.events, 'findMany').mockImplementation(((args: {
     where: Where;
   }) => {
+    // The only read of events left is the clash check: a date, and the states
+    // that still hold the lecturer's time.
     const wanted = idList((args.where.match as Where).guest_id);
-    const inScope = world.events.filter((row) =>
-      wanted.includes(row.match.guest_id),
-    );
-    // The clash read names a date and the states that hold time; the record
-    // read names completed sessions and answered, then cancelled, ones.
-    if (typeof args.where.date === 'string') {
-      const holding = (args.where.status as { in: string[] }).in;
-      return Promise.resolve(
-        inScope.filter(
-          (row) => row.date === args.where.date && holding.includes(row.status),
-        ),
-      );
-    }
+    const holding = (args.where.status as { in: string[] }).in;
     return Promise.resolve(
-      inScope.filter(
+      world.events.filter(
         (row) =>
-          row.status === 'completed' ||
-          (row.status === 'cancelled' && row.responded_at !== null),
+          wanted.includes(row.match.guest_id) &&
+          row.date === args.where.date &&
+          holding.includes(row.status),
       ),
     );
   }) as never);
@@ -287,6 +291,8 @@ describe('SuggestionsService', () => {
       ['an impossible date', { date: '2026-02-30' }],
       ['an end before the start', { startTime: '11:00', endTime: '10:00' }],
       ['a zero-length session', { startTime: '10:00', endTime: '10:00' }],
+      ['a start time with no end time', { endTime: undefined }],
+      ['an end time with no start time', { startTime: undefined }],
     ])('rejects %s with a 400', async (_label, override) => {
       install(build([{ name: 'Ada' }]));
       await expect(
@@ -294,7 +300,7 @@ describe('SuggestionsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('echoes the session it answered for', async () => {
+    it('echoes what the search used', async () => {
       install(build([{ name: 'Ada' }]));
       const result = await service.suggest(userId, query, NOW);
       expect(result.session).toEqual({
@@ -302,6 +308,21 @@ describe('SuggestionsService', () => {
         startTime: '10:00',
         endTime: '11:00',
         topics: ['Economics', 'Taxation Law'],
+        topicsFrom: 'request',
+      });
+    });
+
+    it('reports a null for anything it was not given', async () => {
+      const world = build([{ name: 'Ada' }]);
+      world.coordinatorTopics = ['Economics'];
+      install(world);
+      const result = await service.suggest(userId, {}, NOW);
+      expect(result.session).toEqual({
+        date: null,
+        startTime: null,
+        endTime: null,
+        topics: ['Economics'],
+        topicsFrom: 'profile',
       });
     });
   });
@@ -367,7 +388,7 @@ describe('SuggestionsService', () => {
   });
 
   describe('rule 2, available for the session', () => {
-    it('keeps only lecturers whose window holds the whole session on that weekday', async () => {
+    it('keeps only lecturers whose hours hold the whole session on that weekday', async () => {
       install(
         build([
           { name: 'Fits' },
@@ -384,7 +405,7 @@ describe('SuggestionsService', () => {
       expect(result.stages.available).toBe(1);
     });
 
-    it('finds nobody on a weekend, which the weekly table cannot hold', async () => {
+    it('removes everyone who has recorded a day on a weekend, which the table has no column for', async () => {
       install(
         build([{ name: 'Ada', days: ['monday', 'wednesday', 'friday'] }]),
       );
@@ -397,8 +418,68 @@ describe('SuggestionsService', () => {
       expect(result.suggestions).toEqual([]);
     });
 
-    it('leaves out a lecturer who already has an open event that overlaps', async () => {
-      const world = build([{ name: 'Ada' }, { name: 'Ben' }, { name: 'Cleo' }]);
+    describe('an unspecified requirement is not a clash', () => {
+      const lecturers = [
+        { name: 'Fits' },
+        { name: 'WrongDay', days: ['monday', 'friday'] },
+        { name: 'OutsideHours', from: '13:00', to: '17:00' },
+        { name: 'NoHours', from: null },
+        { name: 'NoDays', days: [] },
+      ];
+      const everyone = { topics: ['Economics'] };
+
+      it('removes nobody when no date and no times are given', async () => {
+        install(build(lecturers));
+        const result = await service.suggest(userId, everyone, NOW);
+        expect(result.stages.eligible).toBe(5);
+        expect(result.stages.available).toBe(5);
+        expect(result.suggestions).toHaveLength(5);
+      });
+
+      it('applies only the day check when only a date is given, and does not remove a lecturer with no hours', async () => {
+        install(build(lecturers));
+        const result = await service.suggest(
+          userId,
+          { ...everyone, date: '2026-10-28' },
+          NOW,
+        );
+        expect(
+          result.suggestions.map((s) => s.name.replace(' Tester', '')).sort(),
+        ).toEqual(['Fits', 'NoDays', 'NoHours', 'OutsideHours']);
+      });
+
+      it('applies only the hours check when only times are given, and then removes a lecturer with no hours', async () => {
+        install(build(lecturers));
+        const result = await service.suggest(
+          userId,
+          { ...everyone, startTime: '10:00', endTime: '11:00' },
+          NOW,
+        );
+        // WrongDay is kept because no day was asked for.
+        expect(
+          result.suggestions.map((s) => s.name.replace(' Tester', '')).sort(),
+        ).toEqual(['Fits', 'NoDays', 'WrongDay']);
+      });
+
+      it('does not remove a lecturer who has recorded no days when a day is given', async () => {
+        install(build([{ name: 'NoDays', days: [] }]));
+        expect(await names({ ...everyone, date: '2026-10-31' })).toEqual([
+          'NoDays',
+        ]);
+      });
+
+      it('removes a lecturer with no availability row at all only when times are given', async () => {
+        const world = build([{ name: 'Ghost' }]);
+        world.availability = [];
+        install(world);
+        expect(await names(everyone)).toEqual(['Ghost']);
+        expect(
+          await names({ ...everyone, startTime: '10:00', endTime: '11:00' }),
+        ).toEqual([]);
+      });
+    });
+
+    describe('open events', () => {
       const event = (
         guest: bigint,
         status: string,
@@ -413,33 +494,54 @@ describe('SuggestionsService', () => {
         responded_at: null,
         match: { guest_id: guest },
       });
-      world.events.push(
-        event(world.ids.Ada, 'accepted', '10:30', '12:00'),
-        event(world.ids.Ben, 'invitation-sent', '09:00', '10:30'),
-        // Next to the session, or on another day, or no longer holding time.
-        event(world.ids.Cleo, 'accepted', '11:00', '12:00'),
-      );
-      world.events.push(
-        event(world.ids.Cleo, 'accepted', '10:00', '11:00', '2026-10-29'),
-        event(world.ids.Cleo, 'declined', '10:00', '11:00'),
-        event(world.ids.Cleo, 'cancelled', '10:00', '11:00'),
-      );
-      install(world);
-      expect(await names()).toEqual(['Cleo']);
-    });
 
-    it('ignores an event whose times it cannot read rather than failing', async () => {
-      const world = build([{ name: 'Ada' }]);
-      world.events.push({
-        date: '2026-10-28',
-        status: 'accepted',
-        start_time: 'after lunch',
-        end_time: 'late',
-        responded_at: null,
-        match: { guest_id: world.ids.Ada },
+      it('leave out a lecturer who already has an open event that overlaps', async () => {
+        const world = build([
+          { name: 'Ada' },
+          { name: 'Ben' },
+          { name: 'Cleo' },
+        ]);
+        world.events.push(
+          event(world.ids.Ada, 'accepted', '10:30', '12:00'),
+          event(world.ids.Ben, 'invitation-sent', '09:00', '10:30'),
+          // Next to the session, or on another day, or no longer holding time.
+          event(world.ids.Cleo, 'accepted', '11:00', '12:00'),
+          event(world.ids.Cleo, 'accepted', '10:00', '11:00', '2026-10-29'),
+          event(world.ids.Cleo, 'declined', '10:00', '11:00'),
+          event(world.ids.Cleo, 'cancelled', '10:00', '11:00'),
+        );
+        install(world);
+        expect(await names()).toEqual(['Cleo']);
       });
-      install(world);
-      expect(await names()).toEqual(['Ada']);
+
+      it('are not looked for when no date is given, or no times', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(event(world.ids.Ada, 'accepted', '10:00', '11:00'));
+        install(world);
+        const read = jest.spyOn(prisma.events, 'findMany');
+
+        expect(await names({ topics: ['Economics'] })).toEqual(['Ada']);
+        expect(
+          await names({ topics: ['Economics'], date: '2026-10-28' }),
+        ).toEqual(['Ada']);
+        expect(
+          await names({
+            topics: ['Economics'],
+            startTime: '10:00',
+            endTime: '11:00',
+          }),
+        ).toEqual(['Ada']);
+        expect(read).not.toHaveBeenCalled();
+      });
+
+      it('are ignored when their times cannot be read, rather than failing', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          event(world.ids.Ada, 'accepted', 'after lunch', 'late'),
+        );
+        install(world);
+        expect(await names()).toEqual(['Ada']);
+      });
     });
   });
 
@@ -467,65 +569,145 @@ describe('SuggestionsService', () => {
       const [first] = (await service.suggest(userId, query, NOW)).suggestions;
       expect(first.sharedTopics).toEqual(['ECONOMICS', 'Taxation Law']);
     });
+
+    describe('with no topics given', () => {
+      it("uses the coordinator's own expertise", async () => {
+        const world = build([
+          { name: 'Econ', topics: ['Economics'] },
+          { name: 'Law', topics: ['Corporate Law'] },
+        ]);
+        world.coordinatorTopics = ['Economics', 'Taxation Law'];
+        install(world);
+
+        const result = await service.suggest(userId, {}, NOW);
+        expect(result.session.topicsFrom).toBe('profile');
+        expect(result.session.topics).toEqual(['Economics', 'Taxation Law']);
+        expect(result.suggestions.map((s) => s.name)).toEqual(['Econ Tester']);
+      });
+
+      it('treats an empty topics list the same as none', async () => {
+        const world = build([{ name: 'Econ', topics: ['Economics'] }]);
+        world.coordinatorTopics = ['Economics'];
+        install(world);
+        const result = await service.suggest(userId, { topics: [] }, NOW);
+        expect(result.session.topicsFrom).toBe('profile');
+        expect(result.stages.sharesTopic).toBe(1);
+      });
+
+      it("prefers topics that were named over the coordinator's own", async () => {
+        const world = build([
+          { name: 'Econ', topics: ['Economics'] },
+          { name: 'Law', topics: ['Corporate Law'] },
+        ]);
+        world.coordinatorTopics = ['Economics'];
+        install(world);
+        const read = jest.spyOn(prisma.user_expertise, 'findMany');
+
+        const result = await service.suggest(
+          userId,
+          { topics: ['Corporate Law'] },
+          NOW,
+        );
+        expect(result.session.topicsFrom).toBe('request');
+        expect(result.suggestions.map((s) => s.name)).toEqual(['Law Tester']);
+        // Only the lecturers' topics were read; the coordinator's were not.
+        expect(read).toHaveBeenCalledTimes(1);
+      });
+
+      it('applies no topic rule at all when the coordinator has no expertise either', async () => {
+        install(
+          build([
+            { name: 'Econ', topics: ['Economics'] },
+            { name: 'Law', topics: ['Corporate Law'] },
+            { name: 'Blank', topics: [] },
+          ]),
+        );
+        const result = await service.suggest(userId, {}, NOW);
+        expect(result.session.topicsFrom).toBe('none');
+        expect(result.session.topics).toEqual([]);
+        expect(result.stages.sharesTopic).toBe(3);
+        expect(result.suggestions).toHaveLength(3);
+        for (const suggestion of result.suggestions) {
+          expect(suggestion.sharedTopics).toEqual([]);
+          expect(suggestion.score.fit).toBe(0);
+        }
+      });
+    });
   });
 
   describe('rule 4, reliable', () => {
-    it('leaves out a lecturer whose accepted sessions keep being cancelled', async () => {
+    it('passes every lecturer through the gate, because ratings are not stored yet', async () => {
+      install(build([{ name: 'Ada' }, { name: 'Ben' }]));
+      const result = await service.suggest(userId, query, NOW);
+      expect(result.stages.reliable).toBe(result.stages.sharesTopic);
+      expect(result.suggestions).toHaveLength(2);
+    });
+
+    it('does not drop a lecturer for cancelled sessions, whoever cancelled them', async () => {
       install(
         build([
           { name: 'Steady', completed: 3 },
           { name: 'New' },
-          { name: 'Flaky', broken: 2 },
+          { name: 'Cancelled', broken: 4 },
         ]),
       );
       const result = await service.suggest(userId, query, NOW);
       expect(
         result.suggestions.map((s) => s.name.replace(' Tester', '')).sort(),
-      ).toEqual(['New', 'Steady']);
+      ).toEqual(['Cancelled', 'New', 'Steady']);
       expect(result.stages.sharesTopic).toBe(3);
-      expect(result.stages.reliable).toBe(2);
+      expect(result.stages.reliable).toBe(3);
     });
 
-    it('lets a record of delivering outweigh one cancellation', async () => {
-      install(build([{ name: 'Mixed', completed: 4, broken: 1 }]));
-      expect(await names()).toEqual(['Mixed']);
+    it('does not read events to judge reliability', async () => {
+      install(build([{ name: 'Ada', broken: 4 }]));
+      const read = jest.spyOn(prisma.events, 'findMany');
+      await service.suggest(userId, query, NOW);
+      // The clash check reads events for a date and times; nothing else does.
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(read.mock.calls[0][0]?.where).toHaveProperty('date', '2026-10-28');
     });
 
-    it('does not count a cancelled invitation the lecturer never answered', async () => {
-      const world = build([{ name: 'Ada' }]);
-      world.events.push(
-        {
-          date: '2026-05-01',
-          status: 'cancelled',
-          start_time: '09:00',
-          end_time: '10:00',
-          responded_at: null,
-          match: { guest_id: world.ids.Ada },
-        },
-        {
-          date: '2026-05-02',
-          status: 'cancelled',
-          start_time: '09:00',
-          end_time: '10:00',
-          responded_at: null,
-          match: { guest_id: world.ids.Ada },
-        },
+    it('does not let cancelled sessions change the order', async () => {
+      install(
+        build([
+          { name: 'Cancelled', broken: 4 },
+          { name: 'Completed', completed: 4 },
+        ]),
       );
-      install(world);
-      const [first] = (await service.suggest(userId, query, NOW)).suggestions;
-      expect(first.reliability).toBe(50);
-    });
-
-    it('keeps reliability out of the ordering', async () => {
-      install(build([{ name: 'Proven', completed: 20 }, { name: 'New' }]));
       const result = await service.suggest(userId, query, NOW);
-      // Same topics, same (empty) history of matches: the scores tie, so the
-      // record of reliability must not have separated them.
-      const [proven, fresh] = ['Proven', 'New'].map(
-        (name) => result.suggestions.find((s) => s.name === `${name} Tester`)!,
-      );
-      expect(proven.score).toBe(fresh.score);
-      expect(proven.reliability).toBeGreaterThan(fresh.reliability);
+      const [first, second] = result.suggestions;
+      expect(first.score).toEqual(second.score);
+    });
+
+    it('has the gate wired in for when ratings exist: a poorly rated lecturer would be left out', async () => {
+      install(build([{ name: 'Rated' }, { name: 'Unrated' }]));
+      const ratingsOf = jest
+        .spyOn(
+          service as unknown as { ratingsOf: (id: bigint) => number[] },
+          'ratingsOf',
+        )
+        .mockImplementation((id) => (id === 1n ? [5, 5, 5, 5, 5] : []));
+
+      const result = await service.suggest(userId, query, NOW);
+      expect(ratingsOf).toHaveBeenCalled();
+      expect(result.suggestions.map((s) => s.name)).toEqual(['Unrated Tester']);
+      expect(result.stages.sharesTopic).toBe(2);
+      expect(result.stages.reliable).toBe(1);
+    });
+
+    it('keeps reliability out of the ordering even when ratings exist', async () => {
+      install(build([{ name: 'Great' }, { name: 'Fine' }]));
+      jest
+        .spyOn(
+          service as unknown as { ratingsOf: (id: bigint) => number[] },
+          'ratingsOf',
+        )
+        .mockImplementation((id) => (id === 1n ? [100, 100, 100] : [60]));
+
+      const result = await service.suggest(userId, query, NOW);
+      const [first, second] = result.suggestions;
+      expect(first.score).toEqual(second.score);
     });
   });
 
@@ -583,7 +765,7 @@ describe('SuggestionsService', () => {
         result.suggestions.map((s) => s.name.replace(' Tester', '')),
       ).toEqual(expect.arrayContaining(['Popular', 'Fresh1', 'Fresh2']));
       expect(result.suggestions.at(-1)?.name).toBe('Popular Tester');
-      expect(result.suggestions.at(-1)?.sessionsSoFar).toBe(40);
+      expect(result.suggestions.at(-1)?.sessionsBand).toBe('6 or more');
       expect(result.stages.reliable).toBe(3);
     });
 
@@ -617,17 +799,25 @@ describe('SuggestionsService', () => {
     });
 
     it("counts a lecturer's sessions with every coordinator, and uses the latest", async () => {
-      const older = new Date('2026-01-10T00:00:00.000Z');
-      const newer = new Date('2026-06-10T00:00:00.000Z');
+      // Two sessions, the latest 20 days ago.
+      const older = new Date(NOW.getTime() - 200 * DAY);
+      const newer = new Date(NOW.getTime() - 20 * DAY);
       install(build([{ name: 'Ada', accepted: [older, newer] }]));
       const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
-      expect(ada.sessionsSoFar).toBe(2);
-      expect(ada.lastSessionAt).toBe(newer.toISOString());
+      expect(ada.sessionsBand).toBe('1 to 2');
+      expect(ada.lastSessionBand).toBe('within 30 days');
+    });
+
+    it('bands a lecturer with no sessions as none and never', async () => {
+      install(build([{ name: 'Ada' }]));
+      const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
+      expect(ada.sessionsBand).toBe('none');
+      expect(ada.lastSessionBand).toBe('never');
     });
 
     it('falls back to requested_at when an old match has no updated_at', async () => {
       const world = build([{ name: 'Ada' }]);
-      const requestedAt = new Date('2026-02-01T00:00:00.000Z');
+      const requestedAt = new Date(NOW.getTime() - 45 * DAY);
       world.accepted.push({
         guest_id: world.ids.Ada,
         requested_at: requestedAt,
@@ -635,7 +825,7 @@ describe('SuggestionsService', () => {
       });
       install(world);
       const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
-      expect(ada.lastSessionAt).toBe(requestedAt.toISOString());
+      expect(ada.lastSessionBand).toBe('1 to 3 months');
     });
 
     it('counts only ACCEPTED matches as sessions', async () => {
@@ -651,7 +841,7 @@ describe('SuggestionsService', () => {
   });
 
   describe('the result', () => {
-    it('reports a cumulative count after each rule', async () => {
+    it('reports a cumulative count after each rule, and cancelled sessions remove nobody', async () => {
       install(
         build([
           { name: 'Good' },
@@ -668,7 +858,7 @@ describe('SuggestionsService', () => {
         eligible: 5,
         available: 4,
         sharesTopic: 3,
-        reliable: 2,
+        reliable: 3,
       });
     });
 
@@ -730,32 +920,31 @@ describe('SuggestionsService', () => {
       });
     });
 
-    it('gives the score and its three parts as percentages', async () => {
-      const lastMatched = new Date(NOW.getTime() - 90 * DAY);
+    it('gives the score as rounded parts, 0 to 1, and the history as bands', async () => {
+      // Three sessions, the latest exactly 90 days ago.
+      const accepted = [90, 120, 150].map(
+        (days) => new Date(NOW.getTime() - days * DAY),
+      );
       install(
         build([
-          {
-            name: 'Ada',
-            topics: ['Economics', 'Taxation Law'],
-            accepted: [lastMatched],
-          },
+          { name: 'Ada', topics: ['Economics', 'Taxation Law'], accepted },
         ]),
       );
       const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
-      expect(ada).toMatchObject({
+      expect(ada).toEqual({
         guestId: '1',
         name: 'Ada Tester',
         field: 'Law',
         role: 'Partner',
         photoUrl: '',
-        fit: 100,
-        rotation: 50,
-        exposure: 50,
-        sessionsSoFar: 1,
-        reliability: 50,
+        sharedTopics: ['Economics', 'Taxation Law'],
+        matchStatus: 'none',
+        // fit 1, rotation 0.5, exposure 0.25 rounded to 0.3, and
+        // 0.65 * 1 + 0.20 * 0.5 + 0.15 * 0.25 = 0.7875 rounded to 0.79.
+        score: { fit: 1, rotation: 0.5, exposure: 0.3, total: 0.79 },
+        lastSessionBand: '1 to 3 months',
+        sessionsBand: '3 to 5',
       });
-      // 0.65 * 1 + 0.20 * 0.5 + 0.15 * 0.5 = 0.825
-      expect(ada.score).toBe(82.5);
     });
 
     it('returns an empty list, not an error, when nobody qualifies', async () => {
@@ -781,6 +970,191 @@ describe('SuggestionsService', () => {
         sharesTopic: 0,
         reliable: 0,
       });
+    });
+  });
+  /**
+   * One coordinator must not be able to read another's activity out of this
+   * response. The exact session count, the exact date of the last session and
+   * the reliability figure are all held back, and so is anything that could be
+   * turned back into them. If this block fails, a field has leaked.
+   */
+  describe('response privacy', () => {
+    const SUGGESTION_KEYS = [
+      'field',
+      'guestId',
+      'lastSessionBand',
+      'matchStatus',
+      'name',
+      'photoUrl',
+      'role',
+      'score',
+      'sessionsBand',
+      'sharedTopics',
+    ];
+    const FORBIDDEN_KEYS = [
+      'reliability',
+      'reliabilityScore',
+      'rating',
+      'ratings',
+      'sessionsSoFar',
+      'sessions',
+      'sessionCount',
+      'exposureCount',
+      'lastSessionAt',
+      'lastMatchedAt',
+      'updatedAt',
+      'requestedAt',
+      'createdAt',
+    ];
+    const ISO_TIMESTAMP = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+    const decimals = (value: number) =>
+      (String(value).split('.')[1] ?? '').length;
+
+    /** Every key at every depth of a value. */
+    function allKeys(value: unknown): string[] {
+      if (Array.isArray(value)) {
+        return value.flatMap(allKeys);
+      }
+      if (typeof value === 'object' && value !== null) {
+        return Object.entries(value).flatMap(([key, inner]) => [
+          key,
+          ...allKeys(inner),
+        ]);
+      }
+      return [];
+    }
+
+    async function busyWorld() {
+      const day = (days: number) => new Date(NOW.getTime() - days * DAY);
+      install(
+        build([
+          {
+            name: 'Busy',
+            accepted: [
+              day(3),
+              day(40),
+              day(80),
+              day(120),
+              day(200),
+              day(300),
+              day(400),
+            ],
+            completed: 3,
+          },
+          { name: 'Quiet', accepted: [day(100)], broken: 2 },
+          { name: 'New' },
+        ]),
+      );
+      return service.suggest(userId, query, NOW);
+    }
+
+    it('returns exactly the allowed fields for each suggestion', async () => {
+      const result = await busyWorld();
+      expect(result.suggestions).toHaveLength(3);
+      for (const suggestion of result.suggestions) {
+        expect(Object.keys(suggestion).sort()).toEqual(SUGGESTION_KEYS);
+        expect(Object.keys(suggestion.score).sort()).toEqual([
+          'exposure',
+          'fit',
+          'rotation',
+          'total',
+        ]);
+      }
+    });
+
+    it('has no reliability, count, date or timestamp field anywhere in the response', async () => {
+      const result = await busyWorld();
+      const keys = allKeys(result);
+      for (const forbidden of FORBIDDEN_KEYS) {
+        expect(keys).not.toContain(forbidden);
+      }
+      // The stage totals are platform-wide counts of lecturers, not anyone's
+      // activity, so the pattern is checked on what describes a lecturer.
+      expect(
+        allKeys(result.suggestions).filter((key) =>
+          // cspell:disable-next-line
+          /reliab|rating|count|At$/.test(key),
+        ),
+      ).toEqual([]);
+    });
+
+    it('has no exact timestamp in any value', async () => {
+      const json = JSON.stringify(await busyWorld());
+      expect(json).not.toMatch(ISO_TIMESTAMP);
+    });
+
+    it('has no number in a suggestion outside the rounded score parts', async () => {
+      const { suggestions } = await busyWorld();
+      for (const { score, ...rest } of suggestions) {
+        const numbers = Object.values(rest).filter(
+          (v) => typeof v === 'number',
+        );
+        expect(numbers).toEqual([]);
+        expect(Object.values(score).every((v) => typeof v === 'number')).toBe(
+          true,
+        );
+      }
+    });
+
+    it('rounds fit to 2 decimals, rotation and exposure to 1, and the total to 2', async () => {
+      const { suggestions } = await busyWorld();
+      for (const { score } of suggestions) {
+        expect(decimals(score.fit)).toBeLessThanOrEqual(2);
+        expect(decimals(score.rotation)).toBeLessThanOrEqual(1);
+        expect(decimals(score.exposure)).toBeLessThanOrEqual(1);
+        expect(decimals(score.total)).toBeLessThanOrEqual(2);
+      }
+    });
+
+    it('cannot be turned back into a count: lecturers with different counts share an exposure', async () => {
+      // 6 and 9 sessions both round to an exposure of 0.1.
+      const when = new Date(NOW.getTime() - 30 * DAY);
+      install(
+        build([
+          { name: 'Six', accepted: Array.from({ length: 6 }, () => when) },
+          { name: 'Nine', accepted: Array.from({ length: 9 }, () => when) },
+        ]),
+      );
+      const { suggestions } = await service.suggest(userId, query, NOW);
+      const exposures = suggestions.map((s) => s.score.exposure);
+      expect(exposures).toEqual([0.1, 0.1]);
+      expect(suggestions.map((s) => s.sessionsBand)).toEqual([
+        '6 or more',
+        '6 or more',
+      ]);
+    });
+
+    it('only ever uses the four lastSessionBand and four sessionsBand values', async () => {
+      const { suggestions } = await busyWorld();
+      for (const suggestion of suggestions) {
+        expect([
+          'never',
+          'within 30 days',
+          '1 to 3 months',
+          'over 3 months',
+        ]).toContain(suggestion.lastSessionBand);
+        expect(['none', '1 to 2', '3 to 5', '6 or more']).toContain(
+          suggestion.sessionsBand,
+        );
+      }
+    });
+
+    it('still orders on the exact values: it ranks before it rounds', async () => {
+      // Both were last matched about three months ago with one session each,
+      // so their rounded score parts are identical. A is first in the table
+      // and so would win a tie, but B was untouched for longer, so B ranks higher.
+      install(
+        build([
+          { name: 'A', accepted: [new Date(NOW.getTime() - 95 * DAY)] },
+          { name: 'B', accepted: [new Date(NOW.getTime() - 100 * DAY)] },
+        ]),
+      );
+      const { suggestions } = await service.suggest(userId, query, NOW);
+      expect(suggestions.map((s) => s.name)).toEqual(['B Tester', 'A Tester']);
+      expect(suggestions[0].score).toEqual(suggestions[1].score);
+      expect(suggestions[0].lastSessionBand).toBe(
+        suggestions[1].lastSessionBand,
+      );
     });
   });
 });

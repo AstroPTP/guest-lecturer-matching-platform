@@ -1,7 +1,6 @@
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
-  ArrayMinSize,
   IsArray,
   IsInt,
   IsNotEmpty,
@@ -38,35 +37,40 @@ function toTopicList(value: unknown): unknown {
 }
 
 /**
- * The session a coordinator wants speakers for. Which coordinator is asking
- * comes from the token and never from here.
+ * The session a coordinator wants speakers for. Every field is optional, and
+ * a field left out is not a requirement: no date means any day, no times means
+ * any time, and no topics means the coordinator's own expertise. Which
+ * coordinator is asking comes from the token and never from here.
  */
 export class SuggestionsQueryDto {
   /** The day of the session, YYYY-MM-DD. */
+  @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date must be YYYY-MM-DD' })
-  date: string;
+  date?: string;
 
-  /** 24-hour HH:MM. */
+  /** 24-hour HH:MM. Give it with endTime, or leave both out. */
+  @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'startTime must be HH:MM in 24-hour time',
   })
-  startTime: string;
+  startTime?: string;
 
   /** 24-hour HH:MM, later than startTime. */
+  @IsOptional()
   @Matches(/^([01]\d|2[0-3]):[0-5]\d$/, {
     message: 'endTime must be HH:MM in 24-hour time',
   })
-  endTime: string;
+  endTime?: string;
 
   /** The topics the session needs. At least one lecturer topic must match. */
+  @IsOptional()
   @Transform(({ value }) => toTopicList(value))
   @IsArray()
-  @ArrayMinSize(1, { message: 'name at least one topic' })
   @ArrayMaxSize(MAX_TOPICS)
   @IsString({ each: true })
   @IsNotEmpty({ each: true })
   @MaxLength(MAX_TOPIC_LENGTH, { each: true })
-  topics: string[];
+  topics?: string[];
 
   /** How many suggestions to return, best first. */
   @IsOptional()
