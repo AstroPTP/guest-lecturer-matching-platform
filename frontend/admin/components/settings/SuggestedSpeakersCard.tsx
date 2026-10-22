@@ -82,8 +82,8 @@ export default function SuggestedSpeakersCard({ value, onChange, isSaving, store
       <header>
         <h2 id={`${ids}-title`}>Suggested speakers</h2>
         <p>
-          A ranked shortlist of guest lecturers for a session. Choose how the order balances topic fit against sharing
-          sessions around.
+          A ranked shortlist of guest lecturers for a session, which also sets the order coordinators see guest lecturers
+          in Discovery. Choose how the order balances topic fit against sharing sessions around.
         </p>
       </header>
 
@@ -92,7 +92,8 @@ export default function SuggestedSpeakersCard({ value, onChange, isSaving, store
           <p>
             <strong>Suggested speakers</strong>
             <small>
-              When off, coordinators see a message that an administrator turned it off. If the server sets
+              When off, coordinators see a message that an administrator turned it off, and Discovery goes back to the
+              order people joined. If the server sets
               MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever this says.
             </small>
           </p>
