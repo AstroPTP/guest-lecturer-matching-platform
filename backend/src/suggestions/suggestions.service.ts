@@ -4,6 +4,8 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
+import type { Prisma } from '../../generated/prisma/client';
+import { visibleGuestsWhere } from '../admin/platform-rules';
 import { ErrorCode } from '../common/error-codes';
 import { profileImageUrl } from '../images/images.service';
 import { prisma } from '../prisma';
@@ -17,7 +19,6 @@ import {
   isAvailable,
   isReliable,
   lastSessionBand,
-  overlaps,
   parseClock,
   rankScore,
   recordedAvailability,
@@ -41,16 +42,14 @@ export type SuggestionMatchStatus =
   | 'matched';
 
 /**
- * The parts of a lecturer's score, rounded for the response. Fit comes from
- * topics both sides have published, so it keeps two decimals. Rotation and
- * exposure are derived from other coordinators' activity and are rounded to one
- * decimal so they cannot be turned back into a date or a count. All are 0 to 1.
+ * The only part of a lecturer's score that leaves the server. Fit comes from
+ * topics both sides have published, so it is safe to show, to 2 decimals, 0 to
+ * 1. Rotation, exposure and the total are derived from other coordinators'
+ * activity and are never returned: the order of the list already shows the
+ * ranking, and the exact terms could be turned back into dates and counts.
  */
 export interface SuggestionScore {
   fit: number;
-  rotation: number;
-  exposure: number;
-  total: number;
 }
 
 /**
@@ -58,9 +57,9 @@ export interface SuggestionScore {
  *
  * Nothing here may let one coordinator read another's activity. The exact
  * session count, the exact date of the last session and the reliability figure
- * are all held back: the server ranks on the exact values and the response
- * carries only coarse bands and rounded score parts. Do not add a field that
- * is, or can be inverted to, one of them.
+ * are all held back, and so are the rotation, exposure and total terms: the
+ * server ranks on the exact values and the response carries only coarse bands
+ * and the fit. Do not add a field that is, or can be inverted to, one of them.
  */
 export interface Suggestion {
   /** The same id Discovery and Matches use for this lecturer. */
@@ -114,11 +113,23 @@ export interface SuggestionsResult {
   suggestions: Suggestion[];
 }
 
+/**
+ * The shared visibility rule, called with the viewer. The cast keeps this
+ * compiling whether or not the rule takes one, and the call is made here, not
+ * captured at import, so a test can replace the rule.
+ */
+function visibleGuestsFor(
+  viewerAuth0Id: string,
+): Promise<Prisma.guestsWhereInput> {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  const rule = visibleGuestsWhere as (
+    viewerAuth0Id?: string,
+  ) => Promise<Prisma.guestsWhereInput>;
+  return rule(viewerAuth0Id);
+}
+
 /** Match states that end the coordinator's interest in that lecturer for good. */
 const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
-
-/** Event states that still hold the lecturer's time. */
-const TIME_HOLDING_EVENT_STATUSES = ['invitation-sent', 'accepted'];
 
 /**
  * Ranks the guest lecturers who could give one session, for one coordinator.
@@ -135,11 +146,13 @@ const TIME_HOLDING_EVENT_STATUSES = ['invitation-sent', 'accepted'];
  *
  * The rules, in order (the arithmetic is in ./scoring.ts):
  *
- *   1. Eligible: a finished profile, consent to be matched, an active account,
- *      and not dismissed or unmatched by this coordinator.
- *   2. Available: isAvailable() for the day and times asked for, and no open
- *      event of theirs overlaps them (checked only when both a date and times
- *      are given).
+ *   1. Eligible: visible to this coordinator under the platform's own rule
+ *      (visibleGuestsWhere, the same one Discovery uses), a finished profile,
+ *      consent to be matched, and not dismissed or unmatched by this
+ *      coordinator.
+ *   2. Available: isAvailable() for the day and times asked for. Other
+ *      coordinators' events are deliberately not consulted: probing for a
+ *      clash would reveal their bookings.
  *   3. Shares a topic: at least one of the topics in play. If there are none,
  *      the rule is not applied.
  *   4. Reliable: a Bayesian average of the lecturer's ratings. Ratings are not
@@ -151,8 +164,8 @@ const TIME_HOLDING_EVENT_STATUSES = ['invitation-sent', 'accepted'];
  * many sessions only ranks lower.
  *
  * The ranking uses exact values. The response does not: it carries bands and
- * rounded score parts only, because the exact numbers would show one
- * coordinator when another matched with a lecturer. See Suggestion.
+ * the fit only, because the exact numbers would show one coordinator when
+ * another matched with a lecturer. See Suggestion.
  *
  * "Sessions so far" counts a lecturer's ACCEPTED matches with every
  * coordinator, not only this one, because the aim is to spread sessions across
@@ -171,22 +184,36 @@ export class SuggestionsService {
       await this.findCoordinator(auth0Id);
     const topics = await this.topicsInPlay(query, coordinatorUserId);
 
-    // Rule 1: eligible.
-    const guests = await prisma.guests.findMany({
-      orderBy: { guest_id: 'asc' },
-      select: {
-        guest_id: true,
-        user_id: true,
-        first_name: true,
-        last_name: true,
-        field: true,
-        role: true,
-        profile_image_id: true,
-        users: {
-          select: { userid: true, deletedat: true, consentstate: true },
+    // Rule 1: eligible. Visibility is the platform's shared rule; the profile
+    // checks are pushed into the query so only candidates are read.
+    // Passes the viewer so contact paused by a report also hides the pair here.
+    const visible = await visibleGuestsFor(auth0Id);
+    const [visibleGuests, guests] = await Promise.all([
+      prisma.guests.findMany({ where: visible, select: { guest_id: true } }),
+      prisma.guests.findMany({
+        where: {
+          AND: [
+            visible,
+            {
+              first_name: { not: null },
+              NOT: { first_name: '' },
+              users: { is: { deletedat: null, consentstate: true } },
+            },
+          ],
         },
-      },
-    });
+        orderBy: { guest_id: 'asc' },
+        select: {
+          guest_id: true,
+          user_id: true,
+          first_name: true,
+          last_name: true,
+          field: true,
+          role: true,
+          profile_image_id: true,
+          users: { select: { userid: true } },
+        },
+      }),
+    ]);
     const [dismissed, ownMatches] = await Promise.all([
       prisma.dismissals.findMany({
         where: { coordinator_id: coordinatorId, dismissed_by: 'coordinator' },
@@ -204,82 +231,57 @@ export class SuggestionsService {
     );
 
     const eligible = guests.flatMap((guest) => {
-      const account = guest.users;
       const own = ownMatchByGuest.get(guest.guest_id);
       const isEligible =
-        guest.user_id !== null &&
-        account !== null &&
-        account.deletedat === null &&
-        account.consentstate === true &&
-        Boolean(guest.first_name?.trim()) &&
+        guest.users !== null &&
         !dismissedIds.has(guest.guest_id) &&
         !CLOSED_MATCH_STATUSES.has(own?.status ?? '');
-      return isEligible && account ? [{ guest, userId: account.userid }] : [];
+      return isEligible && guest.users
+        ? [{ guest, userId: guest.users.userid }]
+        : [];
     });
 
     const stages: SuggestionStages = {
-      considered: guests.length,
+      considered: visibleGuests.length,
       eligible: eligible.length,
       available: 0,
       sharesTopic: 0,
       reliable: 0,
     };
 
-    // Rules 2 and 3 read small tables for the eligible lecturers. The events
-    // are only needed to find a clash, which needs both a date and times.
+    // Rules 2 and 3 read two small tables for the eligible lecturers, grouped
+    // once by user so each lecturer is a lookup and not a scan.
     const eligibleUserIds = eligible.map((entry) => entry.userId);
-    const eligibleGuestIds = eligible.map((entry) => entry.guest.guest_id);
-    const [availabilityRows, expertiseRows, openEvents] = await Promise.all([
+    const [availabilityRows, expertiseRows] = await Promise.all([
       prisma.availability.findMany({
         where: { user_id: { in: eligibleUserIds } },
       }),
       prisma.user_expertise.findMany({
         where: { user_id: { in: eligibleUserIds } },
       }),
-      session.date !== null && session.window !== null
-        ? prisma.events.findMany({
-            where: {
-              date: session.date,
-              status: { in: TIME_HOLDING_EVENT_STATUSES },
-              match: { guest_id: { in: eligibleGuestIds } },
-            },
-            select: {
-              start_time: true,
-              end_time: true,
-              match: { select: { guest_id: true } },
-            },
-          })
-        : Promise.resolve([]),
     ]);
-
-    // Rule 2: available.
-    const busyGuestIds = new Set<bigint>();
-    for (const event of openEvents) {
-      const start = parseClock(event.start_time);
-      const end = parseClock(event.end_time);
-      if (
-        session.window !== null &&
-        start !== null &&
-        end !== null &&
-        overlaps(
-          session.window.startMinutes,
-          session.window.endMinutes,
-          start,
-          end,
-        )
-      ) {
-        busyGuestIds.add(event.match.guest_id);
+    const availabilityByUser = new Map<bigint, WeeklyAvailability[]>();
+    for (const row of availabilityRows) {
+      if (row.user_id !== null) {
+        const rows = availabilityByUser.get(row.user_id) ?? [];
+        rows.push(row);
+        availabilityByUser.set(row.user_id, rows);
       }
     }
+    const expertiseByUser = new Map<bigint, string[]>();
+    for (const row of expertiseRows) {
+      const rows = expertiseByUser.get(row.user_id) ?? [];
+      rows.push(row.expertise);
+      expertiseByUser.set(row.user_id, rows);
+    }
 
+    // Rule 2: available. This is the original isAvailable rule: a requirement
+    // that was not asked for is not a clash, so with no day everyone passes
+    // the day check, a lecturer with no days recorded passes it too, and a
+    // lecturer with no hours fails only when times are given.
     const required = { weekday: session.weekday, window: session.window };
     const available = eligible.filter((entry) => {
-      if (busyGuestIds.has(entry.guest.guest_id)) {
-        return false;
-      }
-      const rows = availabilityRows.filter(
-        (row) => row.user_id === entry.userId,
-      );
+      const rows = availabilityByUser.get(entry.userId) ?? [];
       // A lecturer with no availability row has recorded nothing, which is
       // what isAvailable() treats an empty record as.
       const candidates: (WeeklyAvailability | null)[] =
@@ -293,9 +295,7 @@ export class SuggestionsService {
     // Rule 3: shares a topic. With no topics in play there is nothing to share
     // and nobody is removed; fit is then 0 for everyone.
     const relevant = available.flatMap((entry) => {
-      const offered = expertiseRows
-        .filter((row) => row.user_id === entry.userId)
-        .map((row) => row.expertise);
+      const offered = expertiseByUser.get(entry.userId) ?? [];
       if (topics.list.length === 0) {
         return [{ ...entry, shared: [] as string[], fit: 0 }];
       }
@@ -342,15 +342,13 @@ export class SuggestionsService {
           entry,
           sessionsSoFar,
           lastSessionAt,
-          rotation,
-          exposure,
           total: rankScore(entry.fit, rotation, exposure),
         },
       ];
     });
     stages.reliable = ranked.length;
 
-    // The order is settled here, on the exact values, before anything is rounded.
+    // The order is settled here, on the exact values.
     ranked.sort(
       (a, b) =>
         b.total - a.total ||
@@ -373,12 +371,7 @@ export class SuggestionsService {
           photoUrl: profileImageUrl(guest.profile_image_id),
           sharedTopics: item.entry.shared,
           matchStatus: this.matchStatusOf(ownMatchByGuest.get(guest.guest_id)),
-          score: {
-            fit: roundTo(item.entry.fit, 2),
-            rotation: roundTo(item.rotation, 1),
-            exposure: roundTo(item.exposure, 1),
-            total: roundTo(item.total, 2),
-          },
+          score: { fit: roundTo(item.entry.fit, 2) },
           lastSessionBand: lastSessionBand(item.lastSessionAt, now),
           sessionsBand: sessionsBand(item.sessionsSoFar),
         };
@@ -490,9 +483,10 @@ export class SuggestionsService {
         })
       : null;
     if (!user || !coordinator) {
-      throw new ForbiddenException(
-        'Complete your profile before asking for suggested speakers.',
-      );
+      throw new ForbiddenException({
+        code: ErrorCode.AuthzInsufficientRole,
+        message: 'Complete your profile before asking for suggested speakers.',
+      });
     }
     return { coordinatorId: coordinator.coordinator_id, userId: user.userid };
   }

@@ -11,7 +11,6 @@ import {
   isReliable,
   lastSessionBand,
   normaliseTopic,
-  overlaps,
   parseClock,
   rankScore,
   recordedAvailability,
@@ -144,8 +143,19 @@ describe('rotationScore', () => {
 describe('exposureScore', () => {
   it('is 1 with no sessions and falls as sessions are added', () => {
     expect(exposureScore(0)).toBe(1);
-    expect(exposureScore(1)).toBe(0.5);
-    expect(exposureScore(3)).toBe(0.25);
+    expect(exposureScore(1)).toBeCloseTo(0.5906, 4);
+    expect(exposureScore(3)).toBeCloseTo(0.4191, 4);
+  });
+
+  it('is 1 / (1 + ln(1 + n))', () => {
+    for (const n of [0, 1, 2, 7, 40]) {
+      expect(exposureScore(n)).toBeCloseTo(1 / (1 + Math.log(1 + n)), 12);
+    }
+  });
+
+  it('falls more slowly than 1 / (1 + n), so the hundredth session costs little more than the ninetieth', () => {
+    expect(exposureScore(1)).toBeGreaterThan(1 / 2);
+    expect(exposureScore(100) - exposureScore(90)).toBeLessThan(0.01);
   });
 
   it('never reaches 0, so a busy lecturer ranks lower but is never removed', () => {
@@ -448,18 +458,6 @@ describe('isAvailable', () => {
         isAvailable(mwf, { weekday: 6, window: minutes('10:00', '11:00') }),
       ).toBe(false);
     });
-  });
-});
-
-describe('overlaps', () => {
-  it('is true when the ranges share any time', () => {
-    expect(overlaps(600, 660, 630, 700)).toBe(true);
-    expect(overlaps(600, 660, 540, 700)).toBe(true);
-  });
-
-  it('is false when one finishes as the other starts', () => {
-    expect(overlaps(600, 660, 660, 720)).toBe(false);
-    expect(overlaps(660, 720, 600, 660)).toBe(false);
   });
 });
 

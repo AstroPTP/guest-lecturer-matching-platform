@@ -1,5 +1,6 @@
 // cspell:ignore deletedat
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import * as platformRules from '../admin/platform-rules';
 import { prisma } from '../prisma';
 import type { SuggestionsQueryDto } from './dto/suggestions-query.dto';
 import { SuggestionsService } from './suggestions.service';
@@ -37,6 +38,10 @@ interface LecturerSpec {
   completed?: number;
   broken?: number;
   hasProfileName?: boolean;
+  /** A name that is present but empty. */
+  blankName?: boolean;
+  /** Not yet approved by an administrator. */
+  unapproved?: boolean;
 }
 
 interface World {
@@ -88,7 +93,9 @@ function build(specs: LecturerSpec[]): World & { ids: Record<string, bigint> } {
     world.guests.push({
       guest_id: guestId,
       user_id: userId,
-      first_name: spec.hasProfileName === false ? null : spec.name,
+      first_name:
+        spec.hasProfileName === false ? null : spec.blankName ? '' : spec.name,
+      approved_at: spec.unapproved ? null : NOW,
       last_name: 'Tester',
       field: 'Law',
       role: 'Partner',
@@ -152,6 +159,42 @@ type Where = Record<string, unknown>;
 const idList = (value: unknown): bigint[] =>
   (value as { in?: bigint[] } | undefined)?.in ?? [];
 
+/**
+ * Just enough of Prisma's `where` to run the shapes the service sends: AND, OR,
+ * NOT, `{ not: x }`, `{ is: {...} }` on a relation, and plain equality. Anything
+ * else throws, so a new clause cannot slip past the fake unnoticed.
+ */
+function matches(row: Record<string, unknown>, where: Where): boolean {
+  return Object.entries(where).every(([key, condition]) => {
+    if (key === 'AND') {
+      return (condition as Where[]).every((inner) => matches(row, inner));
+    }
+    if (key === 'OR') {
+      return (condition as Where[]).some((inner) => matches(row, inner));
+    }
+    if (key === 'NOT') {
+      return !matches(row, condition as Where);
+    }
+    const value = row[key];
+    if (condition !== null && typeof condition === 'object') {
+      if ('is' in condition) {
+        return (
+          value !== null &&
+          value !== undefined &&
+          matches(value as Record<string, unknown>, condition.is as Where)
+        );
+      }
+      if ('not' in condition) {
+        return value !== condition.not;
+      }
+      throw new Error(
+        `the fake does not understand ${key}: ${JSON.stringify(condition)}`,
+      );
+    }
+    return value === condition;
+  });
+}
+
 function install(world: World) {
   jest
     .spyOn(prisma.users, 'findUnique')
@@ -161,7 +204,12 @@ function install(world: World) {
     .mockResolvedValue({ coordinator_id: COORDINATOR } as never);
   jest
     .spyOn(prisma.guests, 'findMany')
-    .mockResolvedValue(world.guests as never);
+    .mockImplementation(((args: { where: Where }) =>
+      Promise.resolve(
+        world.guests.filter((row) =>
+          matches(row as Record<string, unknown>, args.where),
+        ),
+      )) as never);
   jest
     .spyOn(prisma.dismissals, 'findMany')
     .mockResolvedValue(world.dismissals as never);
@@ -211,23 +259,6 @@ function install(world: World) {
       world.expertise.filter((row) => wanted.includes(row.user_id)),
     );
   }) as never);
-
-  jest.spyOn(prisma.events, 'findMany').mockImplementation(((args: {
-    where: Where;
-  }) => {
-    // The only read of events left is the clash check: a date, and the states
-    // that still hold the lecturer's time.
-    const wanted = idList((args.where.match as Where).guest_id);
-    const holding = (args.where.status as { in: string[] }).in;
-    return Promise.resolve(
-      world.events.filter(
-        (row) =>
-          wanted.includes(row.match.guest_id) &&
-          row.date === args.where.date &&
-          holding.includes(row.status),
-      ),
-    );
-  }) as never);
 }
 
 describe('SuggestionsService', () => {
@@ -248,12 +279,17 @@ describe('SuggestionsService', () => {
     );
 
   describe('the caller', () => {
-    it('refuses a user with no coordinator profile', async () => {
+    it('refuses a user with no coordinator profile, in the API error shape', async () => {
       install(build([]));
       jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValue(null);
-      await expect(service.suggest(userId, query, NOW)).rejects.toThrow(
-        ForbiddenException,
-      );
+      const failure = await service
+        .suggest(userId, query, NOW)
+        .catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(ForbiddenException);
+      expect((failure as ForbiddenException).getResponse()).toEqual({
+        code: 'AUTHZ_INSUFFICIENT_ROLE',
+        message: 'Complete your profile before asking for suggested speakers.',
+      });
     });
 
     it('refuses a token whose user row does not exist, without creating one', async () => {
@@ -340,8 +376,84 @@ describe('SuggestionsService', () => {
       );
       const result = await service.suggest(userId, query, NOW);
       expect(result.suggestions.map((s) => s.guestId)).toEqual(['1']);
-      expect(result.stages.considered).toBe(5);
+      // Considered is who this coordinator may see, so a deactivated account
+      // is not counted; eligible then needs consent and a name as well.
+      expect(result.stages.considered).toBe(4);
       expect(result.stages.eligible).toBe(1);
+    });
+
+    it('leaves out a lecturer whose name is present but empty', async () => {
+      install(build([{ name: 'Ada' }, { name: 'Blank', blankName: true }]));
+      expect(await names()).toEqual(['Ada']);
+    });
+
+    it('pushes the account, consent and name checks into the query rather than reading everyone', async () => {
+      install(build([{ name: 'Ada' }]));
+      const read = jest.spyOn(prisma.guests, 'findMany');
+      await service.suggest(userId, query, NOW);
+      const candidates = read.mock.calls
+        .map(([args]) => args?.where)
+        .find((where) => where && 'AND' in where);
+      expect(JSON.stringify(candidates)).toContain('"consentstate":true');
+      expect(JSON.stringify(candidates)).toContain('"deletedat":null');
+      expect(JSON.stringify(candidates)).toContain('"first_name":{"not":null}');
+    });
+
+    describe("the platform's visibility rule", () => {
+      afterEach(() => jest.restoreAllMocks());
+
+      it("is the shared visibleGuestsWhere, called with the coordinator's own Auth0 id", async () => {
+        const world = build([{ name: 'Ada' }, { name: 'Hidden' }]);
+        (world.guests[1] as { field: string }).field = 'Hidden by the rule';
+        install(world);
+        const rule = jest
+          .spyOn(platformRules, 'visibleGuestsWhere')
+          .mockResolvedValue({ field: { not: 'Hidden by the rule' } });
+
+        // Whatever the shared rule says is hidden stays hidden here.
+        expect(await names()).toEqual(['Ada']);
+        expect(rule).toHaveBeenCalledWith(userId);
+      });
+
+      it('leaves out an unapproved lecturer while approval is required', async () => {
+        install(
+          build([{ name: 'Approved' }, { name: 'Pending', unapproved: true }]),
+        );
+        jest
+          .spyOn(prisma.admin_settings, 'upsert')
+          .mockResolvedValue({ require_admin_approval: true } as never);
+
+        const result = await service.suggest(userId, query, NOW);
+        expect(result.suggestions.map((s) => s.name)).toEqual([
+          'Approved Tester',
+        ]);
+        expect(result.stages.considered).toBe(1);
+      });
+
+      it('lists an unapproved lecturer when approval is not required', async () => {
+        install(
+          build([{ name: 'Approved' }, { name: 'Pending', unapproved: true }]),
+        );
+        jest
+          .spyOn(prisma.admin_settings, 'upsert')
+          .mockResolvedValue({ require_admin_approval: false } as never);
+
+        expect(await names()).toEqual(['Approved', 'Pending']);
+      });
+
+      it("applies together with the coordinator's own checks", async () => {
+        install(
+          build([
+            { name: 'Ok' },
+            { name: 'PendingAndConsented', unapproved: true },
+            { name: 'ApprovedNoConsent', consent: false },
+          ]),
+        );
+        jest
+          .spyOn(prisma.admin_settings, 'upsert')
+          .mockResolvedValue({ require_admin_approval: true } as never);
+        expect(await names()).toEqual(['Ok']);
+      });
     });
 
     it('leaves out a lecturer the coordinator dismissed', async () => {
@@ -479,68 +591,38 @@ describe('SuggestionsService', () => {
       });
     });
 
-    describe('open events', () => {
-      const event = (
-        guest: bigint,
-        status: string,
-        start: string,
-        end: string,
-        date = '2026-10-28',
-      ) => ({
-        date,
-        status,
-        start_time: start,
-        end_time: end,
+    describe("other coordinators' bookings", () => {
+      const booking = (guest: bigint) => ({
+        date: '2026-10-28',
+        status: 'accepted',
+        start_time: '10:00',
+        end_time: '11:00',
         responded_at: null,
         match: { guest_id: guest },
       });
 
-      it('leave out a lecturer who already has an open event that overlaps', async () => {
-        const world = build([
-          { name: 'Ada' },
-          { name: 'Ben' },
-          { name: 'Cleo' },
-        ]);
-        world.events.push(
-          event(world.ids.Ada, 'accepted', '10:30', '12:00'),
-          event(world.ids.Ben, 'invitation-sent', '09:00', '10:30'),
-          // Next to the session, or on another day, or no longer holding time.
-          event(world.ids.Cleo, 'accepted', '11:00', '12:00'),
-          event(world.ids.Cleo, 'accepted', '10:00', '11:00', '2026-10-29'),
-          event(world.ids.Cleo, 'declined', '10:00', '11:00'),
-          event(world.ids.Cleo, 'cancelled', '10:00', '11:00'),
-        );
-        install(world);
-        expect(await names()).toEqual(['Cleo']);
-      });
-
-      it('are not looked for when no date is given, or no times', async () => {
+      it('are not consulted: a lecturer with an overlapping event is still listed, and events are never read', async () => {
         const world = build([{ name: 'Ada' }]);
-        world.events.push(event(world.ids.Ada, 'accepted', '10:00', '11:00'));
+        world.events.push(booking(world.ids.Ada));
         install(world);
         const read = jest.spyOn(prisma.events, 'findMany');
 
-        expect(await names({ topics: ['Economics'] })).toEqual(['Ada']);
-        expect(
-          await names({ topics: ['Economics'], date: '2026-10-28' }),
-        ).toEqual(['Ada']);
-        expect(
-          await names({
-            topics: ['Economics'],
-            startTime: '10:00',
-            endTime: '11:00',
-          }),
-        ).toEqual(['Ada']);
+        expect(await names()).toEqual(['Ada']);
         expect(read).not.toHaveBeenCalled();
       });
 
-      it('are ignored when their times cannot be read, rather than failing', async () => {
-        const world = build([{ name: 'Ada' }]);
-        world.events.push(
-          event(world.ids.Ada, 'accepted', 'after lunch', 'late'),
-        );
-        install(world);
-        expect(await names()).toEqual(['Ada']);
+      it('cannot be probed: the same search with and without a booking gives the same answer', async () => {
+        const free = build([{ name: 'Ada' }]);
+        install(free);
+        const without = await service.suggest(userId, query, NOW);
+        jest.restoreAllMocks();
+
+        const booked = build([{ name: 'Ada' }]);
+        booked.events.push(booking(booked.ids.Ada));
+        install(booked);
+        const withBooking = await service.suggest(userId, query, NOW);
+
+        expect(withBooking).toEqual(without);
       });
     });
   });
@@ -659,13 +741,11 @@ describe('SuggestionsService', () => {
       expect(result.stages.reliable).toBe(3);
     });
 
-    it('does not read events to judge reliability', async () => {
+    it('does not read events at all', async () => {
       install(build([{ name: 'Ada', broken: 4 }]));
       const read = jest.spyOn(prisma.events, 'findMany');
       await service.suggest(userId, query, NOW);
-      // The clash check reads events for a date and times; nothing else does.
-      expect(read).toHaveBeenCalledTimes(1);
-      expect(read.mock.calls[0][0]?.where).toHaveProperty('date', '2026-10-28');
+      expect(read).not.toHaveBeenCalled();
     });
 
     it('does not let cancelled sessions change the order', async () => {
@@ -920,7 +1000,7 @@ describe('SuggestionsService', () => {
       });
     });
 
-    it('gives the score as rounded parts, 0 to 1, and the history as bands', async () => {
+    it('gives the fit and the history as bands, and no other part of the score', async () => {
       // Three sessions, the latest exactly 90 days ago.
       const accepted = [90, 120, 150].map(
         (days) => new Date(NOW.getTime() - days * DAY),
@@ -939,9 +1019,8 @@ describe('SuggestionsService', () => {
         photoUrl: '',
         sharedTopics: ['Economics', 'Taxation Law'],
         matchStatus: 'none',
-        // fit 1, rotation 0.5, exposure 0.25 rounded to 0.3, and
-        // 0.65 * 1 + 0.20 * 0.5 + 0.15 * 0.25 = 0.7875 rounded to 0.79.
-        score: { fit: 1, rotation: 0.5, exposure: 0.3, total: 0.79 },
+        // Only the fit leaves the server, to 2 decimals.
+        score: { fit: 1 },
         lastSessionBand: '1 to 3 months',
         sessionsBand: '3 to 5',
       });
@@ -994,6 +1073,9 @@ describe('SuggestionsService', () => {
     const FORBIDDEN_KEYS = [
       'reliability',
       'reliabilityScore',
+      'total',
+      'rotation',
+      'exposure',
       'rating',
       'ratings',
       'sessionsSoFar',
@@ -1007,8 +1089,6 @@ describe('SuggestionsService', () => {
       'createdAt',
     ];
     const ISO_TIMESTAMP = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
-    const decimals = (value: number) =>
-      (String(value).split('.')[1] ?? '').length;
 
     /** Every key at every depth of a value. */
     function allKeys(value: unknown): string[] {
@@ -1053,12 +1133,8 @@ describe('SuggestionsService', () => {
       expect(result.suggestions).toHaveLength(3);
       for (const suggestion of result.suggestions) {
         expect(Object.keys(suggestion).sort()).toEqual(SUGGESTION_KEYS);
-        expect(Object.keys(suggestion.score).sort()).toEqual([
-          'exposure',
-          'fit',
-          'rotation',
-          'total',
-        ]);
+        // Fit only: rotation, exposure and the total stay on the server.
+        expect(Object.keys(suggestion.score)).toEqual(['fit']);
       }
     });
 
@@ -1083,31 +1159,39 @@ describe('SuggestionsService', () => {
       expect(json).not.toMatch(ISO_TIMESTAMP);
     });
 
-    it('has no number in a suggestion outside the rounded score parts', async () => {
+    it('has no number in a suggestion outside score.fit', async () => {
       const { suggestions } = await busyWorld();
       for (const { score, ...rest } of suggestions) {
         const numbers = Object.values(rest).filter(
           (v) => typeof v === 'number',
         );
         expect(numbers).toEqual([]);
-        expect(Object.values(score).every((v) => typeof v === 'number')).toBe(
-          true,
-        );
+        expect(typeof score.fit).toBe('number');
       }
     });
 
-    it('rounds fit to 2 decimals, rotation and exposure to 1, and the total to 2', async () => {
-      const { suggestions } = await busyWorld();
-      for (const { score } of suggestions) {
-        expect(decimals(score.fit)).toBeLessThanOrEqual(2);
-        expect(decimals(score.rotation)).toBeLessThanOrEqual(1);
-        expect(decimals(score.exposure)).toBeLessThanOrEqual(1);
-        expect(decimals(score.total)).toBeLessThanOrEqual(2);
-      }
+    it('rounds fit to 2 decimals', async () => {
+      install(
+        build([
+          {
+            name: 'Thin',
+            topics: ['Economics', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'],
+          },
+        ]),
+      );
+      const [thin] = (await service.suggest(userId, query, NOW)).suggestions;
+      // 1 / sqrt(2 * 9) = 0.2357...
+      expect(thin.score.fit).toBe(0.24);
     });
 
-    it('cannot be turned back into a count: lecturers with different counts share an exposure', async () => {
-      // 6 and 9 sessions both round to an exposure of 0.1.
+    it('has no rotation, exposure or total anywhere in the response', async () => {
+      const keys = allKeys(await busyWorld());
+      expect(keys).not.toContain('rotation');
+      expect(keys).not.toContain('exposure');
+      expect(keys).not.toContain('total');
+    });
+
+    it('cannot be turned back into a count: lecturers with different counts in a band look the same', async () => {
       const when = new Date(NOW.getTime() - 30 * DAY);
       install(
         build([
@@ -1116,12 +1200,10 @@ describe('SuggestionsService', () => {
         ]),
       );
       const { suggestions } = await service.suggest(userId, query, NOW);
-      const exposures = suggestions.map((s) => s.score.exposure);
-      expect(exposures).toEqual([0.1, 0.1]);
-      expect(suggestions.map((s) => s.sessionsBand)).toEqual([
-        '6 or more',
-        '6 or more',
-      ]);
+      const shape = suggestions.map(
+        ({ name: _name, guestId: _id, ...rest }) => rest,
+      );
+      expect(shape[0]).toEqual(shape[1]);
     });
 
     it('only ever uses the four lastSessionBand and four sessionsBand values', async () => {
@@ -1139,10 +1221,10 @@ describe('SuggestionsService', () => {
       }
     });
 
-    it('still orders on the exact values: it ranks before it rounds', async () => {
-      // Both were last matched about three months ago with one session each,
-      // so their rounded score parts are identical. A is first in the table
-      // and so would win a tie, but B was untouched for longer, so B ranks higher.
+    it('still orders on the exact values, which the response no longer shows', async () => {
+      // Both were last matched in the same band with one session each, so
+      // nothing in the response tells them apart. A is first in the table and
+      // so would win a tie, but B was untouched for longer, so B ranks higher.
       install(
         build([
           { name: 'A', accepted: [new Date(NOW.getTime() - 95 * DAY)] },
@@ -1151,10 +1233,11 @@ describe('SuggestionsService', () => {
       );
       const { suggestions } = await service.suggest(userId, query, NOW);
       expect(suggestions.map((s) => s.name)).toEqual(['B Tester', 'A Tester']);
-      expect(suggestions[0].score).toEqual(suggestions[1].score);
       expect(suggestions[0].lastSessionBand).toBe(
         suggestions[1].lastSessionBand,
       );
+      expect(suggestions[0].sessionsBand).toBe(suggestions[1].sessionsBand);
+      expect(suggestions[0].score).toEqual(suggestions[1].score);
     });
   });
 });

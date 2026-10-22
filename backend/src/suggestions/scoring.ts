@@ -9,7 +9,7 @@
  *
  *   1. eligible        decided in the service, from the profile and the
  *                      coordinator's own history with the lecturer
- *   2. available       isAvailable(), plus a clash check against events
+ *   2. available       isAvailable(), from the day and hours asked for
  *   3. shares a topic  fitScore() > 0
  *   4. reliable        isReliable(), a pass or fail gate that never enters
  *                      the ordering
@@ -125,12 +125,14 @@ export function rotationScore(lastSessionAt: Date | null, now: Date): number {
 }
 
 /**
- * Having had fewer sessions so far, from 0 to 1: 1 with none, a half with one,
- * a third with two. It falls smoothly and never reaches 0, so a very busy
- * lecturer ranks lower but is never removed for it.
+ * Having had fewer sessions so far, from 0 to 1: 1 / (1 + ln(1 + n)). That is 1
+ * with none, 0.5906 with one and 0.4191 with three. A logarithm rather than a
+ * plain 1 / (1 + n) so that the first few sessions cost a lecturer something
+ * but the hundredth costs almost nothing more. It falls smoothly and never
+ * reaches 0, so a very busy lecturer ranks lower but is never removed for it.
  */
 export function exposureScore(sessionsSoFar: number): number {
-  return 1 / (1 + Math.max(0, sessionsSoFar));
+  return 1 / (1 + Math.log1p(Math.max(0, sessionsSoFar)));
 }
 
 /** How long ago a lecturer last had a session, in coarse steps. */
@@ -358,14 +360,4 @@ export function isAvailable(
   }
 
   return true;
-}
-
-/** Whether two time ranges overlap. Touching at an end point is not overlap. */
-export function overlaps(
-  startA: number,
-  endA: number,
-  startB: number,
-  endB: number,
-): boolean {
-  return startA < endB && startB < endA;
 }
