@@ -3,7 +3,8 @@
 import AddToCalendar from "./AddToCalendar";
 import type { AcademicEvent } from "@/types/events/eventTypes";
 import type { UserRole } from "@/types/shared/userRole";
-import { formatStoredValue } from "@/utils/displayFormatters";
+import { formatOptions } from "@/constants/profileOptions/shared";
+import { formatOptionLabel, formatStoredValue } from "@/utils/displayFormatters";
 
 interface UpcomingEventCardProps {
   event: AcademicEvent;
@@ -48,7 +49,7 @@ export default function UpcomingEventCard({ event, currentUserType, onAccept, on
           </p>
 
           <p>
-            <span className="font-semibold text-[#2d2d2d]">Format:</span> {formatStoredValue(event.format)}
+            <span className="font-semibold text-[#2d2d2d]">Format:</span> {formatOptionLabel(event.format, formatOptions)}
           </p>
         </div>
 
