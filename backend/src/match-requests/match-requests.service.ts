@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
+import {
+  adminSessionNotice,
+  type NoticedSession,
+} from '../events/event-notice';
 import { isUniqueViolation } from '../common/prisma-errors';
 import { personLabel } from '../notifications/person-label';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -274,14 +278,47 @@ export class MatchRequestsService {
       return;
     }
 
-    await prisma.events.updateMany({
+    // The write hands back the events it cancelled, and only those, so the
+    // administrators are told about exactly what this request changed.
+    const cancelled = await prisma.events.updateManyAndReturn({
       where: {
         match_id: existing.match_id,
         status: { in: ['invitation-sent', 'accepted'] },
       },
       data: { status: 'cancelled' },
+      select: {
+        title: true,
+        date: true,
+        start_time: true,
+        end_time: true,
+        coordinator_name: true,
+        guest_lecturer_name: true,
+      },
     });
+    await this.notifyAdminsOfCancellations(cancelled);
     await this.notifyUnmatch(pair, caller.side);
+  }
+
+  /**
+   * Tells every active administrator about each session an unmatch cancelled.
+   * The cancellation is already saved, so a notice that cannot be saved is
+   * logged and dropped, and the other notices and the unmatch carry on.
+   */
+  private async notifyAdminsOfCancellations(
+    sessions: NoticedSession[],
+  ): Promise<void> {
+    for (const session of sessions) {
+      try {
+        await this.notificationsService.createForAdmins(
+          adminSessionNotice(session, 'cancelled'),
+        );
+      } catch (error) {
+        this.logger.error(
+          'Could not notify administrators of a session cancelled by an unmatch',
+          error instanceof Error ? error.stack : undefined,
+        );
+      }
+    }
   }
 
   /**
