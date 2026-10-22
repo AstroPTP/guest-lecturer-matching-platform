@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { CreateUserProfileDto, UserRole } from './dto/create-user-profile.dto';
+import { AppRole } from '../auth/roles';
+import { prisma } from '../prisma';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -43,6 +45,96 @@ describe('UsersService', () => {
       await expect(
         service.findByAuth0Id('auth0|does-not-exist'),
       ).resolves.toBeNull();
+    });
+  });
+});
+
+describe('UsersService behaviour', () => {
+  const service = new UsersService();
+  afterEach(() => jest.restoreAllMocks());
+
+  it('looks a user up by their exact sign-in subject and never creates one', async () => {
+    const row = { userid: 3n, auth0Id: 'auth0|ann' };
+    const find = jest
+      .spyOn(prisma.users, 'findUnique')
+      .mockResolvedValue(row as never);
+    const create = jest.spyOn(prisma.users, 'create');
+    const upsert = jest.spyOn(prisma.users, 'upsert');
+
+    await expect(service.findByAuth0Id('auth0|ann')).resolves.toBe(row);
+
+    expect(find).toHaveBeenCalledWith({ where: { auth0Id: 'auth0|ann' } });
+    expect(create).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('stamps the creation time when it creates a user', async () => {
+    const create = jest.spyOn(prisma.users, 'create');
+
+    await service.create({
+      auth0Id: 'auth0|ann',
+      email: 'ann@example.com',
+      role: UserRole.GUEST_SPEAKER,
+    });
+
+    const { createdat, ...stored } = create.mock.calls[0][0].data;
+    expect(stored).toEqual({
+      auth0Id: 'auth0|ann',
+      email: 'ann@example.com',
+      role: UserRole.GUEST_SPEAKER,
+    });
+    expect(createdat).toBeInstanceOf(Date);
+  });
+
+  describe('ensureForUser', () => {
+    const caller = {
+      id: 'auth0|ann',
+      email: 'ann@example.com',
+      roles: [AppRole.UnitCoordinator, AppRole.GuestSpeaker],
+    };
+
+    it('keys the row on the caller subject and only refreshes the last login for an existing user', async () => {
+      const upsert = jest
+        .spyOn(prisma.users, 'upsert')
+        .mockResolvedValue({ userid: 3n } as never);
+
+      await service.ensureForUser(caller);
+
+      const args = upsert.mock.calls[0][0];
+      expect(args.where).toEqual({ auth0Id: 'auth0|ann' });
+      // An existing user's email and role are never overwritten from a token.
+      expect(Object.keys(args.update)).toEqual(['lastloginat']);
+    });
+
+    it('creates a first-time user from the token claims, using the first role', async () => {
+      const upsert = jest
+        .spyOn(prisma.users, 'upsert')
+        .mockResolvedValue({} as never);
+
+      await service.ensureForUser(caller);
+
+      const { createdat, lastloginat, ...created } =
+        upsert.mock.calls[0][0].create;
+      expect(created).toEqual({
+        auth0Id: 'auth0|ann',
+        email: 'ann@example.com',
+        role: AppRole.UnitCoordinator,
+      });
+      expect(createdat).toBeInstanceOf(Date);
+      expect(lastloginat).toBeInstanceOf(Date);
+    });
+
+    it('still creates a row for a caller whose token carries no roles', async () => {
+      const upsert = jest
+        .spyOn(prisma.users, 'upsert')
+        .mockResolvedValue({} as never);
+
+      await service.ensureForUser({ id: 'auth0|new', roles: [] });
+
+      expect(upsert.mock.calls[0][0].create).toMatchObject({
+        auth0Id: 'auth0|new',
+        role: undefined,
+      });
     });
   });
 });
