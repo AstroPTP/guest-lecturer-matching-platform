@@ -1,23 +1,54 @@
-import { prisma } from '../prisma';
+import { ConflictException } from '@nestjs/common';
+import { prisma, resolveUserId } from '../prisma';
 
 /**
- * Reports nobody has decided yet, and what an open report does to the person
- * it is about. Plain functions, like platform-rules, so the services that
- * apply the rule need one import and no module dependency.
+ * Reports nobody has decided yet, and what they do to the people involved.
+ * Plain functions, like platform-rules, so the services that apply the rules
+ * need one import and no module dependency.
  *
- * A report is an append-only 'user.reported' audit entry, and a decision is a
- * later 'report.resolved' entry whose target is the report's entry id. A
- * report is open until such a decision exists.
+ * A report is an append-only 'user.reported' audit entry whose actor is the
+ * reporter and whose target is the person reported. A decision is a later
+ * 'report.resolved' entry whose target is the report's entry id. A report is
+ * open until such a decision exists.
+ *
+ * An open report does two separate things:
+ *
+ *  - It blocks the pair at once. The reporter and the person reported stop
+ *    seeing each other in Discovery and cannot message each other. Nobody
+ *    else is affected, so a report alone cannot take someone off the platform.
+ *
+ *  - It can put the person on hold, which hides them from everyone and stops
+ *    them sending or receiving messages. That needs open reports from at least
+ *    REPORT_HOLD_THRESHOLD different people, or an administrator placing the
+ *    hold ('user.held', lifted by 'user.released').
  */
 
+export const DEFAULT_REPORT_HOLD_THRESHOLD = 2;
+
+/** Most open reports one person may have at a time. */
+export const MAX_OPEN_REPORTS_PER_REPORTER = 5;
+
 /**
- * Whether a report was raised through an accepted match, which is the only
- * kind that blocks the person it names. A report made without one (the plain
- * `reportedUserId` body) still reaches the moderation queue, but it is not
- * evidence that the two people ever dealt with each other, so letting it
- * block would let anyone hide any account from everybody else.
+ * How many different people must have an open report about someone before
+ * that person is held for everybody. Read at the moment of use, so a value
+ * written into backend/.env by loadEnvFile() is seen. Unset or not a whole
+ * number falls back to the default, and 0 is raised to 1.
  */
-export function blocksReportedUser(detail: unknown): boolean {
+export function readReportHoldThreshold(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.REPORT_HOLD_THRESHOLD?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return DEFAULT_REPORT_HOLD_THRESHOLD;
+  return Math.max(1, Number(raw));
+}
+
+/**
+ * Whether a report was raised through an accepted match. Only these count
+ * toward a hold: they come from someone the other person agreed to match
+ * with, whereas the plain `reportedUserId` body can name anyone, so counting
+ * it would let two throwaway accounts hold any account.
+ */
+export function isMatchReport(detail: unknown): boolean {
   if (typeof detail !== 'object' || detail === null) return false;
   const { matchId } = detail as { matchId?: unknown };
   return typeof matchId === 'string' && matchId !== '';
@@ -45,32 +76,147 @@ export async function findOpenReports() {
   return reports.filter((r) => !resolved.has(r.entry_id.toString()));
 }
 
-/**
- * The users.userid of everyone with an open report that blocks them. Empty
- * almost always, so callers can skip further work when it is.
- */
-export async function openReportedUserIds(): Promise<Set<bigint>> {
-  const open = await findOpenReports();
-  const ids = new Set<bigint>();
-  for (const report of open) {
-    if (!report.target_id || !blocksReportedUser(report.detail)) continue;
-    try {
-      ids.add(BigInt(report.target_id));
-    } catch {
-      // A target that is not a numeric id cannot name a user row.
-    }
-  }
-  return ids;
+export type OpenReport = Awaited<ReturnType<typeof findOpenReports>>[number];
+
+export type HoldReason = 'threshold' | 'admin';
+
+/** Everything the rules need to know, read once per request. */
+export interface ModerationState {
+  /** Open reports, oldest first. */
+  reports: OpenReport[];
+  /** Per person reported, the different people with an open report from a match. */
+  reporters: Map<bigint, Set<bigint>>;
+  /** Per person, everyone they have an open report with, either way round. */
+  blockedWith: Map<bigint, Set<bigint>>;
+  /** People an administrator has held and not released. */
+  adminHeld: Set<bigint>;
+  /** People held for everybody, and why. */
+  held: Map<bigint, HoldReason[]>;
+  /** The threshold in force when this was read. */
+  threshold: number;
+}
+
+function toUserId(value: string | null): bigint | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  return BigInt(value);
+}
+
+function addTo(map: Map<bigint, Set<bigint>>, key: bigint, value: bigint) {
+  const set = map.get(key) ?? new Set<bigint>();
+  set.add(value);
+  map.set(key, set);
 }
 
 /**
- * A filter for Discovery queries on a table with a nullable `user_id`:
- * everyone except the people with an open report. Profiles with no user_id
- * stay, because a NOT IN alone would drop them (NULL is never "not in").
+ * Reads the open reports and the administrator's holds and works out who is
+ * blocked from whom and who is held. Does a single read when nobody has been
+ * reported, which is nearly always.
  */
-export async function notReportedWhere() {
-  const reported = await openReportedUserIds();
-  return {
-    OR: [{ user_id: null }, { user_id: { notIn: [...reported] } }],
+export async function loadModerationState(): Promise<ModerationState> {
+  const state: ModerationState = {
+    reports: await findOpenReports(),
+    reporters: new Map(),
+    blockedWith: new Map(),
+    adminHeld: new Set(),
+    held: new Map(),
+    threshold: readReportHoldThreshold(),
   };
+  if (state.reports.length === 0) return state;
+
+  const reported = new Set<bigint>();
+  for (const report of state.reports) {
+    const target = toUserId(report.target_id);
+    if (target === null) continue;
+    reported.add(target);
+    if (typeof report.actor_user_id !== 'bigint') continue;
+
+    addTo(state.blockedWith, report.actor_user_id, target);
+    addTo(state.blockedWith, target, report.actor_user_id);
+    if (isMatchReport(report.detail)) {
+      addTo(state.reporters, target, report.actor_user_id);
+    }
+  }
+
+  // Oldest first, so the last entry for a person is their current state.
+  const marks = await prisma.audit_entries.findMany({
+    where: { action: { in: ['user.held', 'user.released'] } },
+    orderBy: { entry_id: 'asc' },
+    select: { action: true, target_id: true },
+  });
+  for (const mark of marks) {
+    const person = toUserId(mark.target_id);
+    if (person === null) continue;
+    if (mark.action === 'user.held') state.adminHeld.add(person);
+    else state.adminHeld.delete(person);
+  }
+
+  // A hold only means something while a report is open: it bridges the wait
+  // for a decision, and ends with the last report.
+  for (const person of reported) {
+    const reasons: HoldReason[] = [];
+    if ((state.reporters.get(person)?.size ?? 0) >= state.threshold) {
+      reasons.push('threshold');
+    }
+    if (state.adminHeld.has(person)) reasons.push('admin');
+    if (reasons.length > 0) state.held.set(person, reasons);
+  }
+  return state;
+}
+
+/** Whether two people may not message each other right now. */
+export function isConversationPaused(
+  state: ModerationState,
+  caller: bigint,
+  counterpart: bigint | null,
+): boolean {
+  if (state.held.has(caller)) return true;
+  if (counterpart === null) return false;
+  return (
+    state.held.has(counterpart) ||
+    (state.blockedWith.get(caller)?.has(counterpart) ?? false)
+  );
+}
+
+/**
+ * A filter for Discovery queries on a table with a nullable `user_id`: leaves
+ * out everyone who is held, and everyone the viewer has an open report with,
+ * whichever of them made it. Profiles with no user_id stay, because a NOT IN
+ * alone would drop them (NULL is never "not in").
+ */
+export async function notHiddenWhere(viewerAuth0Id?: string) {
+  const state = await loadModerationState();
+  const hidden = new Set(state.held.keys());
+  if (viewerAuth0Id && state.blockedWith.size > 0) {
+    const viewer = await resolveUserId(viewerAuth0Id);
+    for (const other of state.blockedWith.get(viewer) ?? []) hidden.add(other);
+  }
+  return {
+    OR: [{ user_id: null }, { user_id: { notIn: [...hidden] } }],
+  };
+}
+
+/**
+ * Refuses a new report that would flood the queue: a second open report from
+ * the same person about the same person, or a sixth open report from one
+ * person. Both are 409s with wording the reporter can act on.
+ */
+export function assertReporterWithinLimits(
+  open: OpenReport[],
+  reporter: bigint,
+  reported: bigint,
+): void {
+  const mine = open.filter((r) => r.actor_user_id === reporter);
+  if (mine.some((r) => r.target_id === reported.toString())) {
+    throw new ConflictException({
+      code: 'REPORT_ALREADY_OPEN',
+      message:
+        'You have already reported this person. An administrator will review it, so there is nothing more to send.',
+    });
+  }
+  if (mine.length >= MAX_OPEN_REPORTS_PER_REPORTER) {
+    throw new ConflictException({
+      code: 'REPORT_LIMIT_REACHED',
+      message: `You already have ${MAX_OPEN_REPORTS_PER_REPORTER} reports waiting for an administrator. Please wait for a decision on those before sending another.`,
+    });
+  }
 }

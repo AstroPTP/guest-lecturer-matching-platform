@@ -48,7 +48,7 @@ export class UnitCoordinatorsController {
   }
 
   @Get()
-  findAll() {
-    return this.unitCoordinatorsService.findAll();
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.unitCoordinatorsService.findAll(user.id);
   }
 }

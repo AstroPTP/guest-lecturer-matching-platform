@@ -431,23 +431,34 @@ describe('MatchRequestsService', () => {
         .mockResolvedValue({ user_id: 55n } as never);
     }
 
-    /** The reports the audit trail holds, and the decisions made about them. */
-    function reports(
-      targets: { id: bigint; user: string; matchId?: string }[],
+    /**
+     * The audit trail: open reports as [reporter, reported] pairs, the reports
+     * a decision was made about, and the people an administrator has held.
+     */
+    function trail(
+      reports: [reporter: bigint, reported: string][],
       resolved: string[] = [],
+      heldPeople: string[] = [],
     ) {
       jest
         .spyOn(prisma.audit_entries, 'findMany')
         .mockResolvedValueOnce(
-          targets.map((t) => ({
-            entry_id: t.id,
-            target_id: t.user,
-            detail: { reason: 'asked for money', matchId: t.matchId ?? '1' },
+          reports.map(([actor, target], i) => ({
+            entry_id: BigInt(40 + i),
+            actor_user_id: actor,
+            target_id: target,
+            detail: { reason: 'asked for money', matchId: '1' },
             actor: null,
           })) as never,
         )
         .mockResolvedValueOnce(
           resolved.map((target_id) => ({ target_id })) as never,
+        )
+        .mockResolvedValueOnce(
+          heldPeople.map((target_id) => ({
+            action: 'user.held',
+            target_id,
+          })) as never,
         );
     }
 
@@ -462,49 +473,137 @@ describe('MatchRequestsService', () => {
       });
     });
 
-    it('refuses when the person on the other side has an open report', async () => {
-      matchedGuest();
-      reports([{ id: 40n, user: '55' }]);
+    describe('between the two people with a report between them', () => {
+      it('refuses when the caller reported the other person', async () => {
+        matchedGuest();
+        // The double resolves the caller to user 1.
+        trail([[1n, '55']]);
 
-      const attempt = service.findAcceptedMatch(userId, '5');
+        const attempt = service.findAcceptedMatch(userId, '5');
 
-      await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
-      await expect(attempt).rejects.toMatchObject(paused);
-    });
+        await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+        await expect(attempt).rejects.toMatchObject(paused);
+      });
 
-    it('refuses when the caller is the one with an open report', async () => {
-      matchedGuest();
-      // The double resolves the caller to user 1.
-      reports([{ id: 40n, user: '1' }]);
+      it('refuses when the other person reported the caller', async () => {
+        matchedGuest();
+        trail([[55n, '1']]);
 
-      await expect(
-        service.findAcceptedMatch(userId, '5'),
-      ).rejects.toMatchObject(paused);
-    });
+        await expect(
+          service.findAcceptedMatch(userId, '5'),
+        ).rejects.toMatchObject(paused);
+      });
 
-    it('is not held up by a report about somebody else', async () => {
-      matchedGuest();
-      reports([{ id: 40n, user: '900' }]);
+      it('opens again once the report is dismissed', async () => {
+        matchedGuest();
+        trail([[1n, '55']], ['40']);
 
-      await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
-        side: 'guest',
-        matchId: 6007n,
+        await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
+          side: 'guest',
+          matchId: 6007n,
+        });
       });
     });
 
-    it('opens again once the report is dismissed', async () => {
-      matchedGuest();
-      reports([{ id: 40n, user: '55' }], ['40']);
+    describe('with a report that is not between these two', () => {
+      it('is not held up by one person reporting the other person', async () => {
+        matchedGuest();
+        trail([[900n, '55']]);
 
-      await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
-        side: 'guest',
-        matchId: 6007n,
+        await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
+          side: 'guest',
+          matchId: 6007n,
+        });
+      });
+
+      it('is not held up by the caller reporting somebody else', async () => {
+        matchedGuest();
+        trail([[1n, '900']]);
+
+        await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
+          side: 'guest',
+          matchId: 6007n,
+        });
+      });
+
+      it('is not held up by two strangers reporting each other', async () => {
+        matchedGuest();
+        trail([[900n, '901']]);
+
+        await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
+          side: 'guest',
+          matchId: 6007n,
+        });
+      });
+    });
+
+    describe('when somebody is on hold', () => {
+      it('refuses when two different people reported the other person', async () => {
+        matchedGuest();
+        trail([
+          [900n, '55'],
+          [901n, '55'],
+        ]);
+
+        await expect(
+          service.findAcceptedMatch(userId, '5'),
+        ).rejects.toMatchObject(paused);
+      });
+
+      it('refuses when two different people reported the caller', async () => {
+        matchedGuest();
+        trail([
+          [900n, '1'],
+          [901n, '1'],
+        ]);
+
+        await expect(
+          service.findAcceptedMatch(userId, '5'),
+        ).rejects.toMatchObject(paused);
+      });
+
+      it('does not count the same person reporting twice', async () => {
+        matchedGuest();
+        trail([
+          [900n, '55'],
+          [900n, '55'],
+        ]);
+
+        await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
+          side: 'guest',
+          matchId: 6007n,
+        });
+      });
+
+      it('refuses when an administrator holds the other person', async () => {
+        matchedGuest();
+        trail([[900n, '55']], [], ['55']);
+
+        await expect(
+          service.findAcceptedMatch(userId, '5'),
+        ).rejects.toMatchObject(paused);
+      });
+
+      it('opens again when a dismissal brings the reports under the threshold', async () => {
+        matchedGuest();
+        trail(
+          [
+            [900n, '55'],
+            [901n, '55'],
+          ],
+          ['40'],
+        );
+
+        await expect(service.findAcceptedMatch(userId, '5')).resolves.toEqual({
+          side: 'guest',
+          matchId: 6007n,
+        });
       });
     });
 
     it('keeps the not-matched refusal ahead of the report check', async () => {
       matchedGuest('PENDING');
-      reports([{ id: 40n, user: '55' }]);
+      trail([[1n, '55']]);
 
       await expect(
         service.findAcceptedMatch(userId, '5'),

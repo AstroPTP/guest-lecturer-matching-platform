@@ -1,13 +1,18 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
-import { prisma, toId } from '../prisma';
+import { prisma, resolveUserId, toId } from '../prisma';
 import { MatchRequestsService } from '../match-requests/match-requests.service';
 import { AdminService } from './admin.service';
-import { blocksReportedUser, findOpenReports } from './open-reports';
+import {
+  assertReporterWithinLimits,
+  findOpenReports,
+  loadModerationState,
+} from './open-reports';
 import { readSettings, recordAudit } from './platform-rules';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
@@ -186,8 +191,14 @@ export class GovernanceService {
    *
    * A report that names a profile (`targetId`) is only accepted from someone
    * in an accepted match with that profile, and the person reported is found
-   * from the match rather than taken from the caller. While it is open it
-   * keeps that person out of Discovery and out of messaging.
+   * from the match rather than taken from the caller.
+   *
+   * While it is open, the reporter and the person reported cannot see or
+   * message each other. It holds the person for everyone only once enough
+   * different people have reported them, or an administrator holds them.
+   *
+   * A reporter may have only a few reports open at once, and may not report
+   * the same person twice while one is open.
    */
   async report(reporter: string, dto: CreateReportDto) {
     if (dto.targetId !== undefined && dto.reportedUserId !== undefined) {
@@ -219,9 +230,14 @@ export class GovernanceService {
         message: 'You cannot report yourself.',
       });
     }
-    return this.storeReport(reporter, dto.reportedUserId, {
-      reason: dto.reason,
-    });
+    return this.storeReport(
+      reporter,
+      await resolveUserId(reporter),
+      reported.userid,
+      {
+        reason: dto.reason,
+      },
+    );
   }
 
   private async reportMatchedPerson(
@@ -245,21 +261,29 @@ export class GovernanceService {
         message: 'You cannot report yourself.',
       });
     }
-    return this.storeReport(reporter, match.counterpartUserId.toString(), {
-      reason,
-      matchId: match.matchId.toString(),
-    });
+    return this.storeReport(
+      reporter,
+      match.callerUserId,
+      match.counterpartUserId,
+      { reason, matchId: match.matchId.toString() },
+    );
   }
 
   private async storeReport(
     reporter: string,
-    reportedUserId: string,
+    reporterUserId: bigint,
+    reportedUserId: bigint,
     detail: { reason: string; matchId?: string },
   ) {
+    assertReporterWithinLimits(
+      await findOpenReports(),
+      reporterUserId,
+      reportedUserId,
+    );
     const entry = await recordAudit(
       reporter,
       'user.reported',
-      { type: 'user', id: reportedUserId },
+      { type: 'user', id: reportedUserId.toString() },
       detail,
     );
     return {
@@ -270,11 +294,13 @@ export class GovernanceService {
 
   /**
    * Reports nobody has resolved yet, oldest first. Each says who reported
-   * whom, in what role, and which match it came from, and whether the person
-   * reported is currently active and kept out of Discovery and messaging.
+   * whom, in what role, and which match it came from. For the person
+   * reported it also says how many different people have an open report
+   * about them, and whether they are on hold for everyone and why.
    */
   async openReports() {
-    const open = await findOpenReports();
+    const state = await loadModerationState();
+    const open = state.reports;
 
     const userIds = [
       ...new Set(
@@ -310,6 +336,8 @@ export class GovernanceService {
       const person = r.target_id ? byId.get(r.target_id) : undefined;
       const reporter = byId.get(String(r.actor_user_id));
       const detail = (r.detail ?? {}) as { reason?: string; matchId?: string };
+      const target = r.target_id ? toId(r.target_id, 'id') : null;
+      const holdReasons = (target !== null && state.held.get(target)) || [];
       return {
         id: r.entry_id.toString(),
         reason: detail.reason ?? '',
@@ -322,13 +350,57 @@ export class GovernanceService {
         reportedRole: person?.role ?? null,
         reportedStatus: person?.deletedat ? 'deactivated' : 'active',
         matchId: detail.matchId ?? null,
-        reportedIsBlocked: blocksReportedUser(r.detail),
+        openReporters:
+          (target !== null && state.reporters.get(target)?.size) || 0,
+        holdThreshold: state.threshold,
+        onHold: holdReasons.length > 0,
+        holdReasons,
         reportedAt: r.occurred_at.toISOString(),
       };
     });
   }
 
-  /** Closes a report, optionally deactivating the account it is about. */
+  /**
+   * Holds the person a report is about, for everyone, until an administrator
+   * decides: they are left out of Discovery and cannot send or receive
+   * messages. Holding someone already held changes nothing. The hold ends when
+   * the last open report about them is decided.
+   */
+  async hold(reportId: string, actor: string) {
+    const report = await prisma.audit_entries.findFirst({
+      where: { entry_id: toId(reportId, 'reportId'), action: 'user.reported' },
+      select: { entry_id: true, target_id: true },
+    });
+    if (!report?.target_id) {
+      throw new NotFoundException({
+        code: 'NOT_FOUND',
+        message: 'No report with that id.',
+      });
+    }
+
+    const state = await loadModerationState();
+    if (!state.reports.some((r) => r.entry_id === report.entry_id)) {
+      throw new ConflictException({
+        code: 'REPORT_ALREADY_DECIDED',
+        message: 'That report has already been decided.',
+      });
+    }
+    if (!state.adminHeld.has(toId(report.target_id, 'id'))) {
+      await recordAudit(
+        actor,
+        'user.held',
+        { type: 'user', id: report.target_id },
+        { reportId },
+      );
+    }
+    return { id: reportId, held: true };
+  }
+
+  /**
+   * Closes a report, optionally deactivating the account it is about. If that
+   * leaves the person no longer on hold, whether from the threshold or from an
+   * administrator, the release is recorded.
+   */
   async resolveReport(
     reportId: string,
     outcome: 'dismissed' | 'deactivated',
@@ -341,6 +413,7 @@ export class GovernanceService {
     if (!report) {
       throw new NotFoundException('No report with that id.');
     }
+    const before = await loadModerationState();
     if (outcome === 'deactivated' && report.target_id) {
       await this.admin.setStatus(report.target_id, 'deactivated', actor);
     }
@@ -350,6 +423,19 @@ export class GovernanceService {
       { type: 'report', id: reportId },
       { outcome },
     );
+
+    if (report.target_id) {
+      const person = toId(report.target_id, 'id');
+      const after = await loadModerationState();
+      if (before.held.has(person) && !after.held.has(person)) {
+        await recordAudit(
+          actor,
+          'user.released',
+          { type: 'user', id: report.target_id },
+          { reportId, outcome },
+        );
+      }
+    }
     return { id: reportId, outcome };
   }
 }

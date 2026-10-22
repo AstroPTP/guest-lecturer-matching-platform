@@ -5,7 +5,7 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { profileImageUrl } from '../images/images.service';
-import { notReportedWhere } from '../admin/open-reports';
+import { notHiddenWhere } from '../admin/open-reports';
 
 type CoordinatorRow = NonNullable<
   Awaited<ReturnType<typeof prisma.coordinators.findUnique>>
@@ -179,15 +179,16 @@ export class UnitCoordinatorsService {
 
   /**
    * Every unit coordinator, from the database. What the discovery page lists.
+   * Anyone on hold after reports, and anyone the viewer has an open report
+   * with, is left out.
    */
-  async findAll() {
+  async findAll(viewerAuth0Id?: string) {
     const coordinators = await prisma.coordinators.findMany({
       // A coordinator whose account an administrator has deactivated is left
-      // out, as deactivated guest lecturers are, and so is anyone with an open
-      // report.
+      // out, as deactivated guest lecturers are.
       where: {
         OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
-        AND: [await notReportedWhere()],
+        AND: [await notHiddenWhere(viewerAuth0Id)],
       },
       orderBy: { coordinator_id: 'asc' },
     });

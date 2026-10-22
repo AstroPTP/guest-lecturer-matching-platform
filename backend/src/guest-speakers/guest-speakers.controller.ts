@@ -46,7 +46,7 @@ export class GuestSpeakersController {
   }
 
   @Get()
-  findAll() {
-    return this.guestSpeakersService.findAll();
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.guestSpeakersService.findAll(user.id);
   }
 }

@@ -4,7 +4,7 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
-import { notReportedWhere } from '../admin/open-reports';
+import { notHiddenWhere } from '../admin/open-reports';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { profileImageUrl } from '../images/images.service';
 
@@ -183,13 +183,14 @@ export class GuestSpeakersService {
    * Every guest speaker, from the database. What the discovery page lists.
    *
    * Deactivated accounts are left out, and so are unapproved profiles while
-   * an administrator requires approval, and anyone with an open report.
+   * an administrator requires approval, anyone on hold after reports, and
+   * anyone the viewer has an open report with.
    */
-  async findAll() {
+  async findAll(viewerAuth0Id?: string) {
     const guests = await prisma.guests.findMany({
       where: {
         ...(await visibleGuestsWhere()),
-        AND: [await notReportedWhere()],
+        AND: [await notHiddenWhere(viewerAuth0Id)],
       },
       orderBy: { guest_id: 'asc' },
     });

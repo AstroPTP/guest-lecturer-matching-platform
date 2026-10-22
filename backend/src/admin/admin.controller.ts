@@ -5,6 +5,7 @@ import {
   Header,
   Param,
   Patch,
+  Post,
   Query,
 } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
@@ -116,6 +117,14 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.governance.resolveReport(id, dto.outcome, user.id);
+  }
+
+  @Post('reports/:id/hold')
+  holdReported(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.governance.hold(id, user.id);
   }
 
   @Get('system')
