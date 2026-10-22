@@ -37,6 +37,14 @@ describe('MatchRequestsService', () => {
 
     service = module.get<MatchRequestsService>(MatchRequestsService);
     notifications = module.get<NotificationsService>(NotificationsService);
+
+    // Both ends of a request are visible to each other unless a test hides one.
+    jest
+      .spyOn(prisma.coordinators, 'findFirst')
+      .mockResolvedValue({ coordinator_id: 1n } as never);
+    jest
+      .spyOn(prisma.guests, 'findFirst')
+      .mockResolvedValue({ guest_id: 1n } as never);
   });
 
   afterEach(() => {
@@ -106,9 +114,6 @@ describe('MatchRequestsService', () => {
   describe('create', () => {
     it("creates a coordinator's request on the coordinator side, marked as theirs", async () => {
       signInAsCoordinator(5n);
-      jest
-        .spyOn(prisma.guests, 'findUnique')
-        .mockResolvedValueOnce({ guest_id: 3001n } as never);
       const create = jest
         .spyOn(prisma.match_requests, 'create')
         .mockResolvedValue({
@@ -138,9 +143,6 @@ describe('MatchRequestsService', () => {
 
     it('creates a guest request on the guest side', async () => {
       signInAsGuest(7n);
-      jest
-        .spyOn(prisma.coordinators, 'findUnique')
-        .mockResolvedValueOnce({ coordinator_id: 2001n } as never);
       const create = jest
         .spyOn(prisma.match_requests, 'create')
         .mockResolvedValue({
@@ -164,14 +166,11 @@ describe('MatchRequestsService', () => {
 
     it('accepts a pending request the other side sent and notifies both people', async () => {
       signInAsGuest(7n);
-      jest
-        .spyOn(prisma.coordinators, 'findUnique')
-        .mockResolvedValueOnce({ coordinator_id: 2001n } as never)
-        .mockResolvedValueOnce({
-          first_name: 'Ada',
-          last_name: 'Lee',
-          users: { auth0Id: 'auth0|coordinator' },
-        } as never);
+      jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValueOnce({
+        first_name: 'Ada',
+        last_name: 'Lee',
+        users: { auth0Id: 'auth0|coordinator' },
+      } as never);
       jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce({
         first_name: 'Sam',
         last_name: 'Tran',
@@ -227,9 +226,6 @@ describe('MatchRequestsService', () => {
 
     it('does not notify again when another accept already made the match', async () => {
       signInAsGuest(7n);
-      jest
-        .spyOn(prisma.coordinators, 'findUnique')
-        .mockResolvedValueOnce({ coordinator_id: 2001n } as never);
       jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
         match_id: 6012n,
         coordinator_id: 2001n,
@@ -249,9 +245,6 @@ describe('MatchRequestsService', () => {
 
     it('treats an older row with no sender as sent by the coordinator', async () => {
       signInAsGuest(7n);
-      jest
-        .spyOn(prisma.coordinators, 'findUnique')
-        .mockResolvedValueOnce({ coordinator_id: 2001n } as never);
       jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
         match_id: 6001n,
         coordinator_id: 2001n,
@@ -267,15 +260,11 @@ describe('MatchRequestsService', () => {
     });
 
     it('reads the row a simultaneous request wrote instead of failing', async () => {
-      // Each pass through create resolves the caller and checks the target.
+      // Each pass through create resolves the caller.
       jest
         .spyOn(prisma.coordinators, 'findUnique')
         .mockResolvedValueOnce({ coordinator_id: 5n } as never)
         .mockResolvedValueOnce({ coordinator_id: 5n } as never);
-      jest
-        .spyOn(prisma.guests, 'findUnique')
-        .mockResolvedValueOnce({ guest_id: 3001n } as never)
-        .mockResolvedValueOnce({ guest_id: 3001n } as never);
       jest
         .spyOn(prisma.match_requests, 'findUnique')
         .mockResolvedValueOnce(null)
@@ -300,9 +289,6 @@ describe('MatchRequestsService', () => {
 
     it("leaves the caller's own pending request as it is when sent again", async () => {
       signInAsCoordinator(5n);
-      jest
-        .spyOn(prisma.guests, 'findUnique')
-        .mockResolvedValueOnce({ guest_id: 3001n } as never);
       jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
         match_id: 6010n,
         coordinator_id: 5n,
@@ -323,7 +309,7 @@ describe('MatchRequestsService', () => {
 
     it('refuses a profile that does not exist', async () => {
       signInAsCoordinator(5n);
-      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce(null);
+      jest.spyOn(prisma.guests, 'findFirst').mockResolvedValue(null);
 
       await expect(service.create(userId, '9999')).rejects.toThrow(
         NotFoundException,
@@ -363,9 +349,8 @@ describe('MatchRequestsService', () => {
       }) as never;
 
     /**
-     * Signs the caller in on one side and queues what the service reads
-     * after saving, in the order it reads it: the target's existence check
-     * first, then both profiles for the notice.
+     * Signs the caller in on one side and queues the two profiles the service
+     * reads after saving, to word the notice and find who receives it.
      */
     function askAs(
       side: 'coordinator' | 'guest',
@@ -375,11 +360,9 @@ describe('MatchRequestsService', () => {
       const guests = jest.spyOn(prisma.guests, 'findUnique');
       if (side === 'coordinator') {
         coordinators.mockResolvedValueOnce({ coordinator_id: 5n } as never);
-        guests.mockResolvedValueOnce({ guest_id: 7n } as never);
       } else {
         coordinators.mockResolvedValueOnce(null);
         guests.mockResolvedValueOnce({ guest_id: 7n } as never);
-        coordinators.mockResolvedValueOnce({ coordinator_id: 5n } as never);
       }
       coordinators.mockResolvedValueOnce(profiles.coordinator as never);
       guests.mockResolvedValueOnce(profiles.guest as never);
@@ -459,7 +442,7 @@ describe('MatchRequestsService', () => {
 
     it('sends nothing when the profile asked for does not exist', async () => {
       signInAsCoordinator(5n);
-      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce(null);
+      jest.spyOn(prisma.guests, 'findFirst').mockResolvedValue(null);
       const interest = jest.spyOn(notifications, 'createUnlessRecent');
 
       await expect(service.create(userId, '7')).rejects.toThrow(
@@ -470,9 +453,6 @@ describe('MatchRequestsService', () => {
 
     it('sends nothing when the contact limit refuses the request', async () => {
       signInAsCoordinator(5n);
-      jest
-        .spyOn(prisma.guests, 'findUnique')
-        .mockResolvedValueOnce({ guest_id: 7n } as never);
       jest
         .spyOn(prisma.admin_settings, 'upsert')
         .mockResolvedValue({ contact_limit_days: 7 } as never);
@@ -492,9 +472,6 @@ describe('MatchRequestsService', () => {
     it('sends nothing when the request could not be saved', async () => {
       signInAsCoordinator(5n);
       jest
-        .spyOn(prisma.guests, 'findUnique')
-        .mockResolvedValueOnce({ guest_id: 7n } as never);
-      jest
         .spyOn(prisma.match_requests, 'create')
         .mockRejectedValue(new Error('connection lost'));
       const interest = jest.spyOn(notifications, 'createUnlessRecent');
@@ -508,15 +485,91 @@ describe('MatchRequestsService', () => {
     it('sends nothing when the same request is asked for again', async () => {
       signInAsCoordinator(5n);
       jest
-        .spyOn(prisma.guests, 'findUnique')
-        .mockResolvedValueOnce({ guest_id: 7n } as never);
-      jest
         .spyOn(prisma.match_requests, 'findUnique')
         .mockResolvedValue(newRow('coordinator'));
       const interest = jest.spyOn(notifications, 'createUnlessRecent');
 
       await service.create(userId, '7');
       expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('saves the request but sends nothing when the guest dismissed the coordinator', async () => {
+      askAs('coordinator', {
+        coordinator: coordinatorProfile,
+        guest: guestProfile,
+      });
+      const dismissal = jest
+        .spyOn(prisma.dismissals, 'findUnique')
+        .mockResolvedValue({ dismissal_id: 1n } as never);
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+      const create = jest.spyOn(prisma.match_requests, 'create');
+
+      await expect(service.create(userId, '7')).resolves.toEqual(
+        expect.objectContaining({ status: 'PENDING', sentByMe: true }),
+      );
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(dismissal).toHaveBeenCalledWith({
+        where: {
+          coordinator_id_guest_id_dismissed_by: {
+            coordinator_id: 5n,
+            guest_id: 7n,
+            dismissed_by: 'guest',
+          },
+        },
+        select: { dismissal_id: true },
+      });
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('saves the request but sends nothing when the coordinator dismissed the guest', async () => {
+      askAs('guest', { coordinator: coordinatorProfile, guest: guestProfile });
+      const dismissal = jest
+        .spyOn(prisma.dismissals, 'findUnique')
+        .mockResolvedValue({ dismissal_id: 1n } as never);
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await expect(service.create(userId, '5')).resolves.toEqual(
+        expect.objectContaining({ status: 'PENDING', sentByMe: true }),
+      );
+      expect(dismissal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            coordinator_id_guest_id_dismissed_by: {
+              coordinator_id: 5n,
+              guest_id: 7n,
+              dismissed_by: 'coordinator',
+            },
+          },
+        }),
+      );
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('still sends the notice when only the sender dismissed the recipient', async () => {
+      askAs('coordinator', {
+        coordinator: coordinatorProfile,
+        guest: guestProfile,
+      });
+      // The coordinator hid the guest; the guest has dismissed nobody.
+      jest.spyOn(prisma.dismissals, 'findUnique').mockImplementation((({
+        where,
+      }: {
+        where: {
+          coordinator_id_guest_id_dismissed_by: { dismissed_by: string };
+        };
+      }) =>
+        Promise.resolve(
+          where.coordinator_id_guest_id_dismissed_by.dismissed_by ===
+            'coordinator'
+            ? { dismissal_id: 1n }
+            : null,
+        )) as never);
+      const interest = jest
+        .spyOn(notifications, 'createUnlessRecent')
+        .mockResolvedValue(true);
+
+      await service.create(userId, '7');
+      expect(interest).toHaveBeenCalledTimes(1);
     });
 
     it('notifies once when the same person withdraws and asks again within a day', async () => {
@@ -579,6 +632,243 @@ describe('MatchRequestsService', () => {
         'Could not notify about a new request: PrismaClientKnownRequestError',
         'Could not notify about a new request: UnknownError',
       ]);
+    });
+  });
+
+  describe('refusing a request that Discovery would hide', () => {
+    /** What the database holds about a profile, as far as visibility goes. */
+    interface Facts {
+      /** users.userid of the account; null for a profile with no account. */
+      userId: bigint | null;
+      deactivated?: boolean;
+      approved?: boolean;
+    }
+    type Clause = {
+      user_id?: null | { notIn: bigint[] };
+      users?: { is: { deletedat: null } };
+    };
+    interface Where {
+      OR?: Clause[];
+      AND?: { OR: Clause[] }[];
+      approved_at?: unknown;
+    }
+
+    /**
+     * Answers a profile lookup the way the database would: the profile is
+     * found only if every filter the service put in the query lets it through.
+     * That is what makes these tests about the filters rather than about a mock.
+     */
+    function finder(facts: Facts, row: object) {
+      const passes = (clauses: Clause[] | undefined) =>
+        clauses === undefined ||
+        clauses.some((clause) => {
+          if (clause.user_id === null) return facts.userId === null;
+          if (clause.user_id) {
+            return (
+              facts.userId !== null &&
+              !clause.user_id.notIn.includes(facts.userId)
+            );
+          }
+          return facts.userId !== null && !facts.deactivated;
+        });
+      return (({ where }: { where: Where }) =>
+        Promise.resolve(
+          passes(where.OR) &&
+            (where.AND ?? []).every((part) => passes(part.OR)) &&
+            (where.approved_at === undefined || facts.approved !== false)
+            ? row
+            : null,
+        )) as never;
+    }
+
+    /** The caller is on one side with the other as the target; both lookups are shown the facts. */
+    function setUp(caller: 'coordinator' | 'guest', own: Facts, target: Facts) {
+      const coordinatorFacts = caller === 'coordinator' ? own : target;
+      const guestFacts = caller === 'coordinator' ? target : own;
+      jest
+        .spyOn(prisma.coordinators, 'findFirst')
+        .mockImplementation(finder(coordinatorFacts, { coordinator_id: 5n }));
+      jest
+        .spyOn(prisma.guests, 'findFirst')
+        .mockImplementation(finder(guestFacts, { guest_id: 7n }));
+      if (caller === 'coordinator') {
+        signInAsCoordinator(5n);
+      } else {
+        signInAsGuest(7n);
+      }
+      jest
+        .spyOn(prisma.match_requests, 'create')
+        .mockResolvedValue(newRow(caller));
+    }
+
+    const newRow = (requestedBy: 'coordinator' | 'guest') =>
+      ({
+        match_id: 6030n,
+        coordinator_id: 5n,
+        guest_id: 7n,
+        status: 'PENDING',
+        requested_at: requestedAt,
+        requested_by: requestedBy,
+      }) as never;
+
+    /** Open reports as [reporter, reported] user ids, raised through a match. */
+    function reports(open: [reporter: bigint, reported: string][]) {
+      jest.spyOn(prisma.audit_entries, 'findMany').mockImplementation((({
+        where,
+      }: {
+        where: { action: unknown };
+      }) =>
+        Promise.resolve(
+          where.action === 'user.reported'
+            ? open.map(([actor, target], i) => ({
+                entry_id: BigInt(40 + i),
+                actor_user_id: actor,
+                target_id: target,
+                detail: { reason: 'asked for money', matchId: '1' },
+                actor: null,
+              }))
+            : [],
+        )) as never);
+    }
+
+    /** The caller's own account is user 1 in the double. */
+    const me: Facts = { userId: 1n, approved: true };
+    const them: Facts = { userId: 77n, approved: true };
+
+    async function expectRefused(targetId: string) {
+      const create = jest.spyOn(prisma.match_requests, 'create');
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await expect(service.create(userId, targetId)).rejects.toThrow(
+        new NotFoundException('That profile does not exist.'),
+      );
+      expect(create).not.toHaveBeenCalled();
+      expect(interest).not.toHaveBeenCalled();
+    }
+
+    async function expectAllowed(targetId: string) {
+      const create = jest.spyOn(prisma.match_requests, 'create');
+
+      await expect(service.create(userId, targetId)).resolves.toEqual(
+        expect.objectContaining({ status: 'PENDING' }),
+      );
+      expect(create).toHaveBeenCalledTimes(1);
+    }
+
+    it('lets a request through when both profiles are visible', async () => {
+      setUp('coordinator', me, them);
+      await expectAllowed('7');
+    });
+
+    describe('a guest who is not approved', () => {
+      beforeEach(() => {
+        jest
+          .spyOn(prisma.admin_settings, 'upsert')
+          .mockResolvedValue({ require_admin_approval: true } as never);
+      });
+
+      it('cannot be asked by a coordinator while approval is required', async () => {
+        setUp('coordinator', me, { ...them, approved: false });
+        await expectRefused('7');
+      });
+
+      it('can be asked once approval is no longer required', async () => {
+        jest
+          .spyOn(prisma.admin_settings, 'upsert')
+          .mockResolvedValue({ require_admin_approval: false } as never);
+        setUp('coordinator', me, { ...them, approved: false });
+        await expectAllowed('7');
+      });
+
+      it('cannot ask a coordinator while approval is required', async () => {
+        setUp('guest', { ...me, approved: false }, { userId: 55n });
+        await expectRefused('5');
+      });
+
+      it('can ask a coordinator once approved', async () => {
+        setUp('guest', me, { userId: 55n });
+        await expectAllowed('5');
+      });
+    });
+
+    describe('a deactivated account', () => {
+      it('cannot be asked, as a guest', async () => {
+        setUp('coordinator', me, { ...them, deactivated: true });
+        await expectRefused('7');
+      });
+
+      it('cannot be asked, as a coordinator', async () => {
+        setUp('guest', me, { userId: 55n, deactivated: true });
+        await expectRefused('5');
+      });
+
+      it('cannot ask', async () => {
+        setUp('coordinator', { ...me, deactivated: true }, them);
+        await expectRefused('7');
+      });
+    });
+
+    describe('a person on hold after reports', () => {
+      const twoReportsAbout = (person: string): [bigint, string][] => [
+        [900n, person],
+        [901n, person],
+      ];
+
+      it('cannot be asked, as a guest', async () => {
+        reports(twoReportsAbout('77'));
+        setUp('coordinator', me, them);
+        await expectRefused('7');
+      });
+
+      it('cannot be asked, as a coordinator', async () => {
+        reports(twoReportsAbout('55'));
+        setUp('guest', me, { userId: 55n });
+        await expectRefused('5');
+      });
+
+      it('cannot ask', async () => {
+        reports(twoReportsAbout('1'));
+        setUp('coordinator', me, them);
+        await expectRefused('7');
+      });
+
+      it('does not hold anyone for one stranger reporting them', async () => {
+        reports([[900n, '77']]);
+        setUp('coordinator', me, them);
+        await expectAllowed('7');
+      });
+    });
+
+    describe('a pair with an open report between them', () => {
+      it('cannot be asked by the person who reported them', async () => {
+        reports([[1n, '77']]);
+        setUp('coordinator', me, them);
+        await expectRefused('7');
+      });
+
+      it('cannot be asked by the person they reported', async () => {
+        reports([[77n, '1']]);
+        setUp('coordinator', me, them);
+        await expectRefused('7');
+      });
+
+      it('is refused from the guest side too', async () => {
+        reports([[55n, '1']]);
+        setUp('guest', me, { userId: 55n });
+        await expectRefused('5');
+      });
+
+      it('is not in the way of someone else reporting the target', async () => {
+        reports([[900n, '77']]);
+        setUp('coordinator', me, them);
+        await expectAllowed('7');
+      });
+
+      it('is not in the way of two strangers reporting each other', async () => {
+        reports([[900n, '901']]);
+        setUp('coordinator', me, them);
+        await expectAllowed('7');
+      });
     });
   });
 

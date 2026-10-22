@@ -9,7 +9,11 @@ import { isUniqueViolation } from '../common/prisma-errors';
 import { personLabel } from '../notifications/person-label';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
-import { assertGuestCanBeContacted } from '../admin/platform-rules';
+import {
+  assertGuestCanBeContacted,
+  visibleGuestsWhere,
+} from '../admin/platform-rules';
+import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
 import {
   isConversationPaused,
   loadModerationState,
@@ -75,7 +79,7 @@ export class MatchRequestsService {
   async create(auth0Id: string, targetId: string): Promise<MatchRequest> {
     const caller = await this.resolveSide(auth0Id);
     const target = toId(targetId, 'targetId');
-    await this.assertTargetExists(caller.side, target);
+    await this.assertCanRequest(caller, auth0Id, target);
 
     const pair = this.toPair(caller, target);
     const now = new Date();
@@ -445,6 +449,22 @@ export class MatchRequestsService {
         return;
       }
 
+      // Someone who dismissed this profile has hidden it from their Discovery,
+      // so a notice about it would put it back in front of them. The request
+      // itself still stands; only the notice is held back.
+      const dismissed = await prisma.dismissals.findUnique({
+        where: {
+          coordinator_id_guest_id_dismissed_by: {
+            ...pair,
+            dismissed_by: fromCoordinator ? 'guest' : 'coordinator',
+          },
+        },
+        select: { dismissal_id: true },
+      });
+      if (dismissed) {
+        return;
+      }
+
       // Discovery is where they answer: the sender's card is still there to
       // accept, which makes the match, or to dismiss. The id after "from" is
       // that card, so Discovery opens on it and a repeat from someone else is
@@ -499,19 +519,49 @@ export class MatchRequestsService {
     });
   }
 
-  /** A coordinator requests guests, and a guest requests coordinators. */
-  private async assertTargetExists(side: Side, target: bigint): Promise<void> {
-    const exists =
-      side === 'coordinator'
-        ? await prisma.guests.findUnique({
-            where: { guest_id: target },
-            select: { guest_id: true },
-          })
-        : await prisma.coordinators.findUnique({
-            where: { coordinator_id: target },
-            select: { coordinator_id: true },
-          });
-    if (!exists) {
+  /**
+   * A coordinator requests guests, and a guest requests coordinators.
+   *
+   * Refused with the same 404 as a profile that does not exist when either end
+   * is one Discovery hides from the caller: the target, or the caller's own
+   * profile. That is the shared visibility rule, so a profile that is
+   * deactivated, not yet approved while approval is required, on hold, or
+   * reported by or against the caller cannot be reached by guessing its id,
+   * and the 404 does not say which of those it was.
+   */
+  private async assertCanRequest(
+    caller: CallerSide,
+    auth0Id: string,
+    target: bigint,
+  ): Promise<void> {
+    const [guestsWhere, coordinatorsWhere] = await Promise.all([
+      visibleGuestsWhere(auth0Id),
+      visibleCoordinatorsWhere(auth0Id),
+    ]);
+
+    const [own, other] =
+      caller.side === 'coordinator'
+        ? await Promise.all([
+            prisma.coordinators.findFirst({
+              where: { coordinator_id: caller.ownId, ...coordinatorsWhere },
+              select: { coordinator_id: true },
+            }),
+            prisma.guests.findFirst({
+              where: { guest_id: target, ...guestsWhere },
+              select: { guest_id: true },
+            }),
+          ])
+        : await Promise.all([
+            prisma.guests.findFirst({
+              where: { guest_id: caller.ownId, ...guestsWhere },
+              select: { guest_id: true },
+            }),
+            prisma.coordinators.findFirst({
+              where: { coordinator_id: target, ...coordinatorsWhere },
+              select: { coordinator_id: true },
+            }),
+          ]);
+    if (!own || !other) {
       throw new NotFoundException('That profile does not exist.');
     }
   }
