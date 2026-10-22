@@ -10,6 +10,7 @@ import matchIcon from "@/assets/match.png";
 import messageIcon from "@/assets/message.png";
 import { getNotifications, markAllNotificationsAsRead, markNotificationAsRead } from "@/services/notifications/notificationService";
 import type { AppNotification, NotificationType } from "@/types/notifications/notificationTypes";
+import { NOTIFICATIONS_MARKED_READ_EVENT, UNREAD_COUNT_CHANGED_EVENT } from "@/utils/unreadCountPoller";
 
 const NOTIFICATION_ICONS = {
   match: matchIcon,
@@ -29,8 +30,10 @@ export default function NotificationsPageContent() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadNotifications() {
-      setErrorMessage(null);
+    async function loadNotifications(quietly: boolean) {
+      if (!quietly) {
+        setErrorMessage(null);
+      }
 
       try {
         const data = await getNotifications();
@@ -39,7 +42,8 @@ export default function NotificationsPageContent() {
           setNotifications(data);
         }
       } catch (error) {
-        if (!cancelled) {
+        // A reload the person did not ask for leaves the list on screen rather than replacing it with an error.
+        if (!cancelled && !quietly) {
           console.error("Unable to load notifications:", error);
           setErrorMessage("Unable to load data. Please try again.");
         }
@@ -50,10 +54,17 @@ export default function NotificationsPageContent() {
       }
     }
 
-    void loadNotifications();
+    function reloadQuietly() {
+      void loadNotifications(true);
+    }
+
+    void loadNotifications(false);
+    // The bell tells this list when the unread count changed, which is when new entries have arrived.
+    window.addEventListener(UNREAD_COUNT_CHANGED_EVENT, reloadQuietly);
 
     return () => {
       cancelled = true;
+      window.removeEventListener(UNREAD_COUNT_CHANGED_EVENT, reloadQuietly);
     };
   }, []);
 
@@ -64,6 +75,7 @@ export default function NotificationsPageContent() {
       await markAllNotificationsAsRead();
 
       setNotifications((current) => current.map((notification) => ({ ...notification, read: true })));
+      window.dispatchEvent(new Event(NOTIFICATIONS_MARKED_READ_EVENT));
     } catch {
       setActionError("This isn't connected to a backend yet, so notifications couldn't be marked as read.");
     }
@@ -74,6 +86,7 @@ export default function NotificationsPageContent() {
       await markNotificationAsRead(notificationId);
 
       setNotifications((current) => current.map((notification) => (notification.id === notificationId ? { ...notification, read: true } : notification)));
+      window.dispatchEvent(new Event(NOTIFICATIONS_MARKED_READ_EVENT));
     } catch {
       setActionError("This isn't connected to a backend yet, so notifications couldn't be marked as read.");
     }

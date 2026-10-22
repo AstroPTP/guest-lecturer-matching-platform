@@ -260,19 +260,43 @@ const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategor
   'user.reactivated': { label: 'Account Reactivated', category: 'Account Management' },
   'user.reported': { label: 'User Reported', category: 'Account Management' },
   'report.resolved': { label: 'Report Resolved', category: 'Account Management' },
+  'user.held': { label: 'Account Held', category: 'Account Management' },
+  'user.released': { label: 'Account Released', category: 'Account Management' },
   'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
   'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
   'support.requested': { label: 'Details Requested', category: 'Account Management' },
   'support.replied': { label: 'Request Replied', category: 'Account Management' },
   'support.closed': { label: 'Request Closed', category: 'Account Management' },
   'support.reopened': { label: 'Request Reopened', category: 'Account Management' },
+  'user.signed_in': { label: 'Signed In', category: 'Security' },
+  'retention.purge': { label: 'Retention Purge', category: 'System' },
 };
+
+/**
+ * The actions the Audit Log can be narrowed to, for its filter. Taken from
+ * ACTION_LABELS so a label added there appears in the filter without a second
+ * edit.
+ */
+export const AUDIT_ACTION_FILTERS = Object.entries(ACTION_LABELS).map(
+  ([action, { label }]) => ({ action, label }),
+);
 
 const ACTOR_ROLES: Record<string, AuditActorRole> = {
   ccae_admin: 'Administrator',
   unit_coordinator: 'Unit Coordinator',
   guest_speaker: 'Guest Lecturer',
 };
+
+/**
+ * The correlation id the backend stored in the entry's detail, if there is a
+ * well-formed one. Entries written before ids were recorded, and entries from
+ * scheduled jobs that run outside any request, have none.
+ */
+function correlationIdOf(detail: unknown): string | null {
+  if (typeof detail !== 'object' || detail === null) return null;
+  const id = (detail as { correlationId?: unknown }).correlationId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
 
 function toAuditEntry(row: AuditRow): AuditEntry {
   const known = ACTION_LABELS[row.action];
@@ -288,11 +312,19 @@ function toAuditEntry(row: AuditRow): AuditEntry {
     targetType: row.targetType === 'guest' ? 'Profile' : 'Account',
     category: known?.category ?? 'Account Management',
     status: 'Success',
+    correlationId: correlationIdOf(row.detail),
   };
 }
 
-export async function getAuditEntries(limit = 200): Promise<AuditEntry[]> {
-  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?limit=${limit}`);
+/**
+ * Newest first. `action` is the stored key, such as "user.signed_in", and is
+ * filtered on the server: a busy action like sign-ins would otherwise fill the
+ * whole page of rows and push everything else out of view.
+ */
+export async function getAuditEntries(limit = 200, action?: string): Promise<AuditEntry[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (action) query.set('action', action);
+  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?${query.toString()}`);
   return rows.map(toAuditEntry);
 }
 
@@ -328,15 +360,35 @@ export interface OpenReport {
   id: string;
   reason: string;
   reporterEmail: string | null;
+  reporterName: string | null;
+  reporterRole: string | null;
   reportedUserId: string | null;
   reportedEmail: string | null;
+  reportedName: string | null;
   reportedRole: string | null;
   reportedStatus: 'active' | 'deactivated';
+  /** The match the report was raised from; null for a report made without one. */
+  matchId: string | null;
+  /** How many different people have an open report from a match about this person. */
+  openReporters: number;
+  /** How many of those it takes to put the person on hold for everyone. */
+  holdThreshold: number;
+  /** True while the person is hidden from everyone and cannot message. */
+  onHold: boolean;
+  /** Why: enough different reporters ("threshold"), or an administrator ("admin"). */
+  holdReasons: ('threshold' | 'admin')[];
+  /** True when an administrator's hold on this person was placed for this report. */
+  coveredByHold: boolean;
   reportedAt: string;
 }
 
 export async function getOpenReports(): Promise<OpenReport[]> {
   return backendFetch<OpenReport[]>('/admin/reports');
+}
+
+/** Holds the person a report is about, for everyone, until the reports are decided. */
+export async function holdReport(id: string): Promise<void> {
+  await backendFetch(`/admin/reports/${id}/hold`, { method: 'POST' });
 }
 
 export async function resolveReport(

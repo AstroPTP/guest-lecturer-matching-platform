@@ -40,6 +40,13 @@ describe('NotificationsController', () => {
     expect(findByRecipient).toHaveBeenCalledWith('user-1');
   });
 
+  it('returns the unread count for the calling user only', async () => {
+    const countUnread = jest.spyOn(service, 'countUnread').mockResolvedValue(4);
+
+    await expect(controller.unreadCount(user)).resolves.toEqual({ count: 4 });
+    expect(countUnread).toHaveBeenCalledWith('user-1');
+  });
+
   it('marks a single notification as read for the calling user', async () => {
     const markAsRead = jest
       .spyOn(service, 'markAsRead')

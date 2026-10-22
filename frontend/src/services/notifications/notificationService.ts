@@ -1,17 +1,13 @@
 import { backendFetch } from "@/lib/api/backendClient";
-import type { AppNotification, CreateNotificationData } from "@/types/notifications/notificationTypes";
+import type { AppNotification } from "@/types/notifications/notificationTypes";
 
 export async function getNotifications(): Promise<AppNotification[]> {
   return backendFetch("/notifications");
 }
 
 export async function getUnreadNotificationCount(): Promise<number> {
-  const notifications = await getNotifications();
-  return notifications.filter((n) => !n.read).length;
-}
-
-export async function createNotification(data: CreateNotificationData): Promise<AppNotification> {
-  return backendFetch("/notifications", { method: "POST", body: JSON.stringify(data) });
+  const { count } = await backendFetch<{ count: number }>("/notifications/unread-count");
+  return count;
 }
 
 export async function markNotificationAsRead(id: string): Promise<AppNotification> {

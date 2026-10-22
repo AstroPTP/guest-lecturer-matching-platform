@@ -264,6 +264,7 @@ model audit_entries {
 
   @@index([occurred_at])
   @@index([action])
+  @@index([action, target_id])
 }
 
 /// Platform settings an administrator can change. A single row, id 1.

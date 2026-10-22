@@ -383,38 +383,140 @@ describe('isRegistered', () => {
 });
 
 describe('deleteAccount', () => {
-  it('clears personal data and marks the user deleted, even if Auth0 already removed them', async () => {
+  /** Every call the transaction makes, in order, as "table.method". */
+  type Tx = ReturnType<typeof deletionTransaction>;
+
+  function deletionTransaction(photos: {
+    guest?: bigint | null;
+    coordinator?: bigint | null;
+  }) {
+    const order: string[] = [];
+    const record = (name: string) => {
+      order.push(name);
+      return Promise.resolve({ count: 1 });
+    };
+    const profile = (name: string, photo: bigint | null | undefined) => ({
+      findUnique: jest.fn(() => {
+        order.push(`${name}.findUnique`);
+        return Promise.resolve(
+          photo === undefined ? null : { profile_image_id: photo },
+        );
+      }),
+      deleteMany: jest.fn(() => record(`${name}.deleteMany`)),
+    });
+    return {
+      order,
+      availability: { deleteMany: jest.fn(() => record('availability')) },
+      user_expertise: { deleteMany: jest.fn(() => record('user_expertise')) },
+      notifications: { deleteMany: jest.fn(() => record('notifications')) },
+      images: { deleteMany: jest.fn(() => record('images')) },
+      guests: profile('guests', photos.guest),
+      coordinators: profile('coordinators', photos.coordinator),
+      users: { update: jest.fn(() => record('users')) },
+    };
+  }
+
+  /** Deletes ME with Auth0 already gone, running the work against `tx`. */
+  async function deleteWith(tx: Tx) {
     fakeAuth0({
       'POST /oauth/token': tokenEndpoint(),
       'DELETE /api/v2/users': () => ({ status: 404 }),
     });
-    const update = jest
-      .fn<Promise<object>, [{ data: Record<string, unknown> }]>()
-      .mockResolvedValue({});
-    const tx = {
-      availability: { deleteMany: jest.fn() },
-      user_expertise: { deleteMany: jest.fn() },
-      guests: { deleteMany: jest.fn() },
-      coordinators: { deleteMany: jest.fn() },
-      users: { update },
-    };
-    const target = prisma as unknown as { $transaction?: unknown };
-    target.$transaction = jest.fn(
-      async (work: (t: typeof tx) => Promise<void>) => work(tx),
-    );
-    try {
-      await expect(service.deleteAccount(ME)).resolves.toEqual({
-        success: true,
-      });
-    } finally {
-      delete target.$transaction;
-    }
-    const written = update.mock.calls[0][0].data;
+    jest
+      .spyOn(prisma, '$transaction')
+      .mockImplementation(((work: (t: Tx) => Promise<void>) =>
+        work(tx)) as never);
+    return service.deleteAccount(ME);
+  }
+
+  it('clears personal data and marks the user deleted, even if Auth0 already removed them', async () => {
+    const tx = deletionTransaction({});
+
+    await expect(deleteWith(tx)).resolves.toEqual({ success: true });
+
+    const written = (
+      tx.users.update.mock.calls as unknown as [
+        { data: Record<string, unknown> },
+      ][]
+    )[0][0].data;
     expect(written).toMatchObject({
       email: null,
       role: null,
       consentstate: false,
     });
     expect(written.deletedat).toBeInstanceOf(Date);
+  });
+
+  it("removes the caller's notifications, which hold their activity and links", async () => {
+    const tx = deletionTransaction({});
+
+    await deleteWith(tx);
+
+    expect(tx.notifications.deleteMany).toHaveBeenCalledWith({
+      where: { user_id: 1n },
+    });
+  });
+
+  it('removes the guest lecturer photo along with the profile', async () => {
+    const tx = deletionTransaction({ guest: 11n });
+
+    await deleteWith(tx);
+
+    expect(tx.images.deleteMany).toHaveBeenCalledTimes(1);
+    expect(tx.images.deleteMany).toHaveBeenCalledWith({
+      where: { image_id: { in: [11n] } },
+    });
+  });
+
+  it('removes the coordinator photo along with the profile', async () => {
+    const tx = deletionTransaction({ coordinator: 12n });
+
+    await deleteWith(tx);
+
+    expect(tx.images.deleteMany).toHaveBeenCalledWith({
+      where: { image_id: { in: [12n] } },
+    });
+  });
+
+  it('removes both photos when the account holds both profiles', async () => {
+    const tx = deletionTransaction({ guest: 11n, coordinator: 12n });
+
+    await deleteWith(tx);
+
+    expect(tx.images.deleteMany).toHaveBeenCalledWith({
+      where: { image_id: { in: [11n, 12n] } },
+    });
+  });
+
+  it('deletes no images for an account that never added a photo', async () => {
+    const tx = deletionTransaction({ guest: null, coordinator: undefined });
+
+    await deleteWith(tx);
+
+    expect(tx.images.deleteMany).not.toHaveBeenCalled();
+    expect(tx.guests.deleteMany).toHaveBeenCalled();
+  });
+
+  it('reads the photo ids before the profiles that point at them are deleted', async () => {
+    const tx = deletionTransaction({ guest: 11n, coordinator: 12n });
+
+    await deleteWith(tx);
+
+    const at = (call: string) => tx.order.indexOf(call);
+    expect(at('guests.findUnique')).toBeGreaterThanOrEqual(0);
+    expect(at('guests.findUnique')).toBeLessThan(at('guests.deleteMany'));
+    expect(at('coordinators.findUnique')).toBeGreaterThanOrEqual(0);
+    expect(at('coordinators.findUnique')).toBeLessThan(
+      at('coordinators.deleteMany'),
+    );
+  });
+
+  it('keeps the users row, so the signed token can no longer be used', async () => {
+    const tx = deletionTransaction({ guest: 11n });
+
+    await deleteWith(tx);
+
+    expect(tx.users.update).toHaveBeenCalledTimes(1);
+    expect(tx.order.at(-1)).toBe('users');
   });
 });
