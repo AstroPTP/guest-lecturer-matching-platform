@@ -161,7 +161,8 @@ const idList = (value: unknown): bigint[] =>
 
 /**
  * Just enough of Prisma's `where` to run the shapes the service sends: AND, OR,
- * NOT, `{ not: x }`, `{ is: {...} }` on a relation, and plain equality. Anything
+ * NOT, `{ not: x }`, `{ in: [...] }`, `{ notIn: [...] }`, `{ is: {...} }` on a
+ * relation, and plain equality. Anything
  * else throws, so a new clause cannot slip past the fake unnoticed.
  */
 function matches(row: Record<string, unknown>, where: Where): boolean {
@@ -186,6 +187,13 @@ function matches(row: Record<string, unknown>, where: Where): boolean {
       }
       if ('not' in condition) {
         return value !== condition.not;
+      }
+      // Other branches add these to the shared visibility rule.
+      if ('notIn' in condition) {
+        return !(condition.notIn as unknown[]).includes(value);
+      }
+      if ('in' in condition) {
+        return (condition.in as unknown[]).includes(value);
       }
       throw new Error(
         `the fake does not understand ${key}: ${JSON.stringify(condition)}`,
@@ -393,7 +401,7 @@ describe('SuggestionsService', () => {
       await service.suggest(userId, query, NOW);
       const candidates = read.mock.calls
         .map(([args]) => args?.where)
-        .find((where) => where && 'AND' in where);
+        .find((where) => JSON.stringify(where).includes('consentstate'));
       expect(JSON.stringify(candidates)).toContain('"consentstate":true');
       expect(JSON.stringify(candidates)).toContain('"deletedat":null');
       expect(JSON.stringify(candidates)).toContain('"first_name":{"not":null}');

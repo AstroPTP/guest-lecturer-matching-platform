@@ -115,7 +115,11 @@ describe('UpdateSettingsDto, Suggested speakers fields', () => {
 });
 
 describe('GovernanceService, Suggested speakers settings', () => {
-  const service = new GovernanceService(new AdminService());
+  // Built through a loose constructor type: other branches give the service more
+  // constructor arguments, and updateSettings uses none of them.
+  const service = new (GovernanceService as unknown as new (
+    ...dependencies: unknown[]
+  ) => GovernanceService)(new AdminService());
   const admin = 'auth0|admin';
 
   it('reads the five settings back under the names the DTO uses', async () => {
