@@ -8,7 +8,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MatchRequestsService } from './match-requests.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma } from '../prisma';
-import { stubOpenReports } from '../testing/open-reports';
+import {
+  stubOpenReports,
+  stubOpenReportsAlways,
+} from '../testing/open-reports';
 
 describe('MatchRequestsService', () => {
   let service: MatchRequestsService;
@@ -714,22 +717,14 @@ describe('MatchRequestsService', () => {
 
     /** Open reports as [reporter, reported] user ids, raised through a match. */
     function reports(open: [reporter: bigint, reported: string][]) {
-      jest.spyOn(prisma.audit_entries, 'findMany').mockImplementation((({
-        where,
-      }: {
-        where: { action: unknown };
-      }) =>
-        Promise.resolve(
-          where.action === 'user.reported'
-            ? open.map(([actor, target], i) => ({
-                entry_id: BigInt(40 + i),
-                actor_user_id: actor,
-                target_id: target,
-                detail: { reason: 'asked for money', matchId: '1' },
-                actor: null,
-              }))
-            : [],
-        )) as never);
+      stubOpenReportsAlways(
+        open.map(([actor, target], i) => ({
+          entry_id: BigInt(40 + i),
+          actor_user_id: actor,
+          target_id: target,
+          detail: { reason: 'asked for money', matchId: '1' },
+        })),
+      );
     }
 
     /** The caller's own account is user 1 in the double. */
