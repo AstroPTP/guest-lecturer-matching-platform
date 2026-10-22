@@ -12,7 +12,8 @@ const ROLE_LABELS: Record<string, string> = {
 /**
  * The moderation queue: reports users have raised about one another that
  * nobody has dealt with yet. Dismissing or deactivating closes the report,
- * and both are recorded in the audit log.
+ * and both are recorded in the audit log. A report raised from a match keeps
+ * the person out of Discovery and messaging until it is closed.
  */
 export default function ReportsPage() {
   const [rows, setRows] = useState<OpenReport[]>([]);
@@ -64,7 +65,7 @@ export default function ReportsPage() {
     <div className="overview-page">
       <header className="overview-heading">
         <h1>Reports</h1>
-        <p>Reports users have raised about other accounts, waiting for a decision.</p>
+        <p>Reports users have raised about the people they matched with. Until you decide, that person is hidden from Discovery and cannot send or receive messages. Dismissing restores them.</p>
       </header>
 
       {errorMessage ? (
@@ -80,12 +81,37 @@ export default function ReportsPage() {
           {rows.map((row) => (
             <li className="review-item" key={row.id}>
               <div>
-                <strong>{row.reportedEmail ?? "Unknown account"}</strong>
+                <strong>{row.reportedName ?? row.reportedEmail ?? "Unknown account"}</strong>
                 <span>
                   {ROLE_LABELS[row.reportedRole ?? ""] ?? "Account"}
-                  {row.reportedStatus === "deactivated" ? " · already deactivated" : ""}
+                  {row.reportedName && row.reportedEmail ? ` · ${row.reportedEmail}` : ""}
+                  {" · "}
+                  <b className={`report-status ${row.reportedStatus}`}>
+                    {row.reportedStatus === "deactivated" ? "Deactivated" : "Active"}
+                  </b>
                 </span>
                 <p>&ldquo;{row.reason}&rdquo;</p>
+                <dl className="report-context">
+                  <div>
+                    <dt>Reported by</dt>
+                    <dd>
+                      {row.reporterName ?? row.reporterEmail ?? "Unknown account"}
+                      {row.reporterRole ? ` (${ROLE_LABELS[row.reporterRole] ?? "Account"})` : ""}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Conversation</dt>
+                    <dd>{row.matchId ? `Match #${row.matchId}` : "Not raised from a match"}</dd>
+                  </div>
+                  <div>
+                    <dt>While open</dt>
+                    <dd>
+                      {row.reportedIsBlocked
+                        ? "Hidden from Discovery and unable to message, until you decide."
+                        : "No restriction. Only reports raised from a match restrict the account."}
+                    </dd>
+                  </div>
+                </dl>
                 <small>
                   Reported{" "}
                   {new Date(row.reportedAt).toLocaleDateString("en-AU", {
@@ -93,7 +119,6 @@ export default function ReportsPage() {
                     month: "short",
                     year: "numeric",
                   })}
-                  {row.reporterEmail ? ` by ${row.reporterEmail}` : ""}
                 </small>
               </div>
               <div className="review-actions">

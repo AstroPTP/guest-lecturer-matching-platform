@@ -1632,6 +1632,14 @@ a { color: inherit; text-decoration: none; }
 .review-item > div > span { color: var(--c-73737a); display: block; font-size: 12px; margin-top: 3px; }
 .review-item p { color: var(--c-4b5563); font-size: 13px; line-height: 1.5; margin: 10px 0; }
 .review-item small { color: var(--c-9b9ba0); font-size: 11px; }
+.report-status { font-weight: 700; }
+.report-status.active { color: var(--c-15803d); }
+.report-status.deactivated { color: var(--c-dc2626); }
+.report-context { color: var(--c-4b5563); display: grid; font-size: 12px; gap: 4px; margin: 0 0 10px; }
+.report-context > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.report-context dt { color: var(--c-73737a); font-weight: 600; }
+.report-context dt::after { content: ":"; }
+.report-context dd { margin: 0; }
 .review-actions { align-items: center; display: flex; flex-direction: column; gap: 8px; }
 .review-actions button {
   background: var(--c-17231f);

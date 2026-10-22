@@ -323,10 +323,17 @@ export interface OpenReport {
   id: string;
   reason: string;
   reporterEmail: string | null;
+  reporterName: string | null;
+  reporterRole: string | null;
   reportedUserId: string | null;
   reportedEmail: string | null;
+  reportedName: string | null;
   reportedRole: string | null;
   reportedStatus: 'active' | 'deactivated';
+  /** The match the report was raised from; null for a report made without one. */
+  matchId: string | null;
+  /** True while the person is kept out of Discovery and messaging. */
+  reportedIsBlocked: boolean;
   reportedAt: string;
 }
 
