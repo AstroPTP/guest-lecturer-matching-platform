@@ -23,7 +23,7 @@ const signInLogger = new Logger('SignInAudit');
  * over an hour old, so a busy session costs one write an hour rather than one
  * per request. The audit entry rides on the same condition: it is written only
  * when that UPDATE really changed a row, so the trail holds one `user.signed_in`
- * per user per hour of activity and not one per request (NFR-59).
+ * per user per hour of activity and not one per request.
  *
  * What this cannot see is a failed sign-in. A wrong password, an unknown
  * account or a blocked user is refused by Auth0 before any token exists, so
