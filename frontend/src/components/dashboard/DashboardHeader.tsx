@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import notificationIcon from "@/assets/notification.png";
 import { getUnreadNotificationCount } from "@/services/notifications/notificationService";
+import { startUnreadCountPolling, UNREAD_COUNT_CHANGED_EVENT } from "@/utils/unreadCountPoller";
 import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import type { UserRole } from "@/types/shared/userRole";
 import ThemeToggle from "@/components/theme/ThemeToggle";
-import { startUnreadCountPolling, UNREAD_COUNT_CHANGED_EVENT } from "@/utils/unreadCountPoller";
 
 interface DashboardHeaderProps {
   role: UserRole;
