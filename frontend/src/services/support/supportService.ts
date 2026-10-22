@@ -38,6 +38,17 @@ interface SupportThreadDetail {
   messages: SupportMessageRow[];
 }
 
+/**
+ * The API path of one request. Ids are numbers issued by the API; anything
+ * else is refused here rather than put into a URL.
+ */
+function threadPath(id: string): string {
+  if (!/^\d{1,18}$/.test(id)) {
+    throw new Error("That request could not be found.");
+  }
+  return `/support/threads/${id}`;
+}
+
 /** Where an attached file is served, through the app's own server route. */
 export function attachmentHref(attachmentId: string): string {
   return `/api/backend/support/attachments/${encodeURIComponent(attachmentId)}`;
@@ -121,7 +132,7 @@ export function toSupportConversation(threads: SupportThread[]): Conversation | 
 /** Every message across the user's requests, oldest request first. */
 export async function getSupportMessages(threads: SupportThread[]): Promise<ChatMessage[]> {
   const details = await Promise.all(
-    [...threads].reverse().map((thread) => backendFetch<SupportThreadDetail>(`/support/threads/${encodeURIComponent(thread.id)}`)),
+    [...threads].reverse().map((thread) => backendFetch<SupportThreadDetail>(threadPath(thread.id))),
   );
   return details.flatMap((detail) => detail.messages.map((row) => toChatMessage(detail, row)));
 }
@@ -131,7 +142,7 @@ export async function markSupportRead(threads: SupportThread[]): Promise<void> {
   await Promise.all(
     threads
       .filter((thread) => thread.unreadFromAdmin > 0)
-      .map((thread) => backendFetch(`/support/threads/${encodeURIComponent(thread.id)}/read`, { method: "PATCH" })),
+      .map((thread) => backendFetch(`${threadPath(thread.id)}/read`, { method: "PATCH" })),
   );
 }
 
@@ -144,7 +155,7 @@ export async function sendSupportMessage(thread: SupportThread, text: string, fi
   const body = new FormData();
   if (text.trim()) body.append("content", text.trim());
   if (file) body.append("attachment", file);
-  const row = await backendFetch<SupportMessageRow>(`/support/threads/${encodeURIComponent(thread.id)}/messages`, {
+  const row = await backendFetch<SupportMessageRow>(`${threadPath(thread.id)}/messages`, {
     method: "POST",
     body,
   });

@@ -25,3 +25,12 @@ export function formatWhen(value: string): string {
     minute: "2-digit",
   });
 }
+
+/**
+ * Whether a value can be a request id: digits only, as the API issues them.
+ * Anything else is not looked up, so an id taken from the address bar never
+ * reaches a call to the API.
+ */
+export function isThreadId(value: string): boolean {
+  return /^\d{1,18}$/.test(value);
+}

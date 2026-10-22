@@ -1,4 +1,5 @@
 import { backendFetch } from '@/lib/api/backendClient';
+import { isThreadId } from '@/lib/requestFormat';
 import {
   AccountStatus,
   VerificationStatus,
@@ -453,19 +454,27 @@ export async function requestDetails(input: {
   });
 }
 
+/** The API path of one request, refusing an id that is not a number. */
+function threadPath(id: string): string {
+  if (!isThreadId(id)) {
+    throw new Error('That request could not be found.');
+  }
+  return `/admin/support/threads/${id}`;
+}
+
 export async function getRequestThreads(): Promise<RequestThreadSummary[]> {
   return backendFetch<RequestThreadSummary[]>('/admin/support/threads', { cache: 'no-store' });
 }
 
 /** Opening a request counts as reading what the user sent. */
 export async function getRequestThread(id: string): Promise<RequestThread> {
-  return backendFetch<RequestThread>(`/admin/support/threads/${encodeURIComponent(id)}`, {
+  return backendFetch<RequestThread>(threadPath(id), {
     cache: 'no-store',
   });
 }
 
 export async function replyToRequest(id: string, content: string): Promise<RequestMessage> {
-  return backendFetch<RequestMessage>(`/admin/support/threads/${encodeURIComponent(id)}/messages`, {
+  return backendFetch<RequestMessage>(`${threadPath(id)}/messages`, {
     method: 'POST',
     body: JSON.stringify({ content }),
   });
@@ -475,7 +484,7 @@ export async function setRequestStatus(
   id: string,
   status: RequestStatus,
 ): Promise<{ id: string; status: RequestStatus }> {
-  return backendFetch(`/admin/support/threads/${encodeURIComponent(id)}`, {
+  return backendFetch(threadPath(id), {
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
