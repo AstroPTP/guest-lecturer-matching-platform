@@ -42,17 +42,22 @@ export class UsersService {
    * missing. An upsert, so the parallel requests a page makes on load cannot
    * race each other into a duplicate. A deleted account cannot be revived
    * here: JwtAuthGuard refuses its tokens before this runs.
+   *
+   * It never writes `lastloginat`. JwtAuthGuard is the only writer, because it
+   * writes the time and the `user.signed_in` audit entry together, and only
+   * when the stored time is missing or over an hour old. A row created here
+   * with the time already set would hide a new account's first sign-in from
+   * the guard for an hour, and a write here would race the guard's.
    */
   async ensureForUser(user: AuthenticatedUser) {
     return prisma.users.upsert({
       where: { auth0Id: user.id },
-      update: { lastloginat: new Date() },
+      update: {},
       create: {
         auth0Id: user.id,
         email: user.email,
         role: user.roles[0],
         createdat: new Date(),
-        lastloginat: new Date(),
       },
     });
   }

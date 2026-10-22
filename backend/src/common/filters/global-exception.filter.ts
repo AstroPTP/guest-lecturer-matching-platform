@@ -28,7 +28,7 @@ import {
  *
  * The correlation id appears in both, so a user quoting the id from their
  * error screen can be matched to the stack trace that produced it. It is the
- * same id the request's JSON log line and any audit entry carry (NFR-20).
+ * same id the request's JSON log line and any audit entry carry.
  */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -110,8 +110,8 @@ function numericUserIdOf(request: Request): number | null {
  * line and the response header all agree.
  *
  * The rest is for an error that arrives with no request context, which means
- * the middleware did not run for it: reuse a well-formed inbound id (checklist
- * REP-06) and otherwise mint one, so an envelope never goes out without an id.
+ * the middleware did not run for it: reuse a well-formed inbound id and
+ * otherwise mint one, so an envelope never goes out without an id.
  */
 function resolveCorrelationId(request: Request): string {
   return (

@@ -10,6 +10,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AppRole } from '../auth/roles';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, toId } from '../prisma';
+import type { Prisma } from '../../generated/prisma/client';
 import { validateAttachment } from './attachments';
 import { SupportErrorCode } from './support-errors';
 import type { OpenSupportThreadDto } from './dto/open-support-thread.dto';
@@ -116,6 +117,20 @@ const threadNotFound = () =>
     message: 'Request not found',
   });
 
+/**
+ * First half of the lock that serialises one person's requests, so that
+ * opening two at once cannot get past the one-open-request rule. The second
+ * half is the person's user id.
+ */
+const OPEN_REQUEST_LOCK_NAMESPACE = 0x73_75_70;
+
+const alreadyOpen = () =>
+  new ConflictException({
+    code: SupportErrorCode.RequestAlreadyOpen,
+    message:
+      'This person already has an open request. Reply there or close it first.',
+  });
+
 const asStatus = (value: string): SupportStatus =>
   value === 'closed' ? 'closed' : 'open';
 
@@ -138,7 +153,13 @@ export class SupportService {
   // Administrator
   // -------------------------------------------------------------------------
 
-  /** Opens a request and sends the first message. */
+  /**
+   * Opens a request and sends the first message.
+   *
+   * A person has one open request at a time. Every request lands in the same
+   * conversation on their Messages page and their replies go to the latest
+   * one, so a second open request would leave the first without answers.
+   */
   async openThread(
     adminAuth0Id: string,
     dto: OpenSupportThreadDto,
@@ -162,6 +183,7 @@ export class SupportService {
     }
 
     const thread = await prisma.$transaction(async (tx) => {
+      await this.assertNoOtherOpenRequest(tx, target.userid);
       const created = await tx.support_threads.create({
         data: {
           user_id: target.userid,
@@ -338,9 +360,19 @@ export class SupportService {
       return { id: threadId, status };
     }
 
-    await prisma.support_threads.update({
-      where: { thread_id: thread.thread_id },
-      data: { status, updated_at: new Date() },
+    await prisma.$transaction(async (tx) => {
+      // Reopening would put a second request open at once.
+      if (status === 'open') {
+        await this.assertNoOtherOpenRequest(
+          tx,
+          thread.user_id,
+          thread.thread_id,
+        );
+      }
+      await tx.support_threads.update({
+        where: { thread_id: thread.thread_id },
+        data: { status, updated_at: new Date() },
+      });
     });
     await recordAudit(
       adminAuth0Id,
@@ -349,6 +381,26 @@ export class SupportService {
       { userId: thread.user_id.toString() },
     );
     return { id: threadId, status };
+  }
+
+  /**
+   * Refuses when the person already has an open request other than `except`.
+   * Taken under a lock on the person for the rest of the transaction, so two
+   * requests opened together cannot both pass.
+   */
+  private async assertNoOtherOpenRequest(
+    tx: Prisma.TransactionClient,
+    userId: bigint,
+    except?: bigint,
+  ): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${OPEN_REQUEST_LOCK_NAMESPACE}::int, ${Number(BigInt.asIntN(32, userId))}::int)`;
+    const open = await tx.support_threads.findFirst({
+      where: { user_id: userId, status: 'open' },
+      select: { thread_id: true },
+    });
+    if (open && open.thread_id !== except) {
+      throw alreadyOpen();
+    }
   }
 
   // -------------------------------------------------------------------------

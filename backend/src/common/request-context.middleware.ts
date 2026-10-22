@@ -48,7 +48,7 @@ const MAX_LOGGED_PATH = 200;
  * an id and still has a line.
  *
  * The line carries the method, the route and the status, and nothing the
- * caller sent: no query string, no body, no headers, no token (INF-06).
+ * caller sent: no query string, no body, no headers, no token.
  * Aborted connections never emit `finish` and so are not logged.
  */
 export function requestContextMiddleware(options: RequestContextOptions = {}) {

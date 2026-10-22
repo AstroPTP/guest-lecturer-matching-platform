@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { requestDetails } from "@/services/adminApi";
+import { BackendError } from "@/lib/api/backendClient";
+import { findOpenRequestId, requestDetails, REQUEST_ALREADY_OPEN } from "@/services/adminApi";
 
 const SUBJECT_LIMIT = 150;
 const MESSAGE_LIMIT = 2000;
@@ -82,6 +83,7 @@ function RequestDetailsDialog({
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [openRequestId, setOpenRequestId] = useState<string | null>(null);
 
   // Opened as a modal so focus is held inside it, Escape closes it, and the
   // page behind cannot be used until it is dealt with.
@@ -96,11 +98,18 @@ function RequestDetailsDialog({
     if (!canSend) return;
     setIsSending(true);
     setErrorMessage("");
+    setOpenRequestId(null);
     try {
       const created = await requestDetails({ userId, subject: subject.trim(), message: message.trim() });
       onSent(created.id);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "The request could not be sent.");
+      if (error instanceof BackendError && error.code === REQUEST_ALREADY_OPEN) {
+        // One open request at a time: point at the one that is there.
+        setErrorMessage("This person already has an open request. Reply there or close it first.");
+        setOpenRequestId(await findOpenRequestId(userId).catch(() => null));
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : "The request could not be sent.");
+      }
       setIsSending(false);
     }
   }
@@ -148,6 +157,12 @@ function RequestDetailsDialog({
         {errorMessage ? (
           <p className="request-error" role="alert">
             {errorMessage}
+            {openRequestId ? (
+              <>
+                {" "}
+                <Link href={`/dashboard/requests/${encodeURIComponent(openRequestId)}`}>Open that request</Link>
+              </>
+            ) : null}
           </p>
         ) : null}
 

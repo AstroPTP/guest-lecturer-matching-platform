@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { isSafeProxyPath } from '@/lib/api/proxyPath';
 import { backendUrl } from '@/lib/auth/config';
+import { forwardedHeaders, upstreamPath } from '@/lib/api/proxyRequest';
 import { readAccessToken } from '@/lib/auth/session';
 
 /**
@@ -30,25 +31,11 @@ import { readAccessToken } from '@/lib/auth/session';
  * is a 405 rather than an open pass-through.
  */
 
-const HOP_BY_HOP = new Set([
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'host',
-  // Never forward a client-supplied Authorization header. The token comes from
-  // the cookie; accepting one from the caller would let the browser choose its
-  // own credentials and defeat the whole arrangement.
-  'authorization',
-  'cookie',
-  // Conditional requests would let the API answer 304 with no body, which is
-  // not what a no-store response should be built from.
-  'if-none-match',
-  'if-modified-since',
-  'if-match',
-  'if-unmodified-since',
-  'if-range',
-]);
+/** The id the backend gave the request, to hand back so the browser can quote it. */
+function correlationHeader(response: Response): Record<string, string> {
+  const id = response.headers.get('x-correlation-id');
+  return id ? { 'x-correlation-id': id } : {};
+}
 
 /**
  * Everything this route returns is per-user and must not be kept by a shared
@@ -60,10 +47,14 @@ const HOP_BY_HOP = new Set([
 const NO_SHARED_CACHE = 'private, no-store';
 
 /** A response built here rather than passed through from the API. */
-function refuse(body: Record<string, string>, status: number) {
+function refuse(
+  body: Record<string, string>,
+  status: number,
+  extraHeaders: Record<string, string> = {},
+) {
   return NextResponse.json(body, {
     status,
-    headers: { 'Cache-Control': NO_SHARED_CACHE },
+    headers: { 'Cache-Control': NO_SHARED_CACHE, ...extraHeaders },
   });
 }
 
@@ -80,24 +71,18 @@ async function forward(request: NextRequest, path: string[] | null) {
 
   const token = await readAccessToken();
 
-  const headers = new Headers();
-  request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) {
-      headers.set(key, value);
-    }
-  });
+  const headers = forwardedHeaders(request.headers);
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  // Echoed back by the backend's GlobalExceptionFilter, so an id on a user's
-  // error screen matches the server log line that produced it.
-  if (!headers.has('x-correlation-id')) {
-    headers.set('x-correlation-id', randomUUID());
-  }
+  // The backend gives the request its id and sends it back in the response,
+  // and the proxy passes it on. This one is only for the 502 below, when there
+  // is no backend response to take an id from.
+  const proxyId = randomUUID();
 
-  const target = `${backendUrl()}/${path.join('/')}${request.nextUrl.search}`;
+  const target = `${backendUrl()}/${upstreamPath(path)}${request.nextUrl.search}`;
 
   const response = await fetch(target, {
     cache: 'no-store',
@@ -114,10 +99,11 @@ async function forward(request: NextRequest, path: string[] | null) {
       {
         code: 'BACKEND_UNREACHABLE',
         message: 'The API is not responding.',
-        correlationId: headers.get('x-correlation-id') ?? '',
+        correlationId: proxyId,
         timestamp: new Date().toISOString(),
       },
       502,
+      { 'x-correlation-id': proxyId },
     );
   }
 
@@ -134,6 +120,7 @@ async function forward(request: NextRequest, path: string[] | null) {
     const value = response.headers.get(name);
     if (value) passed[name] = value;
   }
+  Object.assign(passed, correlationHeader(response));
   return new NextResponse(response.body, {
     status: response.status,
     headers: passed,

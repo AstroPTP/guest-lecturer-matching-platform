@@ -13,4 +13,5 @@ export const SupportErrorCode = {
   AttachmentNotFound: 'SUPPORT_ATTACHMENT_NOT_FOUND',
   UserNotFound: 'SUPPORT_USER_NOT_FOUND',
   UserDeactivated: 'SUPPORT_USER_DEACTIVATED',
+  RequestAlreadyOpen: 'SUPPORT_REQUEST_ALREADY_OPEN',
 } as const;

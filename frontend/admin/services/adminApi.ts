@@ -506,6 +506,16 @@ export async function requestDetails(input: {
   });
 }
 
+/** The code the API answers with when the person already has an open request. */
+export const REQUEST_ALREADY_OPEN = 'SUPPORT_REQUEST_ALREADY_OPEN';
+
+/** The id of the open request with this user, if they have one. */
+export async function findOpenRequestId(userId: string): Promise<string | null> {
+  const id = numericId(userId);
+  const threads = await getRequestThreads();
+  return threads.find((thread) => thread.userId === id && thread.status === 'open')?.id ?? null;
+}
+
 /** The API path of one request, refusing an id that is not a number. */
 function threadPath(id: string): string {
   if (!isThreadId(id)) {

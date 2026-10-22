@@ -7,6 +7,9 @@ import {
 import type { Reflector } from '@nestjs/core';
 import { runInRequestContext } from '../common/request-context';
 import { prisma } from '../prisma';
+import { UsersService } from '../users/users.service';
+import { AppRole } from './roles';
+import type { AuthenticatedUser } from './authenticated-user';
 import { JwtAuthGuard, recordSignIn } from './jwt.guard';
 
 const CORRELATION_ID = '01HZX3K9QJ0000000000000000';
@@ -255,6 +258,117 @@ describe('JwtAuthGuard sign-in auditing', () => {
       expect(auditedActions(create)).toEqual(['user.signed_in']);
       expect(firstArg(create)).toMatchObject({
         data: { target_id: '42', detail: { correlationId: CORRELATION_ID } },
+      });
+    });
+
+    describe('for a brand-new account', () => {
+      const newcomer: AuthenticatedUser = {
+        id: 'auth0|new',
+        email: 'new@example.com',
+        roles: [AppRole.GuestSpeaker],
+      };
+
+      /**
+       * The users table in memory, answering the way Postgres would to the
+       * statements the guard and ensureForUser make, so the order they run in
+       * decides the outcome as it does in life.
+       */
+      function memoryUsers() {
+        type Row = { userid: bigint; lastloginat: Date | null };
+        const rows = new Map<string, Row>();
+        jest.spyOn(prisma.users, 'upsert').mockImplementation(((args: {
+          where: { auth0Id: string };
+          update: Record<string, unknown>;
+          create: { lastloginat?: Date };
+        }) => {
+          const existing = rows.get(args.where.auth0Id);
+          if (existing) {
+            Object.assign(existing, args.update);
+            return Promise.resolve(existing);
+          }
+          const row = {
+            userid: 42n,
+            lastloginat: args.create.lastloginat ?? null,
+          };
+          rows.set(args.where.auth0Id, row);
+          return Promise.resolve(row);
+        }) as never);
+        updateMany.mockImplementation(((args: {
+          where: {
+            auth0Id: string;
+            OR: ({ lastloginat: null } | { lastloginat: { lt: Date } })[];
+          };
+          data: { lastloginat: Date };
+        }) => {
+          const row = rows.get(args.where.auth0Id);
+          const matches =
+            row !== undefined &&
+            args.where.OR.some((condition) =>
+              condition.lastloginat === null
+                ? row.lastloginat === null
+                : row.lastloginat !== null &&
+                  row.lastloginat < condition.lastloginat.lt,
+            );
+          if (matches) row.lastloginat = args.data.lastloginat;
+          return Promise.resolve({ count: matches ? 1 : 0 });
+        }) as never);
+        jest.spyOn(prisma.users, 'findFirst').mockImplementation(((args: {
+          where: { auth0Id: string; deletedat?: unknown };
+        }) => {
+          const row = rows.get(args.where.auth0Id);
+          // The deleted-account check carries `deletedat`; nobody is deleted.
+          return Promise.resolve(
+            args.where.deletedat || !row ? null : { userid: row.userid },
+          );
+        }) as never);
+        return rows;
+      }
+
+      const request = async () => {
+        await guard().canActivate(contextFor({ user: { id: newcomer.id } }));
+        await settle();
+      };
+
+      it('audits the first sign-in once when the row exists by the time the guard updates', async () => {
+        const rows = memoryUsers();
+
+        await new UsersService().ensureForUser(newcomer);
+        // Creating the row records no sign-in; that is the guard's to do.
+        expect(rows.get(newcomer.id)?.lastloginat).toBeNull();
+
+        await request();
+        await request();
+        await request();
+
+        expect(auditedActions(create)).toEqual(['user.signed_in']);
+        expect(rows.get(newcomer.id)?.lastloginat).toBeInstanceOf(Date);
+      });
+
+      it('still audits it exactly once when the guard updates before the row exists', async () => {
+        memoryUsers();
+
+        // The first request: the guard's update finds no row, then the
+        // handler creates it.
+        await request();
+        expect(auditedActions(create)).toEqual([]);
+        await new UsersService().ensureForUser(newcomer);
+
+        // The next one finds the row waiting for its first sign-in.
+        await request();
+        await request();
+
+        expect(auditedActions(create)).toEqual(['user.signed_in']);
+      });
+
+      it('leaves the time the guard stored alone when the handler runs later', async () => {
+        const rows = memoryUsers();
+        await new UsersService().ensureForUser(newcomer);
+        await request();
+        const stored = rows.get(newcomer.id)?.lastloginat;
+
+        await new UsersService().ensureForUser(newcomer);
+
+        expect(rows.get(newcomer.id)?.lastloginat).toBe(stored);
       });
     });
 

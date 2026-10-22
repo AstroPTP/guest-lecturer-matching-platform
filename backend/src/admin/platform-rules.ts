@@ -72,7 +72,7 @@ export async function assertGuestCanBeContacted(guestId: bigint) {
  *
  * When written during a request, the entry also carries that request's
  * correlation id in its detail, which is what ties it to the request log line
- * and to the id on any error the caller saw (NFR-59). Read before the first
+ * and to the id on any error the caller saw. Read before the first
  * await, while the request is certainly still the current one.
  */
 export async function recordAudit(
