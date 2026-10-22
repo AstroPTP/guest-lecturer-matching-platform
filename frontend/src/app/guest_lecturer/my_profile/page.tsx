@@ -12,7 +12,7 @@ import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
 import type {GuestLecturerBasicInformationData, GuestLecturerEngagementData, GuestLecturerExpertiseData, GuestLecturerProfileData} from "@/types/profile/guestLecturerProfileTypes";
 import { getGuestLecturerProfile, saveGuestLecturerBasicInformation,saveGuestLecturerEngagement, saveGuestLecturerExpertise} from "@/services/profile/guestLecturerProfileService";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
-import { formatStoredValue } from "@/utils/displayFormatters";
+import { formatOptionLabel, formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
@@ -407,7 +407,7 @@ export default function GuestLecturerMyProfilePage() {
                   <ProfileField label="Audience Size" value={formatAudienceSize(profile?.engagementProfile.audienceSize ?? "")} />
                   <ProfileField
                     label="Delivery Format"
-                    value={getSelectedFormats(profile?.engagementProfile ?? engagementDraft).map((item) => formatStoredValue(item)).join(", ")}
+                    value={getSelectedFormats(profile?.engagementProfile ?? engagementDraft).map((item) => formatOptionLabel(item, formatOptions)).join(", ")}
                   />
                 </div>
 
