@@ -33,7 +33,7 @@ export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /**
  * The response envelope. Exactly these four fields reach the client: no stack,
- * no path, no SQL, no dependency name (INF-01).
+ * no path, no SQL, no dependency name.
  */
 export interface ErrorEnvelope {
   code: ErrorCode;
