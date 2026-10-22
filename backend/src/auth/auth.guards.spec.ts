@@ -271,6 +271,20 @@ describe('Auth guards', () => {
       );
       lookup.mockRestore();
     });
+
+    it('still serves a valid request when recording the sign-in fails', async () => {
+      const record = jest
+        .spyOn(prisma.users, 'updateMany')
+        .mockImplementation(() => {
+          throw new Error('database unavailable');
+        });
+      const token = mint({ privateKey: keys.privateKey, subject: 'user-123' });
+
+      const res = await withToken('/test/protected', token).expect(200);
+
+      expect(res.text).toBe('protected');
+      record.mockRestore();
+    });
   });
 
   describe('tampering', () => {

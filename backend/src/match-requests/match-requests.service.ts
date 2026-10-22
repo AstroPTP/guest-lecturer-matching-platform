@@ -7,6 +7,7 @@ import { ErrorCode } from '../common/error-codes';
 import { isUniqueViolation } from '../common/prisma-errors';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
+import { assertGuestCanBeContacted } from '../admin/platform-rules';
 
 export type Side = 'coordinator' | 'guest';
 
@@ -73,6 +74,9 @@ export class MatchRequestsService {
     });
 
     if (!existing) {
+      if (caller.side === 'coordinator') {
+        await assertGuestCanBeContacted(pair.guest_id);
+      }
       try {
         const row = await prisma.match_requests.create({
           data: {

@@ -39,7 +39,7 @@ const sharedFaqs: HelpFaq[] = [
   {
     question: "I forgot my password.",
     answer:
-      "On the sign-in page, choose Forgot password? and follow the steps. You can also sign in with Google or LinkedIn if you registered that way.",
+      "On the sign-in page, choose Forgot password? and follow the steps.",
   },
   {
     question: "Who can see my profile?",

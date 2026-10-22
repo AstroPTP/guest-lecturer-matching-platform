@@ -4,6 +4,7 @@ import { BasicInformationDto } from './dto/basic-information.dto';
 import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
+import * as prismaModule from '../prisma';
 import { prisma } from '../prisma';
 
 describe('GuestSpeakersService', () => {
@@ -77,6 +78,20 @@ describe('GuestSpeakersService', () => {
   describe('findByUserId', () => {
     it('returns null when no guest row exists', async () => {
       await expect(service.findByUserId(userId)).resolves.toBeNull();
+    });
+
+    it('returns null for someone who has never saved a profile, without creating a user', async () => {
+      jest.spyOn(prisma.users, 'findUnique').mockResolvedValue(null);
+      const create = jest.spyOn(prisma.users, 'create');
+      const upsert = jest.spyOn(prisma.users, 'upsert');
+      // resolveUserId creates the user row if it is missing, so a read must not
+      // go through it.
+      const resolve = jest.spyOn(prismaModule, 'resolveUserId');
+
+      await expect(service.findByUserId(userId)).resolves.toBeNull();
+      expect(create).not.toHaveBeenCalled();
+      expect(upsert).not.toHaveBeenCalled();
+      expect(resolve).not.toHaveBeenCalled();
     });
   });
 
@@ -167,6 +182,19 @@ describe('GuestSpeakersService', () => {
   describe('findAll', () => {
     it('returns what the database holds', async () => {
       await expect(service.findAll()).resolves.toEqual([]);
+    });
+
+    it('leaves out guests whose account has been deactivated', async () => {
+      const query = jest.spyOn(prisma.guests, 'findMany');
+
+      await service.findAll();
+
+      expect(query.mock.calls[0][0]).toMatchObject({
+        where: {
+          OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+        },
+      });
+      query.mockRestore();
     });
   });
 });

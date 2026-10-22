@@ -4,6 +4,8 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
+import { visibleGuestsWhere } from '../admin/platform-rules';
+import { profileImageUrl } from '../images/images.service';
 
 type GuestRow = NonNullable<
   Awaited<ReturnType<typeof prisma.guests.findUnique>>
@@ -48,7 +50,6 @@ export class GuestSpeakersService {
     const userId = await resolveUserId(auth0Id);
     const name = splitName(dto.fullName);
 
-    // NOTE: photoPreview has no column on `guests` yet, so it isn't persisted.
     const fields = {
       first_name: name.first_name,
       last_name: name.last_name,
@@ -179,9 +180,13 @@ export class GuestSpeakersService {
 
   /**
    * Every guest speaker, from the database. What the discovery page lists.
+   *
+   * Deactivated accounts are left out, and so are unapproved profiles while
+   * an administrator requires approval.
    */
   async findAll() {
     const guests = await prisma.guests.findMany({
+      where: await visibleGuestsWhere(),
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>
@@ -240,7 +245,7 @@ export class GuestSpeakersService {
       basicInformation: {
         fullName: [guest.first_name, guest.last_name].filter(Boolean).join(' '),
         bio: guest.bio ?? '',
-        photoPreview: '', // not persisted yet (schema gap)
+        photoPreview: profileImageUrl(guest.profile_image_id),
         professionalField: guest.field ?? '',
         professionalRole: guest.role ?? '',
       },
