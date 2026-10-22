@@ -407,11 +407,11 @@ export class GovernanceService {
           actor,
           'user.held',
           { type: 'user', id: person.toString() },
-          { reportId, reportIds: matchReportIds },
+          { reportId: report.entry_id.toString(), reportIds: matchReportIds },
           tx,
         );
       }
-      return { id: reportId, held: true };
+      return { id: report.entry_id.toString(), held: true };
     });
   }
 
@@ -445,7 +445,7 @@ export class GovernanceService {
       await recordAudit(
         actor,
         'report.resolved',
-        { type: 'report', id: reportId },
+        { type: 'report', id: report.entry_id.toString() },
         { outcome },
         tx,
       );
@@ -457,12 +457,12 @@ export class GovernanceService {
             actor,
             'user.released',
             { type: 'user', id: person.toString() },
-            { reportId, outcome },
+            { reportId: report.entry_id.toString(), outcome },
             tx,
           );
         }
       }
     });
-    return { id: reportId, outcome };
+    return { id: report.entry_id.toString(), outcome };
   }
 }
