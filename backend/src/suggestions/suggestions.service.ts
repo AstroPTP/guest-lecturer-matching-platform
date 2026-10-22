@@ -9,6 +9,7 @@ import { visibleGuestsWhere } from '../admin/platform-rules';
 import { ErrorCode } from '../common/error-codes';
 import { profileImageUrl } from '../images/images.service';
 import { prisma } from '../prisma';
+import { readMatchingSettings } from './matching-settings';
 import {
   DEFAULT_LIMIT,
   type SuggestionsQueryDto,
@@ -160,7 +161,9 @@ const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
  *      neutral 50 and passes. The gate is in place for when they are stored.
  *
  * Whoever passes is ranked by fit, then time since their last session, then
- * fewer sessions so far. Nobody is removed for being popular: a lecturer with
+ * fewer sessions so far. The weights (65/20/15 by default) and the half-life of
+ * the time-since term (90 days) are the administrator's, read from Settings on
+ * each request; fit is held at 50 or more, so topic fit always counts most. Nobody is removed for being popular: a lecturer with
  * many sessions only ranks lower.
  *
  * The ranking uses exact values. The response does not: it carries bands and
@@ -183,6 +186,8 @@ export class SuggestionsService {
     const { coordinatorId, userId: coordinatorUserId } =
       await this.findCoordinator(auth0Id);
     const topics = await this.topicsInPlay(query, coordinatorUserId);
+    // The administrator's weights and half-life, or the defaults.
+    const matching = await readMatchingSettings();
 
     // Rule 1: eligible. Visibility is the platform's shared rule; the profile
     // checks are pushed into the query so only candidates are read.
@@ -334,7 +339,7 @@ export class SuggestionsService {
 
       const sessionsSoFar = sessionsBy.get(guestId) ?? 0;
       const lastSessionAt = lastSessionBy.get(guestId) ?? null;
-      const rotation = rotationScore(lastSessionAt, now);
+      const rotation = rotationScore(lastSessionAt, now, matching.halfLifeDays);
       const exposure = exposureScore(sessionsSoFar);
 
       return [
@@ -342,7 +347,7 @@ export class SuggestionsService {
           entry,
           sessionsSoFar,
           lastSessionAt,
-          total: rankScore(entry.fit, rotation, exposure),
+          total: rankScore(entry.fit, rotation, exposure, matching.weights),
         },
       ];
     });

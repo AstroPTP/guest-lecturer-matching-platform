@@ -32,6 +32,32 @@ export const WEIGHT_EXPOSURE = 0.15;
 /** Days after which the rotation term has covered half the distance to 1. */
 export const ROTATION_HALF_LIFE_DAYS = 90;
 
+/**
+ * The three weights as fractions that add up to 1. The constants above are the
+ * defaults; an administrator can change them in Settings, and the service then
+ * passes the configured ones instead.
+ */
+export interface ScoreWeights {
+  fit: number;
+  rotation: number;
+  exposure: number;
+}
+
+export const DEFAULT_WEIGHTS: ScoreWeights = {
+  fit: WEIGHT_FIT,
+  rotation: WEIGHT_ROTATION,
+  exposure: WEIGHT_EXPOSURE,
+};
+
+/** Turns the whole percentages stored in Settings into weights that add up to 1. */
+export function weightsFromPercent(
+  fit: number,
+  rotation: number,
+  exposure: number,
+): ScoreWeights {
+  return { fit: fit / 100, rotation: rotation / 100, exposure: exposure / 100 };
+}
+
 /** A lecturer with no history starts here, on a 0 to 100 scale. */
 export const RELIABILITY_NEUTRAL = 50;
 /** How many observations the neutral starting point is worth. */
@@ -106,14 +132,18 @@ export function fitScore(
 /**
  * How long it has been since the lecturer's last session, from 0 to 1.
  *
- * Grows with the gap: 0 for a session today, 0.5 after one half-life, and
- * towards 1 after that. A lecturer who has never had a session scores 1.
+ * Grows with the gap: 0 for a session today, 0.5 after one half-life (90 days
+ * unless an administrator changes it), and towards 1 after that. A lecturer who has never had a session scores 1.
  *
  * It must grow with time. A version of this term that returned 1 for "engaged
  * today" rewarded repeat use and put the busiest lecturer first, which is the
  * opposite of what the list is for.
  */
-export function rotationScore(lastSessionAt: Date | null, now: Date): number {
+export function rotationScore(
+  lastSessionAt: Date | null,
+  now: Date,
+  halfLifeDays: number = ROTATION_HALF_LIFE_DAYS,
+): number {
   if (!lastSessionAt) {
     return 1;
   }
@@ -121,7 +151,7 @@ export function rotationScore(lastSessionAt: Date | null, now: Date): number {
     0,
     (now.getTime() - lastSessionAt.getTime()) / MS_PER_DAY,
   );
-  return 1 - Math.pow(0.5, days / ROTATION_HALF_LIFE_DAYS);
+  return 1 - Math.pow(0.5, days / halfLifeDays);
 }
 
 /**
@@ -184,14 +214,20 @@ export function roundTo(value: number, places: number): number {
   return Math.round(value * factor) / factor;
 }
 
-/** The ordering score, 0 to 1. Reliability is deliberately not part of it. */
+/**
+ * The ordering score, 0 to 1. Reliability is deliberately not part of it.
+ * Uses the default weights unless the configured ones are passed.
+ */
 export function rankScore(
   fit: number,
   rotation: number,
   exposure: number,
+  weights: ScoreWeights = DEFAULT_WEIGHTS,
 ): number {
   return (
-    WEIGHT_FIT * fit + WEIGHT_ROTATION * rotation + WEIGHT_EXPOSURE * exposure
+    weights.fit * fit +
+    weights.rotation * rotation +
+    weights.exposure * exposure
   );
 }
 

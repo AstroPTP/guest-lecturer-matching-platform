@@ -11,13 +11,24 @@ import { SuggestionsService } from './suggestions.service';
  * Suggested speakers for a unit coordinator. Read only: it ranks lecturers and
  * changes nothing, so asking twice gives the same list.
  *
- * Off when MATCHING_SUGGESTIONS_ENABLED is "false", in which case every route
- * here answers 404.
+ * Off when MATCHING_SUGGESTIONS_ENABLED is "false" or an administrator has
+ * turned it off in Settings, in which case every route here answers 404.
  */
 @Controller('suggestions')
 @UseGuards(SuggestionsEnabledGuard)
 export class SuggestionsController {
   constructor(private readonly suggestionsService: SuggestionsService) {}
+
+  /**
+   * Whether the feature is on, for the page to ask before it shows a form. It
+   * is on whenever this answers at all: the guard has already answered 404,
+   * with the administrator's message, when it is off.
+   */
+  @Get('status')
+  @Roles(AppRole.UnitCoordinator)
+  status() {
+    return { enabled: true };
+  }
 
   @Get()
   @Roles(AppRole.UnitCoordinator)

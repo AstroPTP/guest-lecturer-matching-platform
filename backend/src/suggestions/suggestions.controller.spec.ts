@@ -3,26 +3,16 @@ import {
   NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
-import { PassportModule } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { JwtAuthGuard } from '../auth/jwt.guard';
-import { JwtStrategy } from '../auth/jwt.strategy';
-import { RolesGuard } from '../auth/roles.guard';
+import type { Server } from 'node:http';
 import {
-  generateKeyPair,
-  signToken,
-  TEST_AUDIENCE,
-  TEST_ROLES_CLAIM,
-  type KeyPair,
-} from '../auth/testing/token-factory';
+  startAuthStandIn,
+  type AuthStandIn,
+} from '../auth/testing/auth-stand-in';
+import { prisma } from '../prisma';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter';
 import type { ErrorEnvelope } from '../common/error-codes';
-import { APP_ENV } from '../config/app-env.token';
-import type { AppEnv } from '../config/env.validation';
 import {
   suggestionsEnabled,
   SuggestionsEnabledGuard,
@@ -74,8 +64,13 @@ describe('suggestionsEnabled', () => {
 describe('SuggestionsEnabledGuard', () => {
   const guard = new SuggestionsEnabledGuard();
   const original = process.env[FLAG];
+  const switchSetting = (enabled: boolean) =>
+    jest
+      .spyOn(prisma.admin_settings, 'upsert')
+      .mockResolvedValue({ suggestions_enabled: enabled } as never);
 
   afterEach(() => {
+    jest.restoreAllMocks();
     if (original === undefined) {
       delete process.env[FLAG];
     } else {
@@ -83,29 +78,55 @@ describe('SuggestionsEnabledGuard', () => {
     }
   });
 
-  it('lets a request through by default', () => {
+  it('lets a request through by default', async () => {
     delete process.env[FLAG];
-    expect(guard.canActivate()).toBe(true);
+    await expect(guard.canActivate()).resolves.toBe(true);
   });
 
-  it('answers 404 when switched off', () => {
+  it('lets a request through when the administrator has it on', async () => {
+    delete process.env[FLAG];
+    switchSetting(true);
+    await expect(guard.canActivate()).resolves.toBe(true);
+  });
+
+  it('answers 404 when MATCHING_SUGGESTIONS_ENABLED is false, without reading the database', async () => {
     process.env[FLAG] = 'false';
-    expect(() => guard.canActivate()).toThrow(NotFoundException);
+    const read = switchSetting(true);
+    await expect(guard.canActivate()).rejects.toThrow(NotFoundException);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('lets the environment win: false switches it off even with the setting on', async () => {
+    process.env[FLAG] = 'false';
+    switchSetting(true);
+    await expect(guard.canActivate()).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("answers 404 with the administrator's message when Settings has it off", async () => {
+    delete process.env[FLAG];
+    switchSetting(false);
+    const failure = await guard.canActivate().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(NotFoundException);
+    expect((failure as NotFoundException).getResponse()).toEqual({
+      code: 'SUGGESTIONS_DISABLED',
+      message: 'Suggested speakers is turned off by an administrator.',
+    });
+  });
+
+  it('does not let the environment turn it back on: true leaves the administrator in charge', async () => {
+    process.env[FLAG] = 'true';
+    switchSetting(false);
+    await expect(guard.canActivate()).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 
 describe('SuggestionsController over HTTP', () => {
   let app: INestApplication;
   let service: SuggestionsService;
-  let jwksServer: Server;
-  let keys: KeyPair;
-  let issuer: string;
-  let domain: string;
+  let auth: AuthStandIn;
   const original = process.env[FLAG];
 
-  /** A token the real strategy accepts, issued by the stand-in tenant below. */
-  const tokenFor = (roles: string[], subject = 'auth0|coord-1') =>
-    signToken({ privateKey: keys.privateKey, issuer, subject, roles });
+  const tokenFor = (roles: string[]) => auth.tokenFor(roles);
 
   /** GET as a signed-in unit coordinator unless told otherwise. */
   const api = {
@@ -121,52 +142,21 @@ describe('SuggestionsController over HTTP', () => {
   };
 
   beforeAll(async () => {
-    keys = generateKeyPair();
-    // A local stand-in for the Auth0 tenant's key set, as the guard specs use,
-    // so the real JwtStrategy verifies real signatures offline.
-    jwksServer = createServer((req, res) => {
-      if (req.url?.includes('jwks.json')) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ keys: [keys.jwk] }));
-        return;
-      }
-      res.writeHead(404).end();
-    });
-    await new Promise<void>((resolve) =>
-      jwksServer.listen(0, '127.0.0.1', resolve),
-    );
-    const { port } = jwksServer.address() as AddressInfo;
-    issuer = `http://127.0.0.1:${port}/`;
-    domain = `127.0.0.1:${port}`;
+    auth = await startAuthStandIn();
   });
 
   afterAll(async () => {
-    await new Promise<void>((resolve) => jwksServer.close(() => resolve()));
+    await auth.stop();
   });
 
   beforeEach(async () => {
-    const testEnv = {
-      nodeEnv: 'test',
-      port: 0,
-      allowedOrigins: ['http://localhost:3000'],
-      auth0Domain: domain,
-      auth0Audience: TEST_AUDIENCE,
-      auth0RolesClaim: TEST_ROLES_CLAIM,
-      databaseUrl: 'postgresql://localhost:5432/test',
-      directUrl: 'postgresql://localhost:5432/test',
-    } satisfies AppEnv;
-
     const module = await Test.createTestingModule({
-      imports: [PassportModule.register({ defaultStrategy: 'jwt' })],
+      imports: auth.imports,
       controllers: [SuggestionsController],
       providers: [
         SuggestionsService,
         SuggestionsEnabledGuard,
-        { provide: APP_ENV, useValue: testEnv },
-        JwtStrategy,
-        // Registered in the order the real application registers them.
-        { provide: APP_GUARD, useClass: JwtAuthGuard },
-        { provide: APP_GUARD, useClass: RolesGuard },
+        ...auth.providers,
       ],
     }).compile();
 
@@ -205,11 +195,7 @@ describe('SuggestionsController over HTTP', () => {
 
     it('answers 401 for a token signed with a key the tenant does not publish', async () => {
       const suggest = jest.spyOn(service, 'suggest').mockResolvedValue(answer);
-      const forged = signToken({
-        privateKey: generateKeyPair().privateKey,
-        issuer,
-        roles: ['unit_coordinator'],
-      });
+      const forged = auth.forgedToken(['unit_coordinator']);
       await api.get('/suggestions', forged).expect(401);
       expect(suggest).not.toHaveBeenCalled();
     });
@@ -371,5 +357,67 @@ describe('SuggestionsController over HTTP', () => {
     await api.get(good).expect(404);
     process.env[FLAG] = 'true';
     await api.get(good).expect(200);
+  });
+  describe("the administrator's switch", () => {
+    const off = () =>
+      jest
+        .spyOn(prisma.admin_settings, 'upsert')
+        .mockResolvedValue({ suggestions_enabled: false } as never);
+
+    it("answers 404 with the administrator's message, as the API error envelope", async () => {
+      const suggest = jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+      off();
+      const res = await api.get(good).expect(404);
+      expect(res.body).toMatchObject({
+        code: 'SUGGESTIONS_DISABLED',
+        message: 'Suggested speakers is turned off by an administrator.',
+      });
+      expect(suggest).not.toHaveBeenCalled();
+    });
+
+    it('gives a plain 404, with no administrator message, when the environment turned it off', async () => {
+      process.env[FLAG] = 'false';
+      off();
+      const res = await api.get(good).expect(404);
+      expect((res.body as ErrorEnvelope).code).not.toBe('SUGGESTIONS_DISABLED');
+    });
+
+    it('answers again as soon as the administrator switches it back on', async () => {
+      jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+      const upsert = off();
+      await api.get(good).expect(404);
+      upsert.mockResolvedValue({ suggestions_enabled: true } as never);
+      await api.get(good).expect(200);
+    });
+  });
+
+  describe('GET /suggestions/status', () => {
+    it('says it is on for a unit coordinator', async () => {
+      const res = await api.get('/suggestions/status').expect(200);
+      expect(res.body).toEqual({ enabled: true });
+    });
+
+    it("answers 404 with the administrator's message when it is off", async () => {
+      jest
+        .spyOn(prisma.admin_settings, 'upsert')
+        .mockResolvedValue({ suggestions_enabled: false } as never);
+      const res = await api.get('/suggestions/status').expect(404);
+      expect(res.body).toMatchObject({
+        code: 'SUGGESTIONS_DISABLED',
+        message: 'Suggested speakers is turned off by an administrator.',
+      });
+    });
+
+    it('answers 404 when the environment turned it off', async () => {
+      process.env[FLAG] = 'false';
+      await api.get('/suggestions/status').expect(404);
+    });
+
+    it('needs a token and the coordinator role: 401 with none, 403 for a guest', async () => {
+      await api.get('/suggestions/status', null).expect(401);
+      await api
+        .get('/suggestions/status', tokenFor(['guest_speaker']))
+        .expect(403);
+    });
   });
 });

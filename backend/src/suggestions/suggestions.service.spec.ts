@@ -1240,4 +1240,106 @@ describe('SuggestionsService', () => {
       expect(suggestions[0].score).toEqual(suggestions[1].score);
     });
   });
+  describe("the administrator's settings", () => {
+    const configure = (
+      fit: number,
+      rotation: number,
+      exposure: number,
+      halfLifeDays = 90,
+    ) =>
+      jest.spyOn(prisma.admin_settings, 'upsert').mockResolvedValue({
+        suggestions_fit_weight: fit,
+        suggestions_rotation_weight: rotation,
+        suggestions_exposure_weight: exposure,
+        suggestions_half_life_days: halfLifeDays,
+      } as never);
+
+    /**
+     * A is the best topic fit but has had a session recently. B is a weak topic
+     * fit (1 of the 2 requested topics, out of 4 offered) who has never had one.
+     */
+    const share = () => {
+      const world = build([
+        {
+          name: 'A',
+          topics: ['Economics', 'Taxation Law'],
+          accepted: [new Date(NOW.getTime() - 20 * DAY)],
+        },
+        { name: 'B', topics: ['Economics', 'X', 'Y', 'Z'] },
+      ]);
+      install(world);
+    };
+
+    it('ranks by the defaults, 65/20/15, when nothing has been configured', async () => {
+      share();
+      expect(await names()).toEqual(['A', 'B']);
+    });
+
+    it('Balanced 65/20/15 keeps the strong-fit lecturer first', async () => {
+      share();
+      configure(65, 20, 15);
+      expect(await names()).toEqual(['A', 'B']);
+    });
+
+    it('Topic first 80/10/10 keeps the strong-fit lecturer first', async () => {
+      share();
+      configure(80, 10, 10);
+      expect(await names()).toEqual(['A', 'B']);
+    });
+
+    it('Share the work 50/30/20 moves the never-used, lower-fit lecturer up', async () => {
+      share();
+      configure(50, 30, 20);
+      expect(await names()).toEqual(['B', 'A']);
+    });
+
+    it('still lists everyone however the weights are set: they only change the order', async () => {
+      share();
+      configure(50, 50, 0);
+      const result = await service.suggest(userId, query, NOW);
+      expect(result.suggestions).toHaveLength(2);
+      expect(result.stages.reliable).toBe(2);
+    });
+
+    it('uses the half-life: a short one favours the lecturer left alone for longer', async () => {
+      // R is the better fit, matched 10 days ago. S is a weaker fit, matched 120
+      // days ago. With the topic weight at 60, a 30-day half-life makes S's long
+      // rest count for a lot and S wins; a 365-day half-life makes it count for
+      // little and R wins.
+      const build2 = () =>
+        install(
+          build([
+            {
+              name: 'R',
+              topics: ['Economics', 'Taxation Law'],
+              accepted: [new Date(NOW.getTime() - 10 * DAY)],
+            },
+            {
+              name: 'S',
+              topics: ['Economics'],
+              accepted: [new Date(NOW.getTime() - 120 * DAY)],
+            },
+          ]),
+        );
+
+      build2();
+      configure(60, 30, 10, 30);
+      expect(await names()).toEqual(['S', 'R']);
+
+      jest.restoreAllMocks();
+      build2();
+      configure(60, 30, 10, 365);
+      expect(await names()).toEqual(['R', 'S']);
+    });
+
+    it('reads the settings, and does not change what the response contains', async () => {
+      share();
+      const read = configure(50, 30, 20, 180);
+      const result = await service.suggest(userId, query, NOW);
+      expect(read).toHaveBeenCalled();
+      for (const suggestion of result.suggestions) {
+        expect(Object.keys(suggestion.score)).toEqual(['fit']);
+      }
+    });
+  });
 });
