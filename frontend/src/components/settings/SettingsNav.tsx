@@ -3,9 +3,10 @@
 import Image, { type StaticImageData } from "next/image";
 import deleteIcon from "@/assets/delete.png";
 import emailIcon from "@/assets/email.png";
+import notificationIcon from "@/assets/notification.png";
 import passkeyIcon from "@/assets/passkey.png";
 
-export type SettingsTab = "account" | "password" | "delete";
+export type SettingsTab = "account" | "password" | "notifications" | "delete";
 const NAV_ITEMS: {id: SettingsTab;label: string; description: string; icon: StaticImageData}[] = [
   {
     id: "account",
@@ -20,6 +21,12 @@ const NAV_ITEMS: {id: SettingsTab;label: string; description: string; icon: Stat
     icon: passkeyIcon,
   },
   {
+    id: "notifications",
+    label: "Notifications",
+    description: "Phone and browser alerts",
+    icon: notificationIcon,
+  },
+  {
     id: "delete",
     label: "Delete Account",
     description: "Permanently remove your account",
@@ -27,7 +34,16 @@ const NAV_ITEMS: {id: SettingsTab;label: string; description: string; icon: Stat
   },
 ];
 
-export default function SettingsNav({ activeTab, onSelect }: { activeTab: SettingsTab; onSelect: (tab: SettingsTab) => void }) {
+export default function SettingsNav({
+  activeTab,
+  onSelect,
+  showNotifications,
+}: {
+  activeTab: SettingsTab;
+  onSelect: (tab: SettingsTab) => void;
+  /** False while the server has pushed notifications switched off, which hides the tab. */
+  showNotifications: boolean;
+}) {
   return (
     <aside className="flex w-[340px] shrink-0 flex-col border-r border-gray-100 bg-white">
       <div className="border-b border-gray-100 p-6">
@@ -35,7 +51,7 @@ export default function SettingsNav({ activeTab, onSelect }: { activeTab: Settin
       </div>
 
       <nav className="flex-1 overflow-y-auto p-3">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => item.id !== "notifications" || showNotifications).map((item) => {
           const selected = item.id === activeTab;
 
           return (

@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import logoutIcon from "@/assets/log_out.png";
 import BrandLogo from "@/components/brand/BrandLogo";
+import { releaseDeviceBeforeSignOut } from "@/lib/push/pushClient";
 import collapsedIcon from "@/assets/collapsed.png";
 import expandedIcon from "@/assets/expanded.png";
 import SidebarItem from "./SidebarItem";
@@ -50,10 +51,13 @@ export default function DashboardSidebar({ items, theme, collapsed, onToggleColl
 
         <a
           href="/auth/logout"
-          // Replaces the dashboard in the history, so Back after logging out
+          // Stops this device receiving the person's notifications first, so the
+          // next person on a shared computer does not see them arrive. Then
+          // replaces the dashboard in the history, so Back after logging out
           // does not return to this signed-in page.
-          onClick={(event) => {
+          onClick={async (event) => {
             event.preventDefault();
+            await releaseDeviceBeforeSignOut();
             window.location.replace("/auth/logout");
           }}
           title="Logout"
