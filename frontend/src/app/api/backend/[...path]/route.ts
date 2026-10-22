@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { isSafeProxyPath } from '@/lib/api/proxyPath';
 import { backendUrl } from '@/lib/auth/config';
-import { forwardedHeaders } from '@/lib/api/proxyRequest';
+import { forwardedHeaders, upstreamPath } from '@/lib/api/proxyRequest';
 import { readAccessToken } from '@/lib/auth/session';
 
 /**
@@ -85,7 +85,7 @@ async function forward(request: NextRequest, path: string[] | null) {
   // is no backend response to take an id from.
   const proxyId = randomUUID();
 
-  const target = `${backendUrl()}/${path.join('/')}${request.nextUrl.search}`;
+  const target = `${backendUrl()}/${upstreamPath(path)}${request.nextUrl.search}`;
 
   const response = await fetch(target, {
     cache: 'no-store',

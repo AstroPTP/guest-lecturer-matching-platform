@@ -1,17 +1,31 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { forwardedHeaders as studentHeaders } from '../../../frontend/src/lib/api/proxyRequest';
-import { forwardedHeaders as adminHeaders } from '../../../frontend/admin/lib/api/proxyRequest';
+import {
+  forwardedHeaders as studentHeaders,
+  upstreamPath as studentPath,
+} from '../../../frontend/src/lib/api/proxyRequest';
+import { isSafeProxyPath as studentSafe } from '../../../frontend/src/lib/api/proxyPath';
+import {
+  forwardedHeaders as adminHeaders,
+  upstreamPath as adminPath,
+} from '../../../frontend/admin/lib/api/proxyRequest';
+import { isSafeProxyPath as adminSafe } from '../../../frontend/admin/lib/api/proxyPath';
 
 /**
  * The two Next proxies (student app and administrator portal) share their
  * request rules as a small module each. The frontends have no test runner of
  * their own, so the rules are pinned here, where the repository's tests run.
  */
-const SOURCES = {
-  'student app': '../../../frontend/src/lib/api/proxyRequest.ts',
-  'administrator portal': '../../../frontend/admin/lib/api/proxyRequest.ts',
-};
+const SOURCES = [
+  [
+    '../../../frontend/src/lib/api/proxyRequest.ts',
+    '../../../frontend/admin/lib/api/proxyRequest.ts',
+  ],
+  [
+    '../../../frontend/src/lib/api/proxyPath.ts',
+    '../../../frontend/admin/lib/api/proxyPath.ts',
+  ],
+];
 
 describe.each([
   ['student app', studentHeaders],
@@ -66,10 +80,61 @@ describe.each([
   });
 });
 
-it('keeps the two proxies’ request rules identical', () => {
-  const [student, admin] = Object.values(SOURCES).map((path) =>
-    readFileSync(join(__dirname, path), 'utf8'),
-  );
+describe.each([
+  ['student app', studentPath, studentSafe],
+  ['administrator portal', adminPath, adminSafe],
+])('the %s proxy path', (_app, upstreamPath, isSafeProxyPath) => {
+  /** The URL the proxy would ask the API for, as the fetch will read it. */
+  const requested = (segments: string[]) =>
+    new URL(`http://api.test/${upstreamPath(segments)}?x=1`);
 
-  expect(admin).toBe(student);
+  it('leaves an ordinary path as it was', () => {
+    expect(upstreamPath(['support', 'threads', '12', 'messages'])).toBe(
+      'support/threads/12/messages',
+    );
+  });
+
+  it('encodes a # so it cannot cut the path short', () => {
+    const url = requested(['admin', 'users', '7#9', 'status']);
+
+    expect(url.hash).toBe('');
+    expect(url.pathname).toBe('/admin/users/7%239/status');
+    expect(url.search).toBe('?x=1');
+  });
+
+  it('encodes a ? so it cannot start a query of its own', () => {
+    const url = requested(['admin', 'users', '7?role=ccae_admin']);
+
+    expect(url.pathname).toBe('/admin/users/7%3Frole%3Dccae_admin');
+    expect(url.searchParams.get('role')).toBeNull();
+    expect(url.searchParams.get('x')).toBe('1');
+  });
+
+  it('keeps a segment one segment, however many separators it holds', () => {
+    expect(requested(['a b', 'c%2Fd']).pathname).toBe('/a%20b/c%252Fd');
+  });
+
+  it('refuses the segments that encoding cannot make safe', () => {
+    for (const unsafe of [
+      ['..'],
+      ['a', '.'],
+      ['a%2Fb'],
+      ['a\\b'],
+      ['%2e%2e'],
+    ]) {
+      expect(isSafeProxyPath(unsafe)).toBe(false);
+    }
+    expect(isSafeProxyPath(['admin', 'users', '7#9', 'x?y'])).toBe(true);
+  });
 });
+
+it.each(SOURCES)(
+  'keeps the two proxies’ shared rules identical (%s)',
+  (studentFile, adminFile) => {
+    const [student, admin] = [studentFile, adminFile].map((path) =>
+      readFileSync(join(__dirname, path), 'utf8'),
+    );
+
+    expect(admin).toBe(student);
+  },
+);
