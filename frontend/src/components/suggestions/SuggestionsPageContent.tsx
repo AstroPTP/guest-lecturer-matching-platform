@@ -8,7 +8,13 @@ import { expertiseTopics } from "@/constants/profileOptions/shared";
 import { BackendError } from "@/lib/api/backendClient";
 import { expressInterest } from "@/services/discovery/matchService";
 import { getSuggestions } from "@/services/suggestions/suggestionsService";
-import type { Suggestion, SuggestionsResult } from "@/types/suggestions/suggestionsTypes";
+import type {
+  LastSessionBand,
+  SessionsBand,
+  Suggestion,
+  SuggestionsResult,
+  TopicsFrom,
+} from "@/types/suggestions/suggestionsTypes";
 
 const HELP_HREF = "/unit_coordinator/help#suggested-speakers";
 const EVENTS_HREF = "/unit_coordinator/events";
@@ -24,29 +30,34 @@ function todayString(): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-/** Plain-language gap since a lecturer's last session. */
-function describeLastSession(iso: string | null): string {
-  if (!iso) {
-    return "Not yet matched for a session";
+/** Plain-language gap since a lecturer's last session. The API sends a band, never a date. */
+function describeLastSession(band: LastSessionBand): string {
+  switch (band) {
+    case "never":
+      return "Not yet matched for a session";
+    case "within 30 days":
+      return "Last matched within 30 days";
+    case "1 to 3 months":
+      return "Last matched 1 to 3 months ago";
+    case "over 3 months":
+      return "Last matched over 3 months ago";
   }
-  const days = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
-  if (days < 1) {
-    return "Last matched today";
-  }
-  if (days < 60) {
-    return `Last matched ${days} day${days === 1 ? "" : "s"} ago`;
-  }
-  if (days < 730) {
-    return `Last matched ${Math.round(days / 30)} months ago`;
-  }
-  return `Last matched ${Math.round(days / 365)} years ago`;
 }
 
-function describeSessions(count: number): string {
-  if (count === 0) {
-    return "No sessions so far";
+/** Plain-language session history. The API sends a band, never a count. */
+function describeSessions(band: SessionsBand): string {
+  return band === "none" ? "No sessions so far" : `${band} sessions so far`;
+}
+
+/** Says which topics the list was built from, so a blank form is not a mystery. */
+function describeTopics(from: TopicsFrom, topics: string[]): string {
+  if (from === "profile") {
+    return `No topics chosen, so your own expertise was used: ${topics.join(", ")}.`;
   }
-  return `${count} session${count === 1 ? "" : "s"} so far`;
+  if (from === "none") {
+    return "No topics chosen and none on your profile, so every lecturer who fits the date and time is listed.";
+  }
+  return `Topics: ${topics.join(", ")}.`;
 }
 
 /** What went wrong, in words a person can act on. */
@@ -84,16 +95,13 @@ export default function SuggestionsPageContent() {
     event.preventDefault();
     setActionError(null);
 
-    if (!date || !startTime || !endTime) {
-      setFormError("Enter the date and the start and end times of the session.");
+    // Nothing here is required. Blank means "not asked for".
+    if (Boolean(startTime) !== Boolean(endTime)) {
+      setFormError("Enter both a start time and an end time, or leave both blank.");
       return;
     }
-    if (endTime <= startTime) {
+    if (startTime && endTime && endTime <= startTime) {
       setFormError("The end time must be later than the start time.");
-      return;
-    }
-    if (topics.length === 0) {
-      setFormError("Choose at least one topic.");
       return;
     }
 
@@ -139,8 +147,8 @@ export default function SuggestionsPageContent() {
         <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">Unit Coordinator</p>
         <h1 className="mt-2 text-3xl font-bold text-[#242424]">Suggested speakers</h1>
         <p className="mt-3 max-w-2xl text-base leading-relaxed text-gray-700">
-          Describe one session and see the guest lecturers who suit it, best first. Only lecturers who are free for the whole
-          session and cover at least one of your topics are listed.
+          See the guest lecturers who suit a session, best first. Describe the session to narrow the list, or leave everything blank to
+          use your own expertise at any time. Fit counts most, then time since last session, then fewer sessions so far.
         </p>
         <p className="mt-3 text-sm text-gray-700">
           <Link href={HELP_HREF} className="font-semibold text-blue-700 underline underline-offset-2 hover:text-blue-900">
@@ -190,8 +198,13 @@ export default function SuggestionsPageContent() {
           </div>
         </div>
 
+        <p className="text-sm text-gray-700">
+          Everything here is optional. With no date, any day suits. With no times, any time suits. With no topics, your own expertise is
+          used.
+        </p>
+
         <fieldset>
-          <legend className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">Topics the session needs</legend>
+          <legend className="mb-2 block text-xs font-bold uppercase tracking-wider text-[#2d2d2d]">Topics the session needs (optional)</legend>
           <div className="flex flex-wrap gap-2">
             {expertiseTopics.map((topic) => {
               const id = `suggestion-topic-${topic.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -253,7 +266,7 @@ function Results({
   actionError: string | null;
   onExpressInterest: (guestId: string) => void;
 }) {
-  const { stages, suggestions } = result;
+  const { stages, suggestions, session } = result;
   const steps = [
     { label: "eligible", value: stages.eligible },
     { label: "free for the session", value: stages.available },
@@ -279,6 +292,7 @@ function Results({
           ))}
           .
         </p>
+        <p className="mt-2 text-sm text-gray-700">{describeTopics(session.topicsFrom, session.topics)}</p>
         {suggestions.length === 0 ? (
           <p className="mt-2 text-sm text-gray-700">Try a different time, a nearby date or more topics.</p>
         ) : stages.reliable > suggestions.length ? (
@@ -298,6 +312,7 @@ function Results({
             key={suggestion.guestId}
             rank={index + 1}
             suggestion={suggestion}
+            showFit={session.topicsFrom !== "none"}
             isBusy={busyId === suggestion.guestId}
             onExpressInterest={onExpressInterest}
           />
@@ -310,11 +325,14 @@ function Results({
 function SuggestionCard({
   rank,
   suggestion,
+  showFit,
   isBusy,
   onExpressInterest,
 }: {
   rank: number;
   suggestion: Suggestion;
+  /** False when no topics were in play, so there is no fit to report. */
+  showFit: boolean;
   isBusy: boolean;
   onExpressInterest: (guestId: string) => void;
 }) {
@@ -353,14 +371,14 @@ function SuggestionCard({
           </ul>
 
           <p className="mt-3 text-sm text-gray-700">
-            Topic fit {Math.round(suggestion.fit)}%. {describeLastSession(suggestion.lastSessionAt)}.{" "}
-            {describeSessions(suggestion.sessionsSoFar)}.
+            {showFit ? `Topic fit ${Math.round(suggestion.score.fit * 100)}%. ` : ""}
+            {describeLastSession(suggestion.lastSessionBand)}. {describeSessions(suggestion.sessionsBand)}.
           </p>
         </div>
 
         <div className="flex shrink-0 flex-col items-stretch gap-2 md:w-44">
           <p className="text-center text-sm text-gray-700">
-            Score <strong className="text-lg text-[#242424]">{Math.round(suggestion.score)}</strong>
+            Score <strong className="text-lg text-[#242424]">{Math.round(suggestion.score.total * 100)}</strong>
             <span className="sr-only"> out of 100</span>
           </p>
           <Action suggestion={suggestion} isBusy={isBusy} onExpressInterest={onExpressInterest} />

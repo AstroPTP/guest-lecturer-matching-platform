@@ -1,6 +1,23 @@
 /** Where the coordinator already stands with a suggested lecturer. */
 export type SuggestionMatchStatus = "none" | "interest-sent" | "interest-received" | "matched";
 
+/** How long ago a lecturer last matched with anyone. The exact date is never sent. */
+export type LastSessionBand = "never" | "within 30 days" | "1 to 3 months" | "over 3 months";
+
+/** How many sessions a lecturer has had with anyone. The exact count is never sent. */
+export type SessionsBand = "none" | "1 to 2" | "3 to 5" | "6 or more";
+
+/**
+ * The parts of a lecturer's score, each 0 to 1 and already rounded by the API:
+ * fit to 2 decimals, rotation and exposure to 1, total to 2.
+ */
+export interface SuggestionScore {
+  fit: number;
+  rotation: number;
+  exposure: number;
+  total: number;
+}
+
 /** One suggested guest lecturer, as GET /suggestions returns it. */
 export interface Suggestion {
   /** The same id Discovery and Matches use for this lecturer. */
@@ -9,20 +26,12 @@ export interface Suggestion {
   field: string;
   role: string;
   photoUrl: string;
-  /** The requested topics this lecturer covers. */
+  /** The topics in play that this lecturer covers. */
   sharedTopics: string[];
   matchStatus: SuggestionMatchStatus;
-  /** The ordering score, 0 to 100. */
-  score: number;
-  /** The three parts of the score, each 0 to 100. */
-  fit: number;
-  rotation: number;
-  exposure: number;
-  /** 0 to 100. A pass or fail gate, not part of the score. */
-  reliability: number;
-  sessionsSoFar: number;
-  /** When the lecturer last matched with anyone, or null if never. */
-  lastSessionAt: string | null;
+  score: SuggestionScore;
+  lastSessionBand: LastSessionBand;
+  sessionsBand: SessionsBand;
 }
 
 /** How many lecturers are left after each rule. Each count includes only those who passed every rule before it. */
@@ -34,19 +43,30 @@ export interface SuggestionStages {
   reliable: number;
 }
 
+/** Where the topics used for the search came from. */
+export type TopicsFrom = "request" | "profile" | "none";
+
 export interface SuggestionsResult {
-  session: { date: string; startTime: string; endTime: string; topics: string[] };
+  /** What the search used. A null was not asked for. */
+  session: {
+    date: string | null;
+    startTime: string | null;
+    endTime: string | null;
+    topics: string[];
+    topicsFrom: TopicsFrom;
+  };
   stages: SuggestionStages;
   suggestions: Suggestion[];
 }
 
-/** The session a coordinator describes. */
+/** The session a coordinator describes. Every part is optional. */
 export interface SuggestionsQuery {
-  /** YYYY-MM-DD */
-  date: string;
-  /** 24-hour HH:MM */
-  startTime: string;
-  /** 24-hour HH:MM */
-  endTime: string;
-  topics: string[];
+  /** YYYY-MM-DD. Left out means any day. */
+  date?: string;
+  /** 24-hour HH:MM. Give it with endTime, or leave both out for any time. */
+  startTime?: string;
+  /** 24-hour HH:MM. */
+  endTime?: string;
+  /** Left out or empty means the coordinator's own expertise. */
+  topics?: string[];
 }
