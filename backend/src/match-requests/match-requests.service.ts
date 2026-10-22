@@ -1,10 +1,12 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
 import { isUniqueViolation } from '../common/prisma-errors';
+import { personLabel } from '../notifications/person-label';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { assertGuestCanBeContacted } from '../admin/platform-rules';
@@ -42,6 +44,8 @@ interface MatchRequestRow {
  */
 @Injectable()
 export class MatchRequestsService {
+  private readonly logger = new Logger(MatchRequestsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   async findMine(auth0Id: string): Promise<MatchRequest[]> {
@@ -87,6 +91,7 @@ export class MatchRequestsService {
             updated_at: now,
           },
         });
+        await this.notifyInterest(pair, caller.side);
         return this.toMatchRequest(caller, row);
       } catch (error) {
         // A request for the same pair landed first; go again against its row.
@@ -299,6 +304,68 @@ export class MatchRequestsService {
           href: notice.href,
         });
       }
+    }
+  }
+
+  /**
+   * Tells the person a new request was made to that someone is interested.
+   * Only a request that starts a pair comes here: accepting the other side's
+   * request makes a match, which notifyMatch announces instead.
+   *
+   * The request is already saved by now, so a notice that cannot be saved is
+   * logged and dropped rather than failing a request that went through.
+   */
+  private async notifyInterest(
+    pair: { coordinator_id: bigint; guest_id: bigint },
+    senderSide: Side,
+  ): Promise<void> {
+    try {
+      const profile = {
+        first_name: true,
+        last_name: true,
+        role: true,
+        users: { select: { auth0Id: true } },
+      };
+      const [coordinator, guest] = await Promise.all([
+        prisma.coordinators.findUnique({
+          where: { coordinator_id: pair.coordinator_id },
+          select: profile,
+        }),
+        prisma.guests.findUnique({
+          where: { guest_id: pair.guest_id },
+          select: profile,
+        }),
+      ]);
+
+      const fromCoordinator = senderSide === 'coordinator';
+      const sender = fromCoordinator ? coordinator : guest;
+      const recipientId = (fromCoordinator ? guest : coordinator)?.users
+        ?.auth0Id;
+      if (!recipientId) {
+        return;
+      }
+
+      // Discovery is where they answer: the sender's card is still there to
+      // accept, which makes the match, or to dismiss. The id after "from" is
+      // that card, so Discovery opens on it and a repeat from someone else is
+      // not mistaken for this one.
+      const senderId = fromCoordinator ? pair.coordinator_id : pair.guest_id;
+      const discovery = fromCoordinator
+        ? '/guest_lecturer/discovery'
+        : '/unit_coordinator/discovery';
+      await this.notificationsService.createUnlessRecent({
+        recipientId,
+        type: 'match',
+        title: 'New interest',
+        description: personLabel(sender) + ' is interested in working with you',
+        actionLabel: 'View',
+        href: discovery + '?from=' + String(senderId),
+      });
+    } catch (error) {
+      this.logger.warn(
+        'Could not notify about a new request: ' +
+          (error instanceof Error ? error.message : String(error)),
+      );
     }
   }
 

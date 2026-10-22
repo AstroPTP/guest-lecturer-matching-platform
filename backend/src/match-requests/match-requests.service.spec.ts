@@ -1,4 +1,9 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MatchRequestsService } from './match-requests.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -183,13 +188,23 @@ describe('MatchRequestsService', () => {
       const updateMany = jest
         .spyOn(prisma.match_requests, 'updateMany')
         .mockResolvedValue({ count: 1 });
+      // Later reads of either profile still find someone to notify, so a
+      // stray interest notice would be raised rather than skipped for lack of one.
+      jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValue({
+        users: { auth0Id: 'auth0|coordinator' },
+      } as never);
+      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValue({
+        users: { auth0Id: 'auth0|guest' },
+      } as never);
       const notify = jest
         .spyOn(notifications, 'create')
         .mockResolvedValue({} as never);
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
 
       await expect(service.create(userId, '2001')).resolves.toEqual(
         expect.objectContaining({ status: 'ACCEPTED', sentByMe: false }),
       );
+      expect(interest).not.toHaveBeenCalled();
       expect(updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { match_id: 6012n, status: 'PENDING' },
@@ -321,6 +336,223 @@ describe('MatchRequestsService', () => {
       await expect(service.create(userId, 'not-an-id')).rejects.toThrow(
         'targetId',
       );
+    });
+  });
+
+  describe('telling the other person about new interest', () => {
+    const coordinatorProfile = {
+      first_name: 'Ada',
+      last_name: 'Lee',
+      role: 'Senior Lecturer',
+      users: { auth0Id: 'auth0|coordinator' },
+    };
+    const guestProfile = {
+      first_name: 'Sam',
+      last_name: 'Tran',
+      role: 'Engineer',
+      users: { auth0Id: 'auth0|guest' },
+    };
+    const newRow = (requestedBy: 'coordinator' | 'guest') =>
+      ({
+        match_id: 6020n,
+        coordinator_id: 5n,
+        guest_id: 7n,
+        status: 'PENDING',
+        requested_at: requestedAt,
+        requested_by: requestedBy,
+      }) as never;
+
+    /**
+     * Signs the caller in on one side and queues what the service reads
+     * after saving, in the order it reads it: the target's existence check
+     * first, then both profiles for the notice.
+     */
+    function askAs(
+      side: 'coordinator' | 'guest',
+      profiles: { coordinator: object | null; guest: object | null },
+    ) {
+      const coordinators = jest.spyOn(prisma.coordinators, 'findUnique');
+      const guests = jest.spyOn(prisma.guests, 'findUnique');
+      if (side === 'coordinator') {
+        coordinators.mockResolvedValueOnce({ coordinator_id: 5n } as never);
+        guests.mockResolvedValueOnce({ guest_id: 7n } as never);
+      } else {
+        coordinators.mockResolvedValueOnce(null);
+        guests.mockResolvedValueOnce({ guest_id: 7n } as never);
+        coordinators.mockResolvedValueOnce({ coordinator_id: 5n } as never);
+      }
+      coordinators.mockResolvedValueOnce(profiles.coordinator as never);
+      guests.mockResolvedValueOnce(profiles.guest as never);
+      jest
+        .spyOn(prisma.match_requests, 'create')
+        .mockResolvedValue(newRow(side));
+    }
+
+    it("tells the guest when a coordinator asks, and only the guest, linking to the coordinator's card", async () => {
+      askAs('coordinator', {
+        coordinator: coordinatorProfile,
+        guest: guestProfile,
+      });
+      const interest = jest
+        .spyOn(notifications, 'createUnlessRecent')
+        .mockResolvedValue(true);
+
+      await service.create(userId, '7');
+      expect(interest).toHaveBeenCalledTimes(1);
+      expect(interest).toHaveBeenCalledWith({
+        recipientId: 'auth0|guest',
+        type: 'match',
+        title: 'New interest',
+        description: 'Ada Lee is interested in working with you',
+        actionLabel: 'View',
+        href: '/guest_lecturer/discovery?from=5',
+      });
+    });
+
+    it("tells the coordinator when a guest asks, and only the coordinator, linking to the guest's card", async () => {
+      askAs('guest', { coordinator: coordinatorProfile, guest: guestProfile });
+      const interest = jest
+        .spyOn(notifications, 'createUnlessRecent')
+        .mockResolvedValue(true);
+
+      await service.create(userId, '5');
+      expect(interest).toHaveBeenCalledTimes(1);
+      expect(interest).toHaveBeenCalledWith({
+        recipientId: 'auth0|coordinator',
+        type: 'match',
+        title: 'New interest',
+        description: 'Sam Tran is interested in working with you',
+        actionLabel: 'View',
+        href: '/unit_coordinator/discovery?from=7',
+      });
+    });
+
+    it('names the sender by role when their profile has no name', async () => {
+      askAs('coordinator', {
+        coordinator: { ...coordinatorProfile, first_name: '', last_name: null },
+        guest: guestProfile,
+      });
+      const interest = jest
+        .spyOn(notifications, 'createUnlessRecent')
+        .mockResolvedValue(true);
+
+      await service.create(userId, '7');
+      expect(interest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          description: 'Senior Lecturer is interested in working with you',
+        }),
+      );
+    });
+
+    it('sends nothing when the other person has no account to notify', async () => {
+      askAs('coordinator', {
+        coordinator: coordinatorProfile,
+        guest: { ...guestProfile, users: null },
+      });
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await expect(service.create(userId, '7')).resolves.toEqual(
+        expect.objectContaining({ status: 'PENDING' }),
+      );
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the profile asked for does not exist', async () => {
+      signInAsCoordinator(5n);
+      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce(null);
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await expect(service.create(userId, '7')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the contact limit refuses the request', async () => {
+      signInAsCoordinator(5n);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValueOnce({ guest_id: 7n } as never);
+      jest
+        .spyOn(prisma.admin_settings, 'upsert')
+        .mockResolvedValue({ contact_limit_days: 7 } as never);
+      jest
+        .spyOn(prisma.match_requests, 'findFirst')
+        .mockResolvedValue({ requested_at: new Date() } as never);
+      const create = jest.spyOn(prisma.match_requests, 'create');
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await expect(service.create(userId, '7')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(create).not.toHaveBeenCalled();
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the request could not be saved', async () => {
+      signInAsCoordinator(5n);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValueOnce({ guest_id: 7n } as never);
+      jest
+        .spyOn(prisma.match_requests, 'create')
+        .mockRejectedValue(new Error('connection lost'));
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await expect(service.create(userId, '7')).rejects.toThrow(
+        'connection lost',
+      );
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('sends nothing when the same request is asked for again', async () => {
+      signInAsCoordinator(5n);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValueOnce({ guest_id: 7n } as never);
+      jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockResolvedValue(newRow('coordinator'));
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      await service.create(userId, '7');
+      expect(interest).not.toHaveBeenCalled();
+    });
+
+    it('notifies once when the same person withdraws and asks again within a day', async () => {
+      const ask = () =>
+        askAs('coordinator', {
+          coordinator: coordinatorProfile,
+          guest: guestProfile,
+        });
+      const stored = jest.spyOn(prisma.notifications, 'create');
+      const lookup = jest.spyOn(prisma.notifications, 'findFirst');
+
+      ask();
+      await service.create(userId, '7');
+      expect(stored).toHaveBeenCalledTimes(1);
+
+      // The first notice is now on file, so the second ask finds it.
+      lookup.mockResolvedValue({ notification_id: 10n } as never);
+      ask();
+      await service.create(userId, '7');
+      expect(stored).toHaveBeenCalledTimes(1);
+    });
+
+    it('still returns the request when the notice cannot be saved', async () => {
+      askAs('coordinator', {
+        coordinator: coordinatorProfile,
+        guest: guestProfile,
+      });
+      jest
+        .spyOn(notifications, 'createUnlessRecent')
+        .mockRejectedValue(new Error('connection lost'));
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      await expect(service.create(userId, '7')).resolves.toEqual(
+        expect.objectContaining({ matchId: '6020', status: 'PENDING' }),
+      );
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('connection'));
     });
   });
 

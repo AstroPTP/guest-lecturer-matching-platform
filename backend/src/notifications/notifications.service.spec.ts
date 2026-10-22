@@ -66,6 +66,137 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('createUnlessRecent', () => {
+    const dto = {
+      recipientId,
+      type: 'match' as const,
+      title: 'New interest',
+      description: 'Ada Lee is interested in working with you',
+      actionLabel: 'View',
+      href: '/guest_lecturer/discovery?from=5',
+    };
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('stores the notice when the person has not had it recently', async () => {
+      const create = jest.spyOn(prisma.notifications, 'create');
+
+      await expect(service.createUnlessRecent(dto)).resolves.toBe(true);
+      expect(create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          user_id: 1n,
+          title: 'New interest',
+          href: '/guest_lecturer/discovery?from=5',
+        }) as unknown,
+      });
+    });
+
+    it('skips the notice when the same one arrived in the last day', async () => {
+      jest
+        .spyOn(prisma.notifications, 'findFirst')
+        .mockResolvedValue({ notification_id: 10n } as never);
+      const create = jest.spyOn(prisma.notifications, 'create');
+
+      await expect(service.createUnlessRecent(dto)).resolves.toBe(false);
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it("looks back exactly a day, at this person's notices about this href", async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-10T09:00:00.000Z'));
+      const findFirst = jest.spyOn(prisma.notifications, 'findFirst');
+
+      await service.createUnlessRecent(dto);
+      expect(findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            user_id: 1n,
+            type: 'match',
+            title: 'New interest',
+            href: '/guest_lecturer/discovery?from=5',
+            created_at: { gte: new Date('2026-10-09T09:00:00.000Z') },
+          },
+        }),
+      );
+    });
+  });
+
+  describe('createOrRefreshUnread', () => {
+    const dto = {
+      recipientId,
+      type: 'message' as const,
+      title: 'New message',
+      description: 'Ada Lee sent you a message',
+      actionLabel: 'Reply',
+      href: '/guest_lecturer/messages?with=5',
+    };
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    function inTransaction(refreshed: number) {
+      const tx = {
+        $executeRaw: jest.fn().mockResolvedValue(0),
+        notifications: {
+          updateMany: jest.fn().mockResolvedValue({ count: refreshed }),
+          create: jest.fn().mockResolvedValue({}),
+        },
+      };
+      jest
+        .spyOn(prisma, '$transaction')
+        .mockImplementation(((run: (client: typeof tx) => Promise<unknown>) =>
+          run(tx)) as never);
+      return tx;
+    }
+
+    it('moves the unread notice to the top instead of adding another', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-10-10T09:00:00.000Z'));
+      const tx = inTransaction(1);
+
+      await service.createOrRefreshUnread(dto);
+      expect(tx.notifications.updateMany).toHaveBeenCalledWith({
+        where: {
+          user_id: 1n,
+          type: 'message',
+          href: '/guest_lecturer/messages?with=5',
+          read: false,
+        },
+        data: { created_at: new Date('2026-10-10T09:00:00.000Z') },
+      });
+      expect(tx.notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('adds a notice when none is waiting unread', async () => {
+      const tx = inTransaction(0);
+
+      await service.createOrRefreshUnread(dto);
+      expect(tx.notifications.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          user_id: 1n,
+          type: 'message',
+          title: 'New message',
+          description: 'Ada Lee sent you a message',
+          action_label: 'Reply',
+          href: '/guest_lecturer/messages?with=5',
+        }) as unknown,
+      });
+    });
+
+    it('locks on the person and conversation before it looks', async () => {
+      const tx = inTransaction(0);
+
+      await service.createOrRefreshUnread(dto);
+      expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+      const [, lockKey] = tx.$executeRaw.mock.calls[0] as [unknown, string];
+      expect(lockKey).toBe('1:/guest_lecturer/messages?with=5');
+      expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.notifications.updateMany.mock.invocationCallOrder[0],
+      );
+    });
+  });
+
   it("returns only the recipient's notifications, newest first", async () => {
     const findMany = jest
       .spyOn(prisma.notifications, 'findMany')
