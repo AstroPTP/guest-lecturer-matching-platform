@@ -261,13 +261,35 @@ const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategor
   'report.resolved': { label: 'Report Resolved', category: 'Account Management' },
   'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
   'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
+  'user.signed_in': { label: 'Signed In', category: 'Security' },
+  'retention.purge': { label: 'Retention Purge', category: 'System' },
 };
+
+/**
+ * The actions the Audit Log can be narrowed to, for its filter. Taken from
+ * ACTION_LABELS so a label added there appears in the filter without a second
+ * edit.
+ */
+export const AUDIT_ACTION_FILTERS = Object.entries(ACTION_LABELS).map(
+  ([action, { label }]) => ({ action, label }),
+);
 
 const ACTOR_ROLES: Record<string, AuditActorRole> = {
   ccae_admin: 'Administrator',
   unit_coordinator: 'Unit Coordinator',
   guest_speaker: 'Guest Lecturer',
 };
+
+/**
+ * The correlation id the backend stored in the entry's detail, if there is a
+ * well-formed one. Entries written before ids were recorded, and entries from
+ * scheduled jobs that run outside any request, have none.
+ */
+function correlationIdOf(detail: unknown): string | null {
+  if (typeof detail !== 'object' || detail === null) return null;
+  const id = (detail as { correlationId?: unknown }).correlationId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
 
 function toAuditEntry(row: AuditRow): AuditEntry {
   const known = ACTION_LABELS[row.action];
@@ -283,11 +305,19 @@ function toAuditEntry(row: AuditRow): AuditEntry {
     targetType: row.targetType === 'guest' ? 'Profile' : 'Account',
     category: known?.category ?? 'Account Management',
     status: 'Success',
+    correlationId: correlationIdOf(row.detail),
   };
 }
 
-export async function getAuditEntries(limit = 200): Promise<AuditEntry[]> {
-  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?limit=${limit}`);
+/**
+ * Newest first. `action` is the stored key, such as "user.signed_in", and is
+ * filtered on the server: a busy action like sign-ins would otherwise fill the
+ * whole page of rows and push everything else out of view.
+ */
+export async function getAuditEntries(limit = 200, action?: string): Promise<AuditEntry[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (action) query.set('action', action);
+  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?${query.toString()}`);
   return rows.map(toAuditEntry);
 }
 
