@@ -1,5 +1,4 @@
 import { Logger } from '@nestjs/common';
-import type { Prisma } from '../../generated/prisma/client';
 import { readSettings, visibleGuestsWhere } from '../admin/platform-rules';
 import {
   NotificationsService,
@@ -7,7 +6,8 @@ import {
 } from '../notifications/notifications.service';
 import { prisma } from '../prisma';
 import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
-import { readMatchingSettings } from './matching-settings';
+import { suggestionsOn } from './matching-settings';
+import { normaliseTopic } from './scoring';
 
 /**
  * Tells people when someone who shares their topics first appears.
@@ -64,43 +64,50 @@ export const NEW_COORDINATOR_NOTICE: AdminNotice = {
 export type GuestVisibleBecause = 'completed' | 'approved';
 
 /**
- * Escapes the characters that mean something to a LIKE pattern. A case
- * insensitive match is sent to the database as a pattern, and a topic of "%"
- * would otherwise match everybody.
+ * The most people read as possible recipients before the visibility rules are
+ * applied. Well above the number of coordinators or guest lecturers the
+ * platform has, so it only ever bounds a runaway.
  */
-function exactPattern(topic: string): string {
-  return topic.replace(/[\\%_]/g, '\\$&');
+const MAX_CANDIDATES = 5 * MAX_NOTICE_RECIPIENTS;
+
+/**
+ * Coordinators who name at least one of the topics. The topics are compared
+ * the way Suggested speakers compares them: leading and trailing space
+ * dropped, runs of space made one, case ignored (see normaliseTopic). The
+ * topics travel as one parameter, never inside the statement.
+ */
+async function coordinatorsSharing(topics: string[]): Promise<bigint[]> {
+  const rows = await prisma.$queryRaw<{ user_id: bigint }[]>`
+    SELECT DISTINCT e.user_id
+    FROM user_expertise e
+    JOIN coordinators c ON c.user_id = e.user_id
+    WHERE lower(btrim(regexp_replace(e.expertise, '\\s+', ' ', 'g'))) = ANY(${topics}::text[])
+    ORDER BY e.user_id
+    LIMIT ${MAX_CANDIDATES}`;
+  return rows.map((row) => BigInt(row.user_id));
 }
 
-/** A filter for people who name at least one of the topics, whatever the case. */
-function sharingAnyOf(topics: string[]): {
-  users: { is: Prisma.usersWhereInput };
-} {
-  return {
-    users: {
-      is: {
-        user_expertise: {
-          some: {
-            OR: topics.map((topic) => ({
-              expertise: {
-                equals: exactPattern(topic),
-                mode: 'insensitive' as const,
-              },
-            })),
-          },
-        },
-      },
-    },
-  };
+/** Guest lecturers who name at least one of the topics, compared the same way. */
+async function guestsSharing(topics: string[]): Promise<bigint[]> {
+  const rows = await prisma.$queryRaw<{ user_id: bigint }[]>`
+    SELECT DISTINCT e.user_id
+    FROM user_expertise e
+    JOIN guests g ON g.user_id = e.user_id
+    WHERE lower(btrim(regexp_replace(e.expertise, '\\s+', ' ', 'g'))) = ANY(${topics}::text[])
+    ORDER BY e.user_id
+    LIMIT ${MAX_CANDIDATES}`;
+  return rows.map((row) => BigInt(row.user_id));
 }
 
-/** The distinct, non-empty topics a person names. */
+/** The distinct, non-empty topics a person names, normalised for comparison. */
 async function topicsOf(userId: bigint): Promise<string[]> {
   const rows = await prisma.user_expertise.findMany({
     where: { user_id: userId },
     select: { expertise: true },
   });
-  return [...new Set(rows.map((row) => row.expertise.trim()))].filter(Boolean);
+  return [...new Set(rows.map((row) => normaliseTopic(row.expertise)))].filter(
+    Boolean,
+  );
 }
 
 /**
@@ -118,7 +125,7 @@ export async function noticeCoordinatorsOfNewGuest(
   because: GuestVisibleBecause,
 ): Promise<number> {
   try {
-    if (!(await readMatchingSettings()).enabled) {
+    if (!(await suggestionsOn())) {
       return 0;
     }
     if (
@@ -155,13 +162,16 @@ export async function noticeCoordinatorsOfNewGuest(
       return 0;
     }
 
-    // One read for everyone who should be told.
+    // Who shares a topic, then which of them Discovery would show the guest.
+    const candidates = await coordinatorsSharing(topics);
+    if (candidates.length === 0) {
+      return 0;
+    }
     const coordinators = await prisma.coordinators.findMany({
       where: {
         AND: [
           await visibleCoordinatorsWhere(guestAuth0Id),
-          { user_id: { not: null } },
-          sharingAnyOf(topics),
+          { user_id: { in: candidates } },
         ],
       },
       select: { user_id: true },
@@ -197,7 +207,7 @@ export async function noticeGuestsOfNewCoordinator(
   coordinatorAuth0Id: string,
 ): Promise<number> {
   try {
-    if (!(await readMatchingSettings()).enabled) {
+    if (!(await suggestionsOn())) {
       return 0;
     }
 
@@ -226,13 +236,16 @@ export async function noticeGuestsOfNewCoordinator(
       return 0;
     }
 
-    // One read for everyone who should be told.
+    // Who shares a topic, then which of them Discovery would show the coordinator.
+    const candidates = await guestsSharing(topics);
+    if (candidates.length === 0) {
+      return 0;
+    }
     const guests = await prisma.guests.findMany({
       where: {
         AND: [
           await visibleGuestsWhere(coordinatorAuth0Id),
-          { user_id: { not: null } },
-          sharingAnyOf(topics),
+          { user_id: { in: candidates } },
         ],
       },
       select: { user_id: true },

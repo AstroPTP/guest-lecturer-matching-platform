@@ -72,27 +72,33 @@ export class GovernanceService {
     const id = toId(guestId, 'guestId');
     const guest = await prisma.guests.findUnique({
       where: { guest_id: id },
-      select: {
-        guest_id: true,
-        approved_at: true,
-        users: { select: { auth0Id: true } },
-      },
+      select: { guest_id: true, users: { select: { auth0Id: true } } },
     });
     if (!guest) {
       throw new NotFoundException('No guest lecturer with that id.');
     }
-    const updated = await prisma.guests.update({
-      where: { guest_id: id },
-      data: { approved_at: new Date() },
-      select: { guest_id: true, approved_at: true },
+    // The first approval is when a profile becomes visible while approval is
+    // required. This statement matches only an unapproved profile, so of two
+    // approvals at once exactly one sees a count of 1. Approving someone again
+    // changes nothing anyone can see, and only refreshes the date.
+    const approvedAt = new Date();
+    const { count } = await prisma.guests.updateMany({
+      where: { guest_id: id, approved_at: null },
+      data: { approved_at: approvedAt },
     });
+    const updated =
+      count === 1
+        ? { guest_id: id, approved_at: approvedAt }
+        : await prisma.guests.update({
+            where: { guest_id: id },
+            data: { approved_at: approvedAt },
+            select: { guest_id: true, approved_at: true },
+          });
     await recordAudit(actor, 'guest.approved', {
       type: 'guest',
       id: guestId,
     });
-    // The first approval is when a profile becomes visible while approval is
-    // required. Approving someone again changes nothing anyone can see.
-    if (guest.approved_at === null && guest.users) {
+    if (count === 1 && guest.users) {
       await noticeCoordinatorsOfNewGuest(guest.users.auth0Id, 'approved');
     }
     return {

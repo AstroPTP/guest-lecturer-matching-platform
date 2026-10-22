@@ -175,17 +175,19 @@ export class GuestSpeakersService {
    */
   async saveConsent(auth0Id: string, _dto: ConsentDto) {
     const userId = await resolveUserId(auth0Id);
-    const before = await prisma.users.findUnique({
-      where: { userid: userId },
-      select: { consentstate: true },
-    });
 
-    await prisma.users.update({
-      where: { userid: userId },
+    // One statement both saves the consent and says whether this was the first
+    // time: it matches only while consent is not yet true, so of two saves at
+    // once exactly one sees a count of 1.
+    const { count } = await prisma.users.updateMany({
+      where: {
+        userid: userId,
+        OR: [{ consentstate: null }, { consentstate: false }],
+      },
       data: { consentstate: true },
     });
 
-    if (before?.consentstate !== true) {
+    if (count === 1) {
       await noticeCoordinatorsOfNewGuest(auth0Id, 'completed');
     }
 

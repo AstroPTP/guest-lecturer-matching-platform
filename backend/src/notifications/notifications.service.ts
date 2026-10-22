@@ -132,6 +132,11 @@ export class NotificationsService {
    * who already has it and one insert writes the rest, so the number of
    * queries does not grow with the number of people.
    *
+   * The read and the insert run together under a lock on the notice, so two
+   * of these started at once cannot both find nobody told and both write. The
+   * lock is held for the transaction only. The push is sent after the commit,
+   * to the people who were written for.
+   *
    * Returns how many were written.
    */
   async createUnlessRecentForUsers(
@@ -142,27 +147,37 @@ export class NotificationsService {
     if (unique.length === 0) {
       return 0;
     }
+    const lockKey = [notice.type, notice.title, notice.href].join('|');
 
-    const earlier = await prisma.notifications.findMany({
-      where: {
-        user_id: { in: unique },
-        type: notice.type,
-        title: notice.title,
-        href: notice.href,
-        created_at: { gte: new Date(Date.now() - REPEAT_WINDOW_MS) },
-      },
-      select: { user_id: true },
+    const { recipients, count } = await prisma.$transaction(async (tx) => {
+      // cspell:disable-next-line -- hashtext is a Postgres function
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${NOTIFICATION_LOCK_NAMESPACE}::int, hashtext(${lockKey}::text))`;
+
+      const earlier = await tx.notifications.findMany({
+        where: {
+          user_id: { in: unique },
+          type: notice.type,
+          title: notice.title,
+          href: notice.href,
+          created_at: { gte: new Date(Date.now() - REPEAT_WINDOW_MS) },
+        },
+        select: { user_id: true },
+      });
+      const alreadyTold = new Set(earlier.map((row) => row.user_id));
+      const toTell = unique.filter((userId) => !alreadyTold.has(userId));
+      if (toTell.length === 0) {
+        return { recipients: toTell, count: 0 };
+      }
+
+      const written = await tx.notifications.createMany({
+        data: toTell.map((userId) => this.toRowData(userId, notice)),
+      });
+      return { recipients: toTell, count: written.count };
     });
-    const alreadyTold = new Set(earlier.map((row) => row.user_id));
-    const recipients = unique.filter((userId) => !alreadyTold.has(userId));
-    if (recipients.length === 0) {
-      return 0;
+
+    if (count > 0) {
+      void pushToUsers(recipients, notice);
     }
-
-    const { count } = await prisma.notifications.createMany({
-      data: recipients.map((userId) => this.toRowData(userId, notice)),
-    });
-    void pushToUsers(recipients, notice);
     return count;
   }
 

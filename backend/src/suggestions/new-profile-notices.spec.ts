@@ -1,6 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { prisma } from '../prisma';
-import { stubOpenReports } from '../testing/open-reports';
+import { type ReportFixture } from '../testing/open-reports';
+import {
+  answerTopicQuery,
+  topicQueries,
+  useNoticeTransaction,
+} from '../testing/notice-transaction';
 import {
   MAX_NOTICE_RECIPIENTS,
   NEW_COORDINATOR_NOTICE,
@@ -13,7 +18,10 @@ jest.mock('../notifications/push', () => ({
   pushToUsers: jest.fn(() => Promise.resolve(0)),
 }));
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  delete process.env.MATCHING_SUGGESTIONS_ENABLED;
+});
 
 /** The warning a failed notice leaves, without printing it into the test output. */
 function silenceLog() {
@@ -28,21 +36,9 @@ const settings = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as never;
 
-/** The notice and push tables, empty: nobody has been told yet. */
+/** The notice table and its transaction, empty: nobody has been told yet. */
 function notices(options: { alreadyTold?: bigint[] } = {}) {
-  const earlier = jest
-    .spyOn(prisma.notifications, 'findMany')
-    .mockResolvedValue(
-      (options.alreadyTold ?? []).map((user_id) => ({ user_id })) as never,
-    );
-  const insert = jest
-    .spyOn(prisma.notifications, 'createMany')
-    .mockImplementation(
-      (args: unknown) =>
-        Promise.resolve({
-          count: (args as { data: unknown[] }).data.length,
-        }) as never,
-    );
+  const { earlier, insert } = useNoticeTransaction(options);
   const single = jest.spyOn(prisma.notifications, 'create');
   return { earlier, insert, single };
 }
@@ -50,7 +46,7 @@ function notices(options: { alreadyTold?: bigint[] } = {}) {
 const topicRows = (...topics: string[]) =>
   topics.map((expertise) => ({ expertise }));
 
-const written = (insert: jest.SpyInstance) =>
+const written = (insert: jest.Mock) =>
   (insert.mock.calls as [{ data: { user_id: bigint }[] }][]).flatMap(([args]) =>
     args.data.map((row) => row.user_id),
   );
@@ -61,6 +57,7 @@ describe('noticeCoordinatorsOfNewGuest', () => {
     coordinators?: bigint[];
     visible?: boolean;
     alreadyTold?: bigint[];
+    reports?: ReportFixture[];
     settings?: Record<string, unknown>;
   }) {
     jest
@@ -78,27 +75,27 @@ describe('noticeCoordinatorsOfNewGuest', () => {
           ...(options.topics ?? ['Economics', 'Taxation Law']),
         ) as never,
       );
+    const coordinators = options.coordinators ?? [11n, 12n];
+    const shared = answerTopicQuery(coordinators, options.reports);
     const recipients = jest
       .spyOn(prisma.coordinators, 'findMany')
       .mockResolvedValue(
-        (options.coordinators ?? [11n, 12n]).map((user_id) => ({
+        coordinators.map((user_id) => ({
           user_id,
         })) as never,
       );
-    return { subject, topics, recipients, ...notices(options) };
+    return { subject, topics, shared, recipients, ...notices(options) };
   }
 
   it('tells every coordinator who shares a topic, with the notice and link the coordinator needs', async () => {
-    const { insert, recipients } = guestAppears({
-      coordinators: [11n, 12n, 13n],
-    });
+    const { insert } = guestAppears({ coordinators: [11n, 12n, 13n] });
 
     await expect(
       noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
     ).resolves.toBe(3);
 
     expect(written(insert)).toEqual([11n, 12n, 13n]);
-    const { data } = insert.mock.calls[0][0] as {
+    const { data } = insert.mock.calls[0][0] as unknown as {
       data: Record<string, unknown>[];
     };
     expect(data[0]).toMatchObject({
@@ -109,17 +106,17 @@ describe('noticeCoordinatorsOfNewGuest', () => {
     expect(NEW_GUEST_NOTICE.title).toBe(
       'New suggested speakers match your topics',
     );
-    expect(recipients).toHaveBeenCalledTimes(1);
   });
 
-  it('finds recipients with one read, however many there are, and writes them in one insert', async () => {
+  it('finds recipients with a fixed number of reads, however many there are, and writes them in one insert', async () => {
     const many = Array.from({ length: 250 }, (_, i) => BigInt(i + 100));
-    const { recipients, earlier, insert, single } = guestAppears({
+    const { shared, recipients, earlier, insert, single } = guestAppears({
       coordinators: many,
     });
 
     await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
 
+    expect(topicQueries(shared)).toHaveLength(1);
     expect(recipients).toHaveBeenCalledTimes(1);
     expect(earlier).toHaveBeenCalledTimes(1);
     expect(insert).toHaveBeenCalledTimes(1);
@@ -128,7 +125,7 @@ describe('noticeCoordinatorsOfNewGuest', () => {
   });
 
   it('bounds the number of people one new profile can notify', async () => {
-    const { recipients } = guestAppears({});
+    const { shared, recipients } = guestAppears({});
 
     await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
 
@@ -138,94 +135,78 @@ describe('noticeCoordinatorsOfNewGuest', () => {
       select: { user_id: true },
     });
     expect(MAX_NOTICE_RECIPIENTS).toBeLessThanOrEqual(1000);
+    // The topic query is bounded too, and the bound is a parameter.
+    const [{ sql, values }] = topicQueries(shared);
+    expect(sql).toContain('LIMIT');
+    expect(values).toContain(5 * MAX_NOTICE_RECIPIENTS);
   });
 
-  it('asks only for coordinators who name one of the guest’s topics, whatever the case', async () => {
-    const { recipients } = guestAppears({
-      topics: ['Economics', 'Taxation Law'],
+  it('compares topics the way Suggested speakers does: trimmed, spaces collapsed, case ignored', async () => {
+    const { shared } = guestAppears({
+      topics: ['  ECONOMICS ', 'Taxation \t  Law', 'economics'],
     });
+
+    await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
+
+    const [{ sql, values }] = topicQueries(shared);
+    // The guest's topics are normalised once, with no repeat.
+    expect(values[0]).toEqual(['economics', 'taxation law']);
+    // The stored topics are normalised the same way inside the query.
+    expect(sql).toContain(
+      "lower(btrim(regexp_replace(e.expertise, '\\s+', ' ', 'g'))) = ANY(?::text[])",
+    );
+    expect(sql).toContain('JOIN coordinators');
+  });
+
+  it('sends topics as a parameter, never inside the statement, whatever characters they hold', async () => {
+    const hostile = "x'; DROP TABLE users; --";
+    const { shared } = guestAppears({
+      topics: ['100%', 'a_b', 'c\\d', hostile],
+    });
+
+    await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
+
+    const [{ sql, values }] = topicQueries(shared);
+    expect(values[0]).toEqual(['100%', 'a_b', 'c\\d', hostile.toLowerCase()]);
+    for (const text of ['100%', 'a_b', 'DROP', 'drop']) {
+      expect(sql).not.toContain(text);
+    }
+  });
+
+  it('asks the database only about people who share a topic, and shows the guest only those Discovery would', async () => {
+    const { recipients } = guestAppears({ coordinators: [11n, 12n] });
 
     await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
 
     const where = (recipients.mock.calls[0][0] as { where: { AND: unknown[] } })
       .where;
-    expect(where.AND).toContainEqual({
-      users: {
-        is: {
-          user_expertise: {
-            some: {
-              OR: [
-                { expertise: { equals: 'Economics', mode: 'insensitive' } },
-                { expertise: { equals: 'Taxation Law', mode: 'insensitive' } },
-              ],
-            },
-          },
-        },
-      },
-    });
-    // A coordinator with no account row cannot be told.
-    expect(where.AND).toContainEqual({ user_id: { not: null } });
-  });
-
-  it('treats % and _ in a topic as ordinary characters, so a topic cannot match everyone', async () => {
-    const { recipients } = guestAppears({ topics: ['100%', 'a_b', 'c\\d'] });
-
-    await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
-
-    const where = JSON.stringify(
-      (recipients.mock.calls[0][0] as { where: unknown }).where,
-    );
-    expect(where).toContain('"equals":"100\\\\%"');
-    expect(where).toContain('"equals":"a\\\\_b"');
-    expect(where).toContain('"equals":"c\\\\\\\\d"');
+    expect(where.AND).toContainEqual({ user_id: { in: [11n, 12n] } });
   });
 
   it('leaves out deactivated coordinators, coordinators on hold, and anyone with an open report with the guest', async () => {
     // Two people reported coordinator 41, so they are held. The guest and
     // coordinator 42 have a report open between them.
-    stubOpenReports(
-      [
-        {
-          entry_id: 51n,
-          actor_user_id: 8n,
-          target_id: '41',
-          detail: { reason: 'rude', matchId: '1' },
-        },
-        {
-          entry_id: 52n,
-          actor_user_id: 9n,
-          target_id: '41',
-          detail: { reason: 'rude', matchId: '2' },
-        },
-        {
-          entry_id: 53n,
-          actor_user_id: 42n,
-          target_id: '1',
-          detail: { reason: 'rude' },
-        },
-      ],
-      [
-        {
-          entry_id: 51n,
-          actor_user_id: 8n,
-          target_id: '41',
-          detail: { reason: 'rude', matchId: '1' },
-        },
-        {
-          entry_id: 52n,
-          actor_user_id: 9n,
-          target_id: '41',
-          detail: { reason: 'rude', matchId: '2' },
-        },
-        {
-          entry_id: 53n,
-          actor_user_id: 42n,
-          target_id: '1',
-          detail: { reason: 'rude' },
-        },
-      ],
-    );
-    const { recipients } = guestAppears({});
+    const reports = [
+      {
+        entry_id: 51n,
+        actor_user_id: 8n,
+        target_id: '41',
+        detail: { reason: 'rude', matchId: '1' },
+      },
+      {
+        entry_id: 52n,
+        actor_user_id: 9n,
+        target_id: '41',
+        detail: { reason: 'rude', matchId: '2' },
+      },
+      {
+        entry_id: 53n,
+        actor_user_id: 42n,
+        target_id: '1',
+        detail: { reason: 'rude' },
+      },
+    ];
+    const { recipients } = guestAppears({ reports });
 
     await noticeCoordinatorsOfNewGuest('auth0|guest', 'completed');
 
@@ -240,19 +221,22 @@ describe('noticeCoordinatorsOfNewGuest', () => {
       { user_id: null },
       { users: { is: { deletedat: null } } },
     ]);
-    // Held (41), and the one reported by the guest's own pair (42).
+    // Held (41), and the one with a report open against the guest (42).
     const hidden = (visibility.AND[0].OR[1] as { user_id: { notIn: bigint[] } })
       .user_id.notIn;
     expect(hidden).toEqual(expect.arrayContaining([41n, 42n]));
   });
 
   it('tells no one when the guest’s profile is not one Discovery lists and Suggested speakers could suggest', async () => {
-    const { subject, recipients, insert } = guestAppears({ visible: false });
+    const { subject, shared, recipients, insert } = guestAppears({
+      visible: false,
+    });
 
     await expect(
       noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
     ).resolves.toBe(0);
 
+    expect(topicQueries(shared)).toHaveLength(0);
     expect(recipients).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
     // The profile must be finished, active and named; approval and holds come from the shared rule.
@@ -296,8 +280,8 @@ describe('noticeCoordinatorsOfNewGuest', () => {
     expect(where.where.AND[0]).not.toHaveProperty('approved_at');
   });
 
-  it('sends nothing when Suggested speakers is off, and reads nothing else', async () => {
-    const { subject, recipients, earlier, insert } = guestAppears({
+  it('sends nothing when the administrator has Suggested speakers off, and reads nothing else', async () => {
+    const { subject, shared, recipients, earlier, insert } = guestAppears({
       settings: { suggestions_enabled: false },
     });
 
@@ -306,24 +290,70 @@ describe('noticeCoordinatorsOfNewGuest', () => {
     ).resolves.toBe(0);
 
     expect(subject).not.toHaveBeenCalled();
+    expect(topicQueries(shared)).toHaveLength(0);
     expect(recipients).not.toHaveBeenCalled();
     expect(earlier).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
   });
 
+  it.each(['false', 'FALSE', ' false '])(
+    'sends nothing when the server has MATCHING_SUGGESTIONS_ENABLED=%j, even with the setting on',
+    async (value) => {
+      process.env.MATCHING_SUGGESTIONS_ENABLED = value;
+      const { subject, recipients, insert } = guestAppears({});
+      const settingsRead = jest.spyOn(prisma.admin_settings, 'upsert');
+
+      await expect(
+        noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
+      ).resolves.toBe(0);
+
+      expect(subject).not.toHaveBeenCalled();
+      expect(recipients).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+      // The hard switch is answered without reading the database.
+      expect(settingsRead).not.toHaveBeenCalled();
+    },
+  );
+
+  it('treats a misspelled server switch as on', async () => {
+    process.env.MATCHING_SUGGESTIONS_ENABLED = 'flase';
+    const { insert } = guestAppears({});
+
+    await expect(
+      noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
+    ).resolves.toBe(2);
+    expect(insert).toHaveBeenCalledTimes(1);
+  });
+
   it('sends nothing for a guest who names no topic', async () => {
-    const { recipients, insert } = guestAppears({ topics: [] });
+    const { shared, recipients, insert } = guestAppears({ topics: [] });
+
+    await expect(
+      noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
+    ).resolves.toBe(0);
+
+    expect(topicQueries(shared)).toHaveLength(0);
+    expect(recipients).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when no coordinator shares a topic', async () => {
+    const { recipients, insert, earlier } = guestAppears({ coordinators: [] });
 
     await expect(
       noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
     ).resolves.toBe(0);
 
     expect(recipients).not.toHaveBeenCalled();
+    expect(earlier).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
   });
 
-  it('sends nothing when no coordinator shares a topic', async () => {
-    const { insert, earlier } = guestAppears({ coordinators: [] });
+  it('sends nothing when Discovery would show the guest none of those coordinators', async () => {
+    const { recipients, earlier, insert } = guestAppears({
+      coordinators: [11n],
+    });
+    recipients.mockResolvedValue([] as never);
 
     await expect(
       noticeCoordinatorsOfNewGuest('auth0|guest', 'completed'),
@@ -394,6 +424,7 @@ describe('noticeGuestsOfNewCoordinator', () => {
     guests?: bigint[];
     visible?: boolean;
     alreadyTold?: bigint[];
+    reports?: ReportFixture[];
     settings?: Record<string, unknown>;
   }) {
     jest
@@ -409,12 +440,12 @@ describe('noticeGuestsOfNewCoordinator', () => {
       .mockResolvedValue(
         topicRows(...(options.topics ?? ['Accounting'])) as never,
       );
-    const recipients = jest.spyOn(prisma.guests, 'findMany').mockResolvedValue(
-      (options.guests ?? [71n, 72n]).map((user_id) => ({
-        user_id,
-      })) as never,
-    );
-    return { subject, recipients, ...notices(options) };
+    const guests = options.guests ?? [71n, 72n];
+    const shared = answerTopicQuery(guests, options.reports);
+    const recipients = jest
+      .spyOn(prisma.guests, 'findMany')
+      .mockResolvedValue(guests.map((user_id) => ({ user_id })) as never);
+    return { subject, shared, recipients, ...notices(options) };
   }
 
   it('tells every guest lecturer who shares a topic, with a link to Discovery', async () => {
@@ -423,7 +454,7 @@ describe('noticeGuestsOfNewCoordinator', () => {
     await expect(noticeGuestsOfNewCoordinator('auth0|coord')).resolves.toBe(3);
 
     expect(written(insert)).toEqual([71n, 72n, 73n]);
-    const { data } = insert.mock.calls[0][0] as {
+    const { data } = insert.mock.calls[0][0] as unknown as {
       data: Record<string, unknown>[];
     };
     expect(data[0]).toMatchObject({
@@ -434,14 +465,15 @@ describe('noticeGuestsOfNewCoordinator', () => {
     expect(NEW_COORDINATOR_NOTICE.title).toBe('New units match your expertise');
   });
 
-  it('finds recipients with one read and writes them in one insert', async () => {
+  it('finds recipients with a fixed number of reads and writes them in one insert', async () => {
     const many = Array.from({ length: 250 }, (_, i) => BigInt(i + 100));
-    const { recipients, earlier, insert, single } = coordinatorAppears({
+    const { shared, recipients, earlier, insert, single } = coordinatorAppears({
       guests: many,
     });
 
     await noticeGuestsOfNewCoordinator('auth0|coord');
 
+    expect(topicQueries(shared)).toHaveLength(1);
     expect(recipients).toHaveBeenCalledTimes(1);
     expect(earlier).toHaveBeenCalledTimes(1);
     expect(insert).toHaveBeenCalledTimes(1);
@@ -466,9 +498,8 @@ describe('noticeGuestsOfNewCoordinator', () => {
         detail: { reason: 'rude', matchId: '2' },
       },
     ];
-    // Read once to check the coordinator, once to find the guests.
-    stubOpenReports(twoReportersAboutGuest81, twoReportersAboutGuest81);
     const { recipients } = coordinatorAppears({
+      reports: twoReportersAboutGuest81,
       settings: { require_admin_approval: true },
     });
 
@@ -490,7 +521,7 @@ describe('noticeGuestsOfNewCoordinator', () => {
       (visibility.AND[0].OR[1] as { user_id: { notIn: bigint[] } }).user_id
         .notIn,
     ).toContain(81n);
-    expect(where.AND).toContainEqual({ user_id: { not: null } });
+    expect(where.AND).toContainEqual({ user_id: { in: [71n, 72n] } });
   });
 
   it('does not ask for approval while approval is off', async () => {
@@ -503,35 +534,30 @@ describe('noticeGuestsOfNewCoordinator', () => {
     expect(where.AND[0]).not.toHaveProperty('approved_at');
   });
 
-  it('asks only for guests who name one of the coordinator’s topics, whatever the case', async () => {
-    const { recipients } = coordinatorAppears({ topics: ['Accounting'] });
+  it('compares topics the way Suggested speakers does, as a parameter', async () => {
+    const { shared } = coordinatorAppears({
+      topics: ['  ACCOUNTING', 'accounting '],
+    });
 
     await noticeGuestsOfNewCoordinator('auth0|coord');
 
-    const where = (recipients.mock.calls[0][0] as { where: { AND: unknown[] } })
-      .where;
-    expect(where.AND).toContainEqual({
-      users: {
-        is: {
-          user_expertise: {
-            some: {
-              OR: [
-                { expertise: { equals: 'Accounting', mode: 'insensitive' } },
-              ],
-            },
-          },
-        },
-      },
-    });
+    const [{ sql, values }] = topicQueries(shared);
+    expect(values[0]).toEqual(['accounting']);
+    expect(sql).toContain(
+      "lower(btrim(regexp_replace(e.expertise, '\\s+', ' ', 'g'))) = ANY(?::text[])",
+    );
+    expect(sql).toContain('JOIN guests');
+    expect(sql).not.toContain('accounting');
   });
 
   it('tells no one when the coordinator’s profile is not finished, is deactivated, or is on hold', async () => {
-    const { subject, recipients, insert } = coordinatorAppears({
+    const { subject, shared, recipients, insert } = coordinatorAppears({
       visible: false,
     });
 
     await expect(noticeGuestsOfNewCoordinator('auth0|coord')).resolves.toBe(0);
 
+    expect(topicQueries(shared)).toHaveLength(0);
     expect(recipients).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
     expect(subject.mock.calls[0][0]).toMatchObject({
@@ -554,7 +580,7 @@ describe('noticeGuestsOfNewCoordinator', () => {
     });
   });
 
-  it('sends nothing when Suggested speakers is off', async () => {
+  it('sends nothing when the administrator has Suggested speakers off', async () => {
     const { subject, recipients, insert } = coordinatorAppears({
       settings: { suggestions_enabled: false },
     });
@@ -565,6 +591,24 @@ describe('noticeGuestsOfNewCoordinator', () => {
     expect(recipients).not.toHaveBeenCalled();
     expect(insert).not.toHaveBeenCalled();
   });
+
+  it.each(['false', 'FALSE', ' false '])(
+    'sends nothing when the server has MATCHING_SUGGESTIONS_ENABLED=%j, even with the setting on',
+    async (value) => {
+      process.env.MATCHING_SUGGESTIONS_ENABLED = value;
+      const { subject, recipients, insert } = coordinatorAppears({});
+      const settingsRead = jest.spyOn(prisma.admin_settings, 'upsert');
+
+      await expect(noticeGuestsOfNewCoordinator('auth0|coord')).resolves.toBe(
+        0,
+      );
+
+      expect(subject).not.toHaveBeenCalled();
+      expect(recipients).not.toHaveBeenCalled();
+      expect(insert).not.toHaveBeenCalled();
+      expect(settingsRead).not.toHaveBeenCalled();
+    },
+  );
 
   it('sends a guest at most one in 24 hours', async () => {
     const { insert } = coordinatorAppears({
@@ -578,11 +622,21 @@ describe('noticeGuestsOfNewCoordinator', () => {
   });
 
   it('sends nothing for a coordinator who names no topic', async () => {
-    const { recipients } = coordinatorAppears({ topics: [] });
+    const { shared, recipients } = coordinatorAppears({ topics: [] });
+
+    await expect(noticeGuestsOfNewCoordinator('auth0|coord')).resolves.toBe(0);
+
+    expect(topicQueries(shared)).toHaveLength(0);
+    expect(recipients).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when no guest lecturer shares a topic', async () => {
+    const { recipients, insert } = coordinatorAppears({ guests: [] });
 
     await expect(noticeGuestsOfNewCoordinator('auth0|coord')).resolves.toBe(0);
 
     expect(recipients).not.toHaveBeenCalled();
+    expect(insert).not.toHaveBeenCalled();
   });
 
   it('never throws', async () => {
