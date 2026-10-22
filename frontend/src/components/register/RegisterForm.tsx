@@ -81,7 +81,7 @@ export default function RegisterForm() {
                 id="fullName"
                 name="fullName"
                 type="text"
-                placeholder="Tuan Kiet Luu"
+                placeholder="Alex Taylor"
                 required
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 py-3 pl-4 pr-12 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               />
