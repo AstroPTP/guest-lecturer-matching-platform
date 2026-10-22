@@ -3,30 +3,18 @@ import {
   IsString,
   MaxLength,
   MinLength,
-  ValidateIf,
 } from 'class-validator';
 
 /**
- * Two ways to name the person being reported; send exactly one.
+ * A report about the person on the other side of an accepted match.
  *
  * `targetId` is the other person's profile id (guest_id or coordinator_id),
  * the only id the apps know. The server works out who they are and checks
- * they are in an accepted match with the reporter.
- *
- * `reportedUserId` is a users.userid and is not checked against any match.
- *
- * Each id is validated only while the other is absent, so a body that names
- * neither fails on both, and a body that names both is refused by the service
- * before either is used.
+ * they are in a match with the reporter, so the body cannot name anyone else.
  */
 export class CreateReportDto {
-  @ValidateIf((body: CreateReportDto) => body.targetId === undefined)
   @IsNumberString({ no_symbols: true })
-  reportedUserId?: string;
-
-  @ValidateIf((body: CreateReportDto) => body.reportedUserId === undefined)
-  @IsNumberString({ no_symbols: true })
-  targetId?: string;
+  targetId!: string;
 
   @IsString()
   @MinLength(5)

@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MatchRequestsService } from './match-requests.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma } from '../prisma';
+import { stubOpenReports } from '../testing/open-reports';
 
 describe('MatchRequestsService', () => {
   let service: MatchRequestsService;
@@ -440,28 +441,25 @@ describe('MatchRequestsService', () => {
       resolved: string[] = [],
       heldPeople: string[] = [],
     ) {
-      jest
-        .spyOn(prisma.audit_entries, 'findMany')
-        .mockResolvedValueOnce(
-          reports.map(([actor, target], i) => ({
+      // The open-reports query leaves out the decided reports.
+      stubOpenReports(
+        reports
+          .map(([actor, target], i) => ({
             entry_id: BigInt(40 + i),
             actor_user_id: actor,
             target_id: target,
             detail: { reason: 'asked for money', matchId: '1' },
-            actor: null,
-          })) as never,
-        )
-        .mockResolvedValueOnce(
-          resolved.map((target_id) => ({ target_id })) as never,
-        )
-        .mockResolvedValueOnce(
-          heldPeople.map((target_id) => ({
-            action: 'user.held',
-            target_id,
-            // Placed for the report listed first, which is entry 40.
-            detail: { reportIds: ['40'] },
-          })) as never,
-        );
+          }))
+          .filter((r) => !resolved.includes(r.entry_id.toString())),
+      );
+      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce(
+        heldPeople.map((target_id) => ({
+          action: 'user.held',
+          target_id,
+          // Placed for the report listed first, which is entry 40.
+          detail: { reportIds: ['40'] },
+        })) as never,
+      );
     }
 
     const paused = { response: { code: 'CONVERSATION_PAUSED' } };
@@ -485,6 +483,26 @@ describe('MatchRequestsService', () => {
 
         await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
         await expect(attempt).rejects.toMatchObject(paused);
+      });
+
+      it('does not tell the person who was reported that anyone reported them', async () => {
+        matchedGuest();
+        // The caller is the person reported: user 55 reported user 1.
+        trail([[55n, '1']]);
+
+        const attempt = service.findAcceptedMatch(userId, '5');
+
+        await expect(attempt).rejects.toMatchObject(paused);
+        await expect(attempt).rejects.toMatchObject({
+          response: {
+            message:
+              'Messaging with this person is paused for now. Please try again later.',
+          },
+        });
+        const { message } = (
+          (await attempt.catch((e: unknown) => e)) as ForbiddenException
+        ).getResponse() as { message: string };
+        expect(message).not.toMatch(/report|administrator|review|dismiss/i);
       });
 
       it('refuses when the other person reported the caller', async () => {
@@ -617,6 +635,138 @@ describe('MatchRequestsService', () => {
     });
   });
 
+  describe('findUnpausedMatches', () => {
+    /** Coordinator 5 (user 1 in the double), matched with guests 3001 (user 77) and 3002 (user 78). */
+    function coordinatorWithMatches() {
+      signInAsCoordinator(5n);
+      jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue(
+        [6001n, 6002n].map((match_id, i) => ({
+          match_id,
+          coordinator_id: 5n,
+          guest_id: 3001n + BigInt(i),
+          status: 'ACCEPTED',
+        })) as never,
+      );
+      return jest.spyOn(prisma.guests, 'findMany').mockResolvedValue([
+        { guest_id: 3001n, user_id: 77n },
+        { guest_id: 3002n, user_id: 78n },
+      ] as never);
+    }
+
+    const report = (reporter: bigint, reported: string, entry = 40n) => ({
+      entry_id: entry,
+      actor_user_id: reporter,
+      target_id: reported,
+      detail: { reason: 'asked for money', matchId: '1' },
+    });
+    const targets = async () =>
+      (await service.findUnpausedMatches(userId)).matches.map(
+        (m) => m.targetId,
+      );
+
+    it('returns every match, with no other lookup, when nobody has been reported', async () => {
+      const guests = coordinatorWithMatches();
+
+      await expect(targets()).resolves.toEqual(['3001', '3002']);
+      expect(guests).not.toHaveBeenCalled();
+    });
+
+    it('does not read the reports for a caller with no matches', async () => {
+      signInAsCoordinator(5n);
+      jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue([]);
+      const reads = stubOpenReports([report(1n, '77')]);
+
+      await expect(targets()).resolves.toEqual([]);
+      expect(reads).not.toHaveBeenCalled();
+    });
+
+    it('leaves out the match with an open report between the pair, whoever made it', async () => {
+      coordinatorWithMatches();
+      stubOpenReports([report(1n, '77')]);
+
+      await expect(targets()).resolves.toEqual(['3002']);
+
+      coordinatorWithMatches();
+      stubOpenReports([report(78n, '1')]);
+
+      await expect(targets()).resolves.toEqual(['3001']);
+    });
+
+    it('leaves out a match with someone held for everybody', async () => {
+      coordinatorWithMatches();
+      stubOpenReports([report(900n, '78', 40n), report(901n, '78', 41n)]);
+
+      await expect(targets()).resolves.toEqual(['3001']);
+    });
+
+    it('leaves out every match when the caller is the one held', async () => {
+      coordinatorWithMatches();
+      stubOpenReports([report(900n, '1', 40n), report(901n, '1', 41n)]);
+
+      await expect(targets()).resolves.toEqual([]);
+    });
+
+    it('keeps matches a report between strangers has nothing to do with', async () => {
+      coordinatorWithMatches();
+      stubOpenReports([report(900n, '901')]);
+
+      await expect(targets()).resolves.toEqual(['3001', '3002']);
+    });
+
+    it('looks the other profiles up once however many matches there are', async () => {
+      const guests = coordinatorWithMatches();
+      stubOpenReports([report(1n, '77')]);
+
+      await targets();
+
+      expect(guests).toHaveBeenCalledTimes(1);
+      expect(guests.mock.calls[0][0]).toMatchObject({
+        where: { guest_id: { in: [3001n, 3002n] } },
+      });
+    });
+
+    it('works from the guest side too', async () => {
+      signInAsGuest(7n);
+      jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue([
+        {
+          match_id: 6007n,
+          coordinator_id: 5n,
+          guest_id: 7n,
+          status: 'ACCEPTED',
+        },
+        {
+          match_id: 6008n,
+          coordinator_id: 6n,
+          guest_id: 7n,
+          status: 'ACCEPTED',
+        },
+      ] as never);
+      const coordinators = jest
+        .spyOn(prisma.coordinators, 'findMany')
+        .mockResolvedValue([
+          { coordinator_id: 5n, user_id: 55n },
+          { coordinator_id: 6n, user_id: 56n },
+        ] as never);
+      stubOpenReports([report(55n, '1')]);
+
+      await expect(targets()).resolves.toEqual(['6']);
+      expect(coordinators).toHaveBeenCalledTimes(1);
+    });
+
+    it('only asks for accepted matches', async () => {
+      signInAsCoordinator(5n);
+      const find = jest
+        .spyOn(prisma.match_requests, 'findMany')
+        .mockResolvedValue([]);
+
+      await targets();
+
+      expect(find.mock.calls[0][0]).toMatchObject({
+        where: { status: { in: ['ACCEPTED'] }, coordinator_id: 5n },
+      });
+    });
+  });
+
   describe('findAcceptedCounterpart', () => {
     it('names the other person account and the match', async () => {
       signInAsCoordinator(5n);
@@ -638,6 +788,44 @@ describe('MatchRequestsService', () => {
         counterpartUserId: 77n,
       });
     });
+
+    it('still names the other person after the match was ended, so they can be reported', async () => {
+      signInAsCoordinator(5n);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6001n,
+        coordinator_id: 5n,
+        guest_id: 3001n,
+        status: 'UNMATCHED',
+      } as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValue({ user_id: 77n } as never);
+
+      await expect(
+        service.findAcceptedCounterpart(userId, '3001'),
+      ).resolves.toEqual({
+        matchId: 6001n,
+        callerUserId: 1n,
+        counterpartUserId: 77n,
+      });
+    });
+
+    it.each(['PENDING', 'REJECTED', null])(
+      'refuses a request that never became a match (%s)',
+      async (status) => {
+        signInAsCoordinator(5n);
+        jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+          match_id: 6001n,
+          coordinator_id: 5n,
+          guest_id: 3001n,
+          status,
+        } as never);
+
+        await expect(
+          service.findAcceptedCounterpart(userId, '3001'),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      },
+    );
 
     it('refuses without an accepted match, in its own words', async () => {
       signInAsCoordinator(5n);

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
-import { prisma, resolveUserId, toId } from '../prisma';
+import { prisma, toId } from '../prisma';
 import { MatchRequestsService } from '../match-requests/match-requests.service';
 import { AdminService } from './admin.service';
 import {
@@ -189,12 +189,13 @@ export class GovernanceService {
   }
 
   /**
-   * Lets any signed-in user report another. Stored in the audit trail, which
-   * is append-only, so the person reported cannot remove the report.
+   * Lets a signed-in user report the person on the other side of a match they
+   * are in, accepted or since ended. Stored in the audit trail, which is
+   * append-only, so the person reported cannot remove the report.
    *
-   * A report that names a profile (`targetId`) is only accepted from someone
-   * in an accepted match with that profile, and the person reported is found
-   * from the match rather than taken from the caller.
+   * The report names a profile (`targetId`). It is only accepted from someone
+   * with a match with that profile, and the person reported is found from the
+   * match rather than taken from the caller.
    *
    * While it is open, the reporter and the person reported cannot see or
    * message each other. It holds the person for everyone only once enough
@@ -203,44 +204,8 @@ export class GovernanceService {
    * A reporter may have only a few reports open at once, and may not report
    * the same person twice while one is open.
    */
-  async report(reporter: string, dto: CreateReportDto) {
-    if (dto.targetId !== undefined && dto.reportedUserId !== undefined) {
-      throw new BadRequestException({
-        code: ErrorCode.ValidationFailed,
-        message: 'Send either targetId or reportedUserId, not both.',
-      });
-    }
-    if (dto.targetId !== undefined) {
-      return this.reportMatchedPerson(reporter, dto.targetId, dto.reason);
-    }
-    if (dto.reportedUserId === undefined) {
-      throw new BadRequestException({
-        code: ErrorCode.ValidationFailed,
-        message: 'Say who you are reporting.',
-      });
-    }
-
-    const reported = await prisma.users.findUnique({
-      where: { userid: toId(dto.reportedUserId, 'reportedUserId') },
-      select: { userid: true, auth0Id: true },
-    });
-    if (!reported) {
-      throw new NotFoundException('No user with that id.');
-    }
-    if (reported.auth0Id === reporter) {
-      throw new BadRequestException({
-        code: ErrorCode.ValidationFailed,
-        message: 'You cannot report yourself.',
-      });
-    }
-    return this.storeReport(
-      reporter,
-      await resolveUserId(reporter),
-      reported.userid,
-      {
-        reason: dto.reason,
-      },
-    );
+  report(reporter: string, dto: CreateReportDto) {
+    return this.reportMatchedPerson(reporter, dto.targetId, dto.reason);
   }
 
   private async reportMatchedPerson(
@@ -281,7 +246,7 @@ export class GovernanceService {
     reporter: string,
     reporterUserId: bigint,
     reportedUserId: bigint,
-    detail: { reason: string; matchId?: string },
+    detail: { reason: string; matchId: string },
   ) {
     return prisma.$transaction(async (tx) => {
       await lockReporter(tx, reporterUserId);
@@ -350,6 +315,13 @@ export class GovernanceService {
       const detail = (r.detail ?? {}) as { reason?: string; matchId?: string };
       const target = r.target_id ? toId(r.target_id, 'id') : null;
       const holdReasons = (target !== null && state.held.get(target)) || [];
+      // Whether the administrator's hold on this person was placed for this
+      // report, so the page can offer a hold on a report the current one
+      // does not cover, such as one raised after it.
+      const coveredByHold =
+        target !== null &&
+        state.adminHeld.has(target) &&
+        (state.adminHolds.get(target)?.has(r.entry_id.toString()) ?? false);
       return {
         id: r.entry_id.toString(),
         reason: detail.reason ?? '',
@@ -367,6 +339,7 @@ export class GovernanceService {
         holdThreshold: state.threshold,
         onHold: holdReasons.length > 0,
         holdReasons,
+        coveredByHold,
         reportedAt: r.occurred_at.toISOString(),
       };
     });
@@ -379,9 +352,9 @@ export class GovernanceService {
    * report made without one proves nothing about the two ever dealing with
    * each other.
    *
-   * The hold names the reports open about the person now and counts only while
-   * one of them is. Holding someone already held for this report changes
-   * nothing. Taken under the person's lock, so it cannot interleave with a
+   * The hold names the reports raised from a match that are open about the
+   * person now, and counts only while one of them is. Holding someone already
+   * held for all of those reports changes nothing. Taken under the person's lock, so it cannot interleave with a
    * decision on one of their reports.
    */
   async hold(reportId: string, actor: string) {
@@ -410,7 +383,13 @@ export class GovernanceService {
       const about = state.reports.filter(
         (r) => r.target_id === person.toString(),
       );
-      if (!about.some((r) => isMatchReport(r.detail))) {
+      // Only reports raised through a match are named: the hold exists because
+      // of what happened between the two people in a match, and a report with
+      // no match behind it cannot keep a hold alive.
+      const matchReportIds = about
+        .filter((r) => isMatchReport(r.detail))
+        .map((r) => r.entry_id.toString());
+      if (matchReportIds.length === 0) {
         throw new ConflictException({
           code: 'HOLD_NEEDS_MATCH_REPORT',
           message:
@@ -418,18 +397,17 @@ export class GovernanceService {
         });
       }
 
+      const covered = state.adminHeld.has(person)
+        ? state.adminHolds.get(person)
+        : undefined;
       const alreadyCovered =
-        state.adminHeld.has(person) &&
-        state.adminHolds.get(person)?.has(reportId);
+        covered !== undefined && matchReportIds.every((id) => covered.has(id));
       if (!alreadyCovered) {
         await recordAudit(
           actor,
           'user.held',
           { type: 'user', id: person.toString() },
-          {
-            reportId,
-            reportIds: about.map((r) => r.entry_id.toString()),
-          },
+          { reportId, reportIds: matchReportIds },
           tx,
         );
       }
@@ -462,7 +440,7 @@ export class GovernanceService {
       const before = await loadModerationState(tx);
 
       if (outcome === 'deactivated' && report.target_id) {
-        await this.admin.setStatus(report.target_id, 'deactivated', actor);
+        await this.admin.setStatus(report.target_id, 'deactivated', actor, tx);
       }
       await recordAudit(
         actor,

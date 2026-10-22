@@ -2,6 +2,10 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import * as prismaModule from '../prisma';
 import { prisma } from '../prisma';
 import {
+  stubOpenReportsAlways,
+  type ReportFixture,
+} from '../testing/open-reports';
+import {
   ImagesService,
   MAX_IMAGE_SIZE_BYTES,
   profileImageUrl,
@@ -666,34 +670,30 @@ describe('ImagesService.getVisibleTo after reports', () => {
     actor: null,
   });
 
-  /** The audit trail, answering whichever read the code makes. */
+  /**
+   * The audit trail, answering whichever read the code makes: the open-reports
+   * query, which leaves out the decided reports, and the administrator's holds.
+   */
   function auditTrail(
-    reports: object[],
+    reports: ReportFixture[],
     options: { resolved?: string[]; held?: bigint[] } = {},
   ) {
-    jest.spyOn(prisma.audit_entries, 'findMany').mockImplementation(((args: {
-      where: { action: string | { in: string[] } };
-    }) => {
-      const action = args.where.action;
-      if (action === 'user.reported') return Promise.resolve(reports);
-      if (action === 'report.resolved') {
-        return Promise.resolve(
-          (options.resolved ?? []).map((target_id) => ({ target_id })),
-        );
-      }
+    const resolved = new Set(options.resolved ?? []);
+    stubOpenReportsAlways(
+      reports.filter((r) => !resolved.has(r.entry_id.toString())),
+    );
+    jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValue(
       // A hold names the reports open about that person when it was placed.
-      return Promise.resolve(
-        (options.held ?? []).map((person) => ({
-          action: 'user.held',
-          target_id: person.toString(),
-          detail: {
-            reportIds: (reports as { entry_id: bigint; target_id: string }[])
-              .filter((r) => r.target_id === person.toString())
-              .map((r) => r.entry_id.toString()),
-          },
-        })),
-      );
-    }) as never);
+      (options.held ?? []).map((person) => ({
+        action: 'user.held',
+        target_id: person.toString(),
+        detail: {
+          reportIds: reports
+            .filter((r) => r.target_id === person.toString())
+            .map((r) => r.entry_id.toString()),
+        },
+      })) as never,
+    );
     serveStoredImages(false);
   }
 

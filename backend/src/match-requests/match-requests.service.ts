@@ -132,18 +132,47 @@ export class MatchRequestsService {
     statuses: string[] = ['ACCEPTED'],
   ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
     const caller = await this.resolveSide(auth0Id);
-    const rows = await prisma.match_requests.findMany({
-      where: {
-        status: { in: statuses },
-        ...(caller.side === 'coordinator'
-          ? { coordinator_id: caller.ownId }
-          : { guest_id: caller.ownId }),
-      },
-    });
+    const rows = await this.matchRowsOf(caller, statuses);
 
     return {
       side: caller.side,
       matches: rows.map((row) => ({
+        matchId: row.match_id,
+        targetId: this.toMatchRequest(caller, row).targetId,
+      })),
+    };
+  }
+
+  /**
+   * The caller's accepted matches whose conversation is not paused, for lists
+   * that must not show a thread the caller cannot open. Uses the same rule as
+   * `findAcceptedMatch`. However many matches there are, it reads the open
+   * reports once and, only when there are any, looks the other profiles up in
+   * one query.
+   */
+  async findUnpausedMatches(
+    auth0Id: string,
+  ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
+    const caller = await this.resolveSide(auth0Id);
+    const rows = await this.matchRowsOf(caller, ['ACCEPTED']);
+    const state = rows.length > 0 ? await loadModerationState() : null;
+
+    let open = rows;
+    if (state && state.reports.length > 0) {
+      const accounts = await this.accountsOfCounterparts(caller, rows);
+      open = rows.filter(
+        (row) =>
+          !isConversationPaused(
+            state,
+            caller.userId,
+            accounts.get(this.counterpartProfileId(caller, row)) ?? null,
+          ),
+      );
+    }
+
+    return {
+      side: caller.side,
+      matches: open.map((row) => ({
         matchId: row.match_id,
         targetId: this.toMatchRequest(caller, row).targetId,
       })),
@@ -171,11 +200,13 @@ export class MatchRequestsService {
   }
 
   /**
-   * The person on the other side of the caller's accepted match, for acting on
-   * them rather than messaging them, such as reporting. A pause does not refuse
-   * this: someone already reported can be reported by others, and a person on
-   * hold can still report. The counterpart's user id is null for a profile that
-   * was never linked to an account.
+   * The person on the other side of the caller's match, for acting on them
+   * rather than messaging them, such as reporting. The match may be accepted
+   * or since ended (UNMATCHED): ending a match must not stop someone reporting
+   * what happened in it. A pause does not refuse this either: someone already
+   * reported can be reported by others, and a person on hold can still report.
+   * The counterpart's user id is null for a profile that was never linked to an
+   * account.
    */
   async findAcceptedCounterpart(
     auth0Id: string,
@@ -190,6 +221,7 @@ export class MatchRequestsService {
       caller,
       targetId,
       'You can only report someone you have matched with.',
+      ['ACCEPTED', 'UNMATCHED'],
     );
 
     return {
@@ -243,11 +275,15 @@ export class MatchRequestsService {
     await this.notifyUnmatch(pair, caller.side);
   }
 
-  /** The caller's row with one profile, refused with `message` unless ACCEPTED. */
+  /**
+   * The caller's row with one profile, refused with `message` unless its
+   * status is one of `statuses` (ACCEPTED by default).
+   */
   private async requireAcceptedRow(
     caller: CallerSide,
     targetId: string,
     message: string,
+    statuses: string[] = ['ACCEPTED'],
   ): Promise<MatchRequestRow> {
     const row = await prisma.match_requests.findUnique({
       where: {
@@ -257,13 +293,66 @@ export class MatchRequestsService {
         ),
       },
     });
-    if (row?.status !== 'ACCEPTED') {
+    if (!row?.status || !statuses.includes(row.status)) {
       throw new ForbiddenException({
         code: ErrorCode.AuthzInsufficientRole,
         message,
       });
     }
     return row;
+  }
+
+  /** Every row the caller is in whose status is one of `statuses`. */
+  private matchRowsOf(
+    caller: CallerSide,
+    statuses: string[],
+  ): Promise<MatchRequestRow[]> {
+    return prisma.match_requests.findMany({
+      where: {
+        status: { in: statuses },
+        ...(caller.side === 'coordinator'
+          ? { coordinator_id: caller.ownId }
+          : { guest_id: caller.ownId }),
+      },
+    });
+  }
+
+  /** The profile id of the other side of a row. */
+  private counterpartProfileId(
+    caller: CallerSide,
+    row: MatchRequestRow,
+  ): bigint {
+    return caller.side === 'coordinator' ? row.guest_id : row.coordinator_id;
+  }
+
+  /**
+   * users.userid for each other side's profile, in one query. A profile that
+   * was never linked to an account is left out.
+   */
+  private async accountsOfCounterparts(
+    caller: CallerSide,
+    rows: MatchRequestRow[],
+  ): Promise<Map<bigint, bigint>> {
+    const ids = rows.map((row) => this.counterpartProfileId(caller, row));
+    const accounts = new Map<bigint, bigint>();
+    if (caller.side === 'coordinator') {
+      const guests = await prisma.guests.findMany({
+        where: { guest_id: { in: ids } },
+        select: { guest_id: true, user_id: true },
+      });
+      for (const g of guests) {
+        if (g.user_id !== null) accounts.set(g.guest_id, g.user_id);
+      }
+    } else {
+      const coordinators = await prisma.coordinators.findMany({
+        where: { coordinator_id: { in: ids } },
+        select: { coordinator_id: true, user_id: true },
+      });
+      for (const c of coordinators) {
+        if (c.user_id !== null) accounts.set(c.coordinator_id, c.user_id);
+      }
+    }
+    return accounts;
   }
 
   /** users.userid of the other side of a match, if their profile has one. */
@@ -286,8 +375,8 @@ export class MatchRequestsService {
 
   /**
    * Refuses when messaging between the two is paused: an open report between
-   * them, or either of them on hold. The message does not say which, or who
-   * reported whom, so it tells neither person more than the other could see.
+   * them, or either of them on hold. The message does not say why, or that a
+   * report exists at all, so the person reported is not told they were.
    */
   private async assertConversationNotPaused(
     caller: CallerSide,
@@ -303,7 +392,7 @@ export class MatchRequestsService {
       throw new ForbiddenException({
         code: 'CONVERSATION_PAUSED',
         message:
-          'Messaging with this person is paused while an administrator reviews a report. It resumes if the report is dismissed.',
+          'Messaging with this person is paused for now. Please try again later.',
       });
     }
   }
