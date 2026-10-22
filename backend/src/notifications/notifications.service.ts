@@ -6,7 +6,7 @@ import {
 import { AppRole } from '../auth/roles';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
-import { notePushed, pushToUsers, repeatPushDue } from './push';
+import { forgetPush, notePushed, pushToUsers, repeatPushDue } from './push';
 
 /** A notice before it is addressed to anyone. */
 export type AdminNotice = Omit<CreateNotificationDto, 'recipientId'>;
@@ -169,7 +169,11 @@ export class NotificationsService {
       return;
     }
     notePushed(userId, dto.href);
-    void pushToUsers([userId], dto);
+    void pushToUsers([userId], dto).then((sent) => {
+      // Nothing reached a device, as for someone with none or whose account is
+      // deactivated, so there was no buzz for the next message to wait out.
+      if (sent === 0) forgetPush(userId, dto.href);
+    });
   }
 
   /** How many of the caller's notifications are still unread. */

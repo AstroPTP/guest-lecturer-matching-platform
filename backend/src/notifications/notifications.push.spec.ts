@@ -330,6 +330,33 @@ describe('NotificationsService and pushed notifications', () => {
       expect(send).toHaveBeenCalledTimes(2);
     });
 
+    it('does not hold the next message back for a push that reached no device', async () => {
+      database();
+      lookup.mockResolvedValueOnce([]);
+
+      await service.createOrRefreshUnread(message());
+      await settle();
+      expect(send).not.toHaveBeenCalled();
+
+      await service.createOrRefreshUnread(message());
+      await settle();
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('holds back messages that arrive while the first push is still on its way', async () => {
+      database();
+      let finish: (value: unknown) => void = () => undefined;
+      send.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+
+      await service.createOrRefreshUnread(message());
+      await service.createOrRefreshUnread(message());
+      await service.createOrRefreshUnread(message());
+      finish({ statusCode: 201 });
+      await settle();
+
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
     it('pushes a message that arrives after the person read the last notice', async () => {
       const db = database();
 

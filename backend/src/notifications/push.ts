@@ -603,7 +603,19 @@ export function repeatPushDue(
   return !lastPushed.has(`${userId}:${href}`);
 }
 
-/** Records that the conversation's notice was pushed to the person just now. */
+/**
+ * Takes back a record made by notePushed, for a push that reached no device, so
+ * that the next message in the conversation is not held back for nothing.
+ */
+export function forgetPush(userId: bigint, href: string): void {
+  lastPushed.delete(`${userId}:${href}`);
+}
+
+/**
+ * Records that the conversation's notice was pushed to the person just now.
+ * Made when the push is started, not when it ends, so that messages arriving
+ * while it is still on its way are held back too.
+ */
 export function notePushed(
   userId: bigint,
   href: string,
