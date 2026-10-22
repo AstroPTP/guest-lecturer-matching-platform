@@ -93,7 +93,7 @@ describe('UsersService behaviour', () => {
       roles: [AppRole.UnitCoordinator, AppRole.GuestSpeaker],
     };
 
-    it('keys the row on the caller subject and only refreshes the last login for an existing user', async () => {
+    it('keys the row on the caller subject and changes nothing for an existing user', async () => {
       const upsert = jest
         .spyOn(prisma.users, 'upsert')
         .mockResolvedValue({ userid: 3n } as never);
@@ -102,8 +102,9 @@ describe('UsersService behaviour', () => {
 
       const args = upsert.mock.calls[0][0];
       expect(args.where).toEqual({ auth0Id: 'auth0|ann' });
-      // An existing user's email and role are never overwritten from a token.
-      expect(Object.keys(args.update)).toEqual(['lastloginat']);
+      // An existing user's email and role are never overwritten from a token,
+      // and the guard, not this, records the last login.
+      expect(args.update).toEqual({});
     });
 
     it('creates a first-time user from the token claims, using the first role', async () => {
@@ -113,15 +114,15 @@ describe('UsersService behaviour', () => {
 
       await service.ensureForUser(caller);
 
-      const { createdat, lastloginat, ...created } =
-        upsert.mock.calls[0][0].create;
+      const { createdat, ...created } = upsert.mock.calls[0][0].create;
+      // No lastloginat: the guard records the first sign-in, which it can only
+      // do while the stored time is missing.
       expect(created).toEqual({
         auth0Id: 'auth0|ann',
         email: 'ann@example.com',
         role: AppRole.UnitCoordinator,
       });
       expect(createdat).toBeInstanceOf(Date);
-      expect(lastloginat).toBeInstanceOf(Date);
     });
 
     it('still creates a row for a caller whose token carries no roles', async () => {

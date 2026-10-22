@@ -39,7 +39,7 @@ export function currentCorrelationId(): string | undefined {
  * The inbound id if it is safe to reuse, otherwise undefined.
  *
  * Reused so one identifier follows a request across the frontend and backend
- * logs (checklist REP-06). Length-capped and limited to word characters and
+ * logs. Length-capped and limited to word characters and
  * hyphens because the value is echoed in a response header, written to logs
  * and stored in the audit trail: an unbounded client-supplied string is a
  * log-injection and storage problem, and a newline in it would forge a line.

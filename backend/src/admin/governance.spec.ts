@@ -940,6 +940,24 @@ describe('GovernanceService', () => {
         expect(create).not.toHaveBeenCalled();
       });
 
+      it.each(['07', '0x7', ' 7'])(
+        'records the report by its entry id when the request names it %j',
+        async (written) => {
+          reportRow(7n);
+          const create = audit([[openRow(7n, 2n)]]);
+
+          await expect(service.hold(written, 'auth0|admin')).resolves.toEqual({
+            id: '7',
+            held: true,
+          });
+
+          // Later reads match on the id as text, so '07' would never match.
+          expect(create.mock.calls[0][0]).toMatchObject({
+            data: { detail: { reportId: '7', reportIds: ['7'] } },
+          });
+        },
+      );
+
       it('refuses a report that does not exist', async () => {
         jest.spyOn(prisma.audit_entries, 'findFirst').mockResolvedValue(null);
 
@@ -1083,6 +1101,31 @@ describe('GovernanceService', () => {
           },
         });
       });
+
+      it.each(['07', '0x7', ' 7'])(
+        'records the decision against the entry id when the request names the report %j',
+        async (written) => {
+          reportRow(7n);
+          const create = audit([[openRow(7n, 2n)], [], [held('7')]], [[]]);
+
+          await expect(
+            service.resolveReport(written, 'dismissed', 'auth0|admin'),
+          ).resolves.toEqual({ id: '7', outcome: 'dismissed' });
+
+          // The open-reports query matches decisions on entry_id::text, so a
+          // decision stored against '07' would leave the report open for ever.
+          expect(create.mock.calls[0][0]).toMatchObject({
+            data: {
+              action: 'report.resolved',
+              target_type: 'report',
+              target_id: '7',
+            },
+          });
+          expect(create.mock.calls[1][0]).toMatchObject({
+            data: { action: 'user.released', detail: { reportId: '7' } },
+          });
+        },
+      );
 
       it('keeps the hold while another open report is still there', async () => {
         const create = audit(
