@@ -1,4 +1,3 @@
-import { releaseDeviceBeforeSignOut } from "@/lib/push/signOutCleanup";
 import type { ApiErrorResponse } from "@/types/api/apiTypes";
 
 /**
@@ -53,9 +52,6 @@ export async function backendFetch<TResponse>(
   // The session is gone or expired. Clear the UI rather than leaving it
   // showing a signed-in state whose every request fails.
   if (response.status === 401 && typeof window !== "undefined") {
-    // Signed out by the server, so this device stops receiving the person's
-    // notifications as it would on any other way out.
-    await releaseDeviceBeforeSignOut();
     window.location.assign(
       `/login?redirectTo=${encodeURIComponent(window.location.pathname)}`,
     );
