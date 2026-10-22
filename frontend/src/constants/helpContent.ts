@@ -119,6 +119,16 @@ const guestLecturer: HelpContent = {
       question: "I dismissed a coordinator by mistake.",
       answer: "In Discovery, open Dismissed Profiles. You can restore them or express interest from there.",
     },
+    {
+      question: "How do I accept a session?",
+      answer:
+        "When a coordinator invites you, a session card appears in your chat with them, and the invitation also shows under Event. Check the date, time and place, then choose Accept or Decline.",
+    },
+    {
+      question: "How do I add it to my calendar?",
+      answer:
+        "Once you have accepted, choose Add to calendar on the session card. You can download a file that opens in Outlook, Apple Calendar or Google Calendar, or open the session straight in Google Calendar. Times are Perth time.",
+    },
     ...sharedFaqs,
   ],
 };
@@ -186,6 +196,16 @@ const unitCoordinator: HelpContent = {
     {
       question: "The end time is rejected.",
       answer: "The end time must be later than the start time. Adjust either and send the invitation again.",
+    },
+    {
+      question: "How do I schedule a session from the chat?",
+      answer:
+        "Open Message and choose a matched lecturer, then choose Schedule a session. The form is filled in from your profile and theirs. Add the date and start time, change anything you like, and choose Send Invitation. The session then appears as a card in the chat.",
+    },
+    {
+      question: "How do I add a session to my calendar?",
+      answer:
+        "When the lecturer accepts, the card shows Confirmed. Choose Add to calendar on the card in the chat, or under Event. You can download a file that opens in Outlook, Apple Calendar or Google Calendar, or open the session straight in Google Calendar. Times are Perth time.",
     },
     ...sharedFaqs,
   ],
