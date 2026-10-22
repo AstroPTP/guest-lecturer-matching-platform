@@ -148,6 +148,31 @@
   --c-ffb4ab: #ffb4ab;
   --c-ffffff: #ffffff;
   --c-6b7280: #656c77;
+
+  /* System analytics statuses. Each is a text colour, a tinted background and
+     an edge colour; the text/background pairs all clear 4.5:1 (checked), and
+     none of them is the only signal, because every status also carries a word
+     and a shape. The fill colours are for meter bars and clear 3:1 against
+     the track and the card. */
+  --sys-ok-fg: #0f5c2a;
+  --sys-ok-bg: #e3f4e8;
+  --sys-ok-line: #5aa571;
+  --sys-warn-fg: #7a4200;
+  --sys-warn-bg: #fff1d6;
+  --sys-warn-line: #c98a1b;
+  --sys-bad-fg: #a11212;
+  --sys-bad-bg: #fde8e8;
+  --sys-bad-line: #d05353;
+  --sys-unknown-fg: #44494f;
+  --sys-unknown-bg: #eceef0;
+  --sys-unknown-line: #8b9199;
+  --sys-info-fg: #174a9e;
+  --sys-info-bg: #e6eefc;
+  --sys-info-line: #5b86d6;
+  --sys-fill-ok: #2e7d4a;
+  --sys-fill-warn: #b36b00;
+  --sys-fill-bad: #c62828;
+  --sys-track: #dfe2e5;
 }
 
 * { box-sizing: border-box; }
@@ -1865,6 +1890,268 @@ textarea:focus-visible,
   .help-card { padding: 20px; }
 }
 
+/* System analytics ---------------------------------------------------------
+   Statuses use the --sys-* tokens above. Colour is never the only signal: each
+   status also has a word and a shape (see StatusBadge), and each meter prints
+   its figures beside the bar. */
+.sys-page { min-width: 0; }
+.sys-header {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  justify-content: space-between;
+}
+.sys-header-main { min-width: 0; }
+.sys-header-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+}
+.sys-overall {
+  align-items: center;
+  color: var(--c-55555b);
+  display: flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+}
+.sys-updated { color: var(--c-303030); font-size: 14px; font-weight: 700; }
+.sys-updated small {
+  color: var(--c-85858c);
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+.primary-button.sys-refresh {
+  gap: 8px;
+  margin: 0;
+  padding: 10px 16px;
+}
+.sys-refresh[aria-disabled="true"] { cursor: progress; opacity: .65; }
+
+/* Status badge: word + shape + colour. */
+.sys-badge {
+  align-items: center;
+  border: 1px solid;
+  border-radius: 999px;
+  display: inline-flex;
+  flex: none;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 6px;
+  line-height: 1;
+  padding: 5px 10px 5px 8px;
+  white-space: nowrap;
+}
+.sys-badge svg { flex: none; height: 14px; width: 14px; }
+.sys-badge--healthy { background: var(--sys-ok-bg); border-color: var(--sys-ok-line); color: var(--sys-ok-fg); }
+.sys-badge--warning { background: var(--sys-warn-bg); border-color: var(--sys-warn-line); color: var(--sys-warn-fg); }
+.sys-badge--unavailable { background: var(--sys-bad-bg); border-color: var(--sys-bad-line); color: var(--sys-bad-fg); }
+.sys-badge--unknown { background: var(--sys-unknown-bg); border-color: var(--sys-unknown-line); color: var(--sys-unknown-fg); }
+
+.sys-section { margin-top: 32px; }
+.sys-section .overview-card-heading p { color: var(--c-85858c); font-size: 13px; margin: 4px 0 0; }
+.sys-section .overview-card-heading h2 { font-size: 18px; }
+.sys-stack { display: grid; gap: 17px; margin-top: 16px; }
+
+/* Alerts strip */
+.sys-alerts {
+  align-items: flex-start;
+  background: var(--c-ffffff);
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-top: 24px;
+  padding: 14px 18px;
+}
+.sys-alerts h2 {
+  color: var(--c-85858c);
+  flex: none;
+  font-size: 12px;
+  letter-spacing: .1em;
+  margin: 6px 0 0;
+  text-transform: uppercase;
+}
+.sys-alerts-body { display: grid; flex: 1 1 280px; gap: 10px; min-width: 0; }
+.sys-alert-list { display: grid; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.sys-alert {
+  align-items: start;
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: 7.5rem 5rem minmax(0, 1fr);
+}
+.sys-alert-source {
+  color: var(--c-85858c);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding-top: 5px;
+  text-transform: uppercase;
+}
+.sys-alert-message { color: var(--c-303030); font-size: 14px; line-height: 1.5; min-width: 0; overflow-wrap: anywhere; padding-top: 2px; }
+.sys-alerts-clear,
+.sys-alerts-incomplete {
+  align-items: center;
+  color: var(--c-303030);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 14px;
+  gap: 10px;
+  margin: 0;
+}
+.sys-alerts-clear > span:last-child,
+.sys-alerts-incomplete > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Health cards */
+.sys-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+}
+.sys-card {
+  background: var(--c-ffffff);
+  border-left: 4px solid var(--sys-unknown-line);
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 16px 16px 14px;
+}
+.sys-card--healthy { border-left-color: var(--sys-ok-line); }
+.sys-card--warning { border-left-color: var(--sys-warn-line); }
+.sys-card--unavailable { border-left-color: var(--sys-bad-line); }
+.sys-card-head { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 8px 10px; justify-content: space-between; }
+.sys-card h3 { color: var(--c-303030); font-size: 15px; line-height: 1.3; margin: 0; }
+.sys-card-value { color: var(--c-303030); font-size: 24px; font-weight: 750; line-height: 1.15; margin: 0; overflow-wrap: anywhere; }
+.sys-card-value.is-missing { color: var(--c-85858c); font-size: 15px; font-weight: 600; }
+.sys-card-threshold,
+.sys-card-time { color: var(--c-85858c); font-size: 12px; line-height: 1.4; margin: 0; }
+.sys-card-message { color: var(--c-55555b); font-size: 13px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.sys-card-time { margin-top: auto; }
+
+/* Panels */
+.sys-panel {
+  background: var(--c-ffffff);
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  min-width: 0;
+  padding: 20px;
+}
+.sys-panel h3 { color: var(--c-303030); font-size: 15px; margin: 0 0 14px; }
+.sys-storage {
+  display: grid;
+  gap: 20px 28px;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+}
+.sys-stat { margin: 0; }
+.sys-meter { display: grid; gap: 6px; min-width: 0; }
+.sys-meter-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: 2px 12px; justify-content: space-between; }
+.sys-meter-head > span { color: var(--c-55555b); font-size: 13px; font-weight: 700; }
+.sys-meter-head > strong { color: var(--c-303030); font-size: 14px; overflow-wrap: anywhere; }
+.sys-meter-bar {
+  background: var(--sys-track);
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--c-85858c);
+  height: 12px;
+  overflow: hidden;
+}
+.sys-meter-fill { background: var(--c-55555b); border-radius: inherit; display: block; height: 100%; }
+.sys-meter-fill--ok { background: var(--sys-fill-ok); }
+.sys-meter-fill--warn { background: var(--sys-fill-warn); }
+.sys-meter-fill--bad { background: var(--sys-fill-bad); }
+.sys-meter-detail { color: var(--c-85858c); font-size: 12px; line-height: 1.4; margin: 0; overflow-wrap: anywhere; }
+
+/* Figures: label and value pairs in a <dl>. */
+.sys-figures {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(min(170px, 100%), 1fr));
+  margin: 0;
+}
+.sys-panel > .sys-figures { margin-top: 0; }
+.sys-stack > .sys-figures { margin-top: 0; }
+.sys-figure { background: var(--c-f7f7f7); border-radius: 6px; margin: 0; min-width: 0; padding: 14px 16px; }
+.sys-stat .sys-figure { background: transparent; padding: 0; }
+.sys-figure dt { color: var(--c-55555b); font-size: 13px; font-weight: 700; line-height: 1.35; }
+.sys-figure dd { color: var(--c-303030); font-size: 24px; font-weight: 750; line-height: 1.15; margin: 6px 0 0; overflow-wrap: anywhere; }
+.sys-figure dd.is-missing { color: var(--c-85858c); font-size: 15px; font-weight: 600; }
+.sys-figure dd.sys-figure-note { color: var(--c-85858c); font-size: 12px; font-weight: 400; line-height: 1.4; margin-top: 4px; }
+.sys-lede { color: var(--c-55555b); font-size: 14px; line-height: 1.55; margin: 16px 0 0; }
+
+/* Tables scroll sideways inside their panel, never the page. */
+.sys-table-scroll { overflow-x: auto; }
+.sys-table { border-collapse: collapse; min-width: 280px; width: 100%; }
+.sys-table th,
+.sys-table td { font-size: 13px; padding: 10px 12px; text-align: left; vertical-align: top; }
+.sys-table thead th {
+  background: var(--c-fafafa);
+  color: var(--c-85858c);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.sys-table tbody th,
+.sys-table tbody td { border-top: 1px solid var(--c-f0f0f1); color: var(--c-303030); }
+.sys-table tbody th.sys-row-head { font-weight: 600; overflow-wrap: anywhere; }
+.sys-table .num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.sys-events { min-width: 780px; }
+.sys-nowrap { white-space: nowrap; }
+.sys-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.sys-path { min-width: 220px; overflow-wrap: anywhere; word-break: break-all; }
+.sys-table td.sys-unrecorded { color: var(--c-85858c); font-style: italic; }
+.sys-table-note { color: var(--c-85858c); font-size: 12px; margin: 10px 0 0; }
+
+/* Messages */
+.sys-note,
+.sys-error {
+  align-items: flex-start;
+  border: 1px solid;
+  border-radius: 7px;
+  display: flex;
+  font-size: 13px;
+  gap: 10px;
+  line-height: 1.5;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+}
+.sys-note svg,
+.sys-error svg { flex: none; margin-top: 2px; }
+.sys-note span,
+.sys-error span { min-width: 0; overflow-wrap: anywhere; }
+.sys-note { background: var(--sys-info-bg); border-color: var(--sys-info-line); color: var(--sys-info-fg); margin-top: 0; }
+.sys-error { background: var(--sys-bad-bg); border-color: var(--sys-bad-line); color: var(--sys-bad-fg); }
+.sys-fatal { display: grid; gap: 14px; justify-items: start; margin-top: 24px; }
+.sys-fatal .sys-error { margin: 0; }
+
+/* The security section's own alert list has no source column. */
+.sys-panel .sys-alert { grid-template-columns: 7.5rem minmax(0, 1fr); }
+@media (max-width: 700px) {
+  .sys-alert,
+  .sys-panel .sys-alert { grid-template-columns: max-content minmax(0, 1fr); }
+  .sys-alert-message { grid-column: 1 / -1; }
+  .sys-header { align-items: flex-start; flex-direction: column; }
+  .sys-header-tools { align-items: flex-start; }
+  .sys-section { margin-top: 28px; }
+}
+@media (max-width: 470px) {
+  .sys-panel { padding: 16px; }
+  .sys-alerts { padding: 14px; }
+  .sys-card-value,
+  .sys-figure dd { font-size: 22px; }
+}
+
 /* Dark theme. "System" leaves data-theme unset so the media query follows the
    device; an explicit choice sets data-theme and wins either way. */
 @media (prefers-color-scheme: dark) {
@@ -2013,6 +2300,26 @@ textarea:focus-visible,
     --c-ffb4ab: #ff6d5c;
     --c-ffffff: #131313;
     --c-6b7280: #8e9398;
+
+    --sys-ok-fg: #8ee0a9;
+    --sys-ok-bg: #12301d;
+    --sys-ok-line: #3f8a5b;
+    --sys-warn-fg: #f6c66a;
+    --sys-warn-bg: #3a2b08;
+    --sys-warn-line: #a8791a;
+    --sys-bad-fg: #ff9b95;
+    --sys-bad-bg: #3d1614;
+    --sys-bad-line: #c0524b;
+    --sys-unknown-fg: #c3c8ce;
+    --sys-unknown-bg: #2a2c2f;
+    --sys-unknown-line: #7a8088;
+    --sys-info-fg: #a8c4ff;
+    --sys-info-bg: #172640;
+    --sys-info-line: #4f78c9;
+    --sys-fill-ok: #4cc27a;
+    --sys-fill-warn: #e0a030;
+    --sys-fill-bad: #ef6b64;
+    --sys-track: #34373b;
   }
 }
 
@@ -2161,6 +2468,26 @@ textarea:focus-visible,
   --c-ffb4ab: #ff6d5c;
   --c-ffffff: #131313;
   --c-6b7280: #8e9398;
+
+  --sys-ok-fg: #8ee0a9;
+  --sys-ok-bg: #12301d;
+  --sys-ok-line: #3f8a5b;
+  --sys-warn-fg: #f6c66a;
+  --sys-warn-bg: #3a2b08;
+  --sys-warn-line: #a8791a;
+  --sys-bad-fg: #ff9b95;
+  --sys-bad-bg: #3d1614;
+  --sys-bad-line: #c0524b;
+  --sys-unknown-fg: #c3c8ce;
+  --sys-unknown-bg: #2a2c2f;
+  --sys-unknown-line: #7a8088;
+  --sys-info-fg: #a8c4ff;
+  --sys-info-bg: #172640;
+  --sys-info-line: #4f78c9;
+  --sys-fill-ok: #4cc27a;
+  --sys-fill-warn: #e0a030;
+  --sys-fill-bad: #ef6b64;
+  --sys-track: #34373b;
 }
 
 /* The sign-in panel is a dark design in both themes, so in dark mode it keeps

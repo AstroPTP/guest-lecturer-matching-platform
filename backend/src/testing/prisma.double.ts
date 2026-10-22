@@ -36,12 +36,15 @@ export const prisma = {
   match_requests: model(),
   dismissals: model(),
   messages: model(),
+  images: model(),
   events: model(),
   notifications: model(),
   audit_entries: model(),
   admin_settings: model(),
   availability: model(),
   user_expertise: model(),
+  // Tagged-template raw queries. Tests replace it with the SQL they care about.
+  $queryRaw: (..._args: unknown[]) => Promise.resolve([] as unknown[]),
 };
 
 export function resolveUserId(): Promise<bigint> {

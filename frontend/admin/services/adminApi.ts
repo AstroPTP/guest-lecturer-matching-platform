@@ -7,6 +7,8 @@ import {
   type AuditCategory,
   type AuditEntry,
   type DirectoryUser,
+  type SecuritySignals,
+  type SystemSnapshot,
   type UserRole,
 } from '@/types/admin';
 
@@ -365,4 +367,23 @@ export async function saveSettings(
     method: 'PATCH',
     body: JSON.stringify(changes),
   });
+}
+
+// ---------------------------------------------------------------------------
+// System analytics
+// ---------------------------------------------------------------------------
+
+/**
+ * Health, storage and usage, measured when the request arrives.
+ *
+ * Never cached: a status page that shows what was true a minute ago, without
+ * saying so, is worse than no status page.
+ */
+export async function getSystemSnapshot(): Promise<SystemSnapshot> {
+  return backendFetch<SystemSnapshot>('/admin/system', { cache: 'no-store' });
+}
+
+/** Failed sign-ins, refused admin requests, rate limiting and server errors. */
+export async function getSecuritySignals(): Promise<SecuritySignals> {
+  return backendFetch<SecuritySignals>('/admin/system/security', { cache: 'no-store' });
 }
