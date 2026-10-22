@@ -21,12 +21,22 @@ export interface HelpGuide {
 export interface HelpFaq {
   question: string;
   answer: string;
+  /** Shown only while that feature is switched on, so the Help never describes something that is not there. */
+  feature?: "suggestions";
+}
+
+/** A short explainer for one feature, shown as a list of plain sentences. */
+export interface HelpSection {
+  title: string;
+  lines: string[];
 }
 
 export interface HelpContent {
   intro: string;
   journey: HelpStep[];
   guides: HelpGuide[];
+  /** Shown only when the feature it describes is switched on. */
+  suggestions?: HelpSection;
   faqs: HelpFaq[];
 }
 
@@ -121,6 +131,29 @@ const guestLecturer: HelpContent = {
       answer: "Messaging opens once you are matched, which happens when you have both expressed interest.",
     },
     {
+      question: "How do coordinators find me?",
+      answer:
+        "They can browse Discovery, or ask Suggested speakers for lecturers who suit a session. Your topics, availability and profile decide whether you appear.",
+      feature: "suggestions",
+    },
+    {
+      question: "How can I be suggested more often?",
+      answer:
+        "Keep your topics and availability up to date. Add every topic you can speak on, and the days and hours you are free.",
+      feature: "suggestions",
+    },
+    {
+      question: "Will I still be suggested if I was invited recently?",
+      answer: "Yes, just a little lower, so others get a turn.",
+      feature: "suggestions",
+    },
+    {
+      question: "Who can see my details?",
+      answer:
+        "Only signed-in unit coordinators and the CCAE administrators. A suggestion shows your name, role, photo and shared topics, plus broad ranges for how recently and how often you have been matched, but never your email.",
+      feature: "suggestions",
+    },
+    {
       question: "I dismissed a coordinator by mistake.",
       answer: "In Discovery, open Dismissed Profiles. You can restore them or express interest from there.",
     },
@@ -192,11 +225,51 @@ const unitCoordinator: HelpContent = {
       ],
     },
   ],
+  suggestions: {
+    title: "Suggested speakers",
+    lines: [
+      "Suggested speakers is a ranked shortlist of guest lecturers. You can enter a date, a time and the topics you need, or leave any of them blank: with no topics it uses your own expertise, and with no date or time any time suits.",
+      "A lecturer is listed only when four things are true: they are eligible (a finished profile, consent to be matched, and not someone you dismissed or unmatched), they are available for the date and time you gave, they share at least one of your topics, and they pass the reliability check (not measured yet, so everyone passes for now).",
+      "Lecturers who pass are ranked by a score: fit counts most, then time since last session, then fewer sessions so far.",
+      "Nobody is hidden for being popular. A lecturer with many sessions simply ranks lower, and moves back up as time passes.",
+      "The line above the list shows how many lecturers passed each rule, so you can see where the list narrowed. If it is empty, try a different time, a nearby date or more topics.",
+      "To act on a suggestion, choose Express interest. Once you are matched, invite the lecturer from Event.",
+    ],
+  },
   faqs: [
     {
       question: "Why can't I invite a lecturer to an event?",
       answer:
         "Events can only be sent to matched lecturers. Express interest in Discovery; once they express interest too, they appear in the event form.",
+    },
+    {
+      question: "What is Suggested speakers?",
+      answer:
+        "A shortlist of guest lecturers who could suit one of your sessions, best match first. Give it a date, time and topics, or leave them blank to use your own expertise.",
+      feature: "suggestions",
+    },
+    {
+      question: "Why is someone near the top?",
+      answer:
+        "They match your topics best. Lecturers who have waited longer, or been invited less often, also rank a little higher so everyone gets a turn.",
+      feature: "suggestions",
+    },
+    {
+      question: "Why can't I see a speaker I know?",
+      answer:
+        "They may be unavailable at that time, not cover your topics, not have finished their profile, or be someone you dismissed or ended a match with. Try another time or fewer topics, or look for them in Discovery.",
+      feature: "suggestions",
+    },
+    {
+      question: "Do I have to use it?",
+      answer: "No. Discovery works as it always has, and Suggested speakers is just another way to find people.",
+      feature: "suggestions",
+    },
+    {
+      question: "What happens after I press Express interest?",
+      answer:
+        "Your interest is saved. If the lecturer has already shown interest in you, you are matched straight away; otherwise you are matched when they show interest back.",
+      feature: "suggestions",
     },
     {
       question: "The end time is rejected.",

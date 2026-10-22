@@ -50,6 +50,17 @@ const GUIDES: Guide[] = [
     ],
   },
   {
+    title: "Control Suggested speakers",
+    steps: [
+      "Open Settings and find the Suggested speakers card. Suggested speakers is the ranked shortlist of guest lecturers a unit coordinator gets for a session.",
+      "Use the On/Off switch to turn it off for everyone. Coordinators then see a message that an administrator turned it off. If the server sets MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever the switch says.",
+      "Pick a preset for how the list is ranked: Balanced (65/20/15, the default), Topic first (80/10/10) or Share the work (50/30/20). The three numbers are topic fit, time since last session and fewer sessions so far.",
+      "Choose Custom to set your own three weights. They must add up to 100, and topic fit must be at least 50 so it always counts most.",
+      "Set the half-life: after that many days without a session, the time-since-last-session score has risen halfway to its maximum. A shorter half-life brings lecturers back sooner.",
+      "Choose Save, or Reset to defaults to put the weights back to Balanced and the half-life back to 90 days (the On/Off switch is left as it is). The change applies straight away and is recorded in the Audit Log with the old and new values.",
+    ],
+  },
+  {
     title: "Check who changed what",
     steps: [
       "Open Audit Log to see every administrator action and user report, newest first.",
@@ -143,6 +154,20 @@ const FAQS = [
     question: "A coordinator says they cannot contact a lecturer.",
     answer:
       "The lecturer was probably contacted recently and is inside the contact limit, so the request is refused until the limit has passed. You can change or turn off the limit in Settings.",
+  },
+  {
+    question: "What do the presets do?",
+    answer:
+      "They set how the Suggested speakers shortlist is ranked. Balanced favours the best topic match with a nudge towards fairness, Topic first favours the best topic match above all, and Share the work gives lecturers who have had fewer sessions a better chance.",
+  },
+  {
+    question: "What happens when I switch Suggested speakers off?",
+    answer:
+      "Coordinators see a message that an administrator turned it off, and the shortlist stops until you switch it back on. Discovery, matches and messages carry on as normal.",
+  },
+  {
+    question: "Is every change to Suggested speakers recorded?",
+    answer: "Yes. Each change to these settings goes into the Audit Log with who made it and the old and new values.",
   },
   {
     question: "Does deactivating an account delete anything?",

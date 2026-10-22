@@ -17,6 +17,7 @@ import {
   lockReporter,
 } from './open-reports';
 import { readSettings, recordAudit } from './platform-rules';
+import { MIN_FIT_WEIGHT_PERCENT } from '../suggestions/matching-settings';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
 
@@ -97,12 +98,18 @@ export class GovernanceService {
       supportEmail: s.support_email,
       requireAdminApproval: s.require_admin_approval,
       contactLimitDays: s.contact_limit_days,
+      suggestionsEnabled: s.suggestions_enabled,
+      suggestionsFitWeight: s.suggestions_fit_weight,
+      suggestionsRotationWeight: s.suggestions_rotation_weight,
+      suggestionsExposureWeight: s.suggestions_exposure_weight,
+      suggestionsHalfLifeDays: s.suggestions_half_life_days,
       updatedAt: s.updated_at.toISOString(),
     };
   }
 
   async updateSettings(dto: UpdateSettingsDto, actor: string) {
     const before = await this.settings();
+    this.assertSuggestionWeights(dto, before);
     await prisma.admin_settings.update({
       where: { id: 1 },
       data: {
@@ -110,6 +117,11 @@ export class GovernanceService {
         support_email: dto.supportEmail,
         require_admin_approval: dto.requireAdminApproval,
         contact_limit_days: dto.contactLimitDays,
+        suggestions_enabled: dto.suggestionsEnabled,
+        suggestions_fit_weight: dto.suggestionsFitWeight,
+        suggestions_rotation_weight: dto.suggestionsRotationWeight,
+        suggestions_exposure_weight: dto.suggestionsExposureWeight,
+        suggestions_half_life_days: dto.suggestionsHalfLifeDays,
         updated_at: new Date(),
       },
     });
@@ -129,6 +141,47 @@ export class GovernanceService {
       );
     }
     return after;
+  }
+
+  /**
+   * The three Suggested speakers weights are percentages of one score, so they
+   * must add up to 100. That depends on all three, so it cannot be checked on
+   * one field in the DTO. A patch that names any of them is checked as it
+   * would be once applied, against what is stored for the ones it leaves out.
+   * The database refuses the same values with a check constraint, but that
+   * would surface as a 500 rather than a message.
+   */
+  private assertSuggestionWeights(
+    dto: UpdateSettingsDto,
+    current: Awaited<ReturnType<GovernanceService['settings']>>,
+  ) {
+    const named = [
+      dto.suggestionsFitWeight,
+      dto.suggestionsRotationWeight,
+      dto.suggestionsExposureWeight,
+    ].some((weight) => weight !== undefined);
+    if (!named) {
+      return;
+    }
+
+    const fit = dto.suggestionsFitWeight ?? current.suggestionsFitWeight;
+    const rotation =
+      dto.suggestionsRotationWeight ?? current.suggestionsRotationWeight;
+    const exposure =
+      dto.suggestionsExposureWeight ?? current.suggestionsExposureWeight;
+
+    if (fit + rotation + exposure !== 100) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: `The three weights must add up to 100 (they add up to ${fit + rotation + exposure}). Send all three together.`,
+      });
+    }
+    if (fit < MIN_FIT_WEIGHT_PERCENT) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: `Topic fit must be at least ${MIN_FIT_WEIGHT_PERCENT}, so it always counts most.`,
+      });
+    }
   }
 
   /** Newest first. `action` narrows to one kind, e.g. "user.deactivated". */

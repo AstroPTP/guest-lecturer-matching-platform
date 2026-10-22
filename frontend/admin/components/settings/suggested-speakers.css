@@ -1,0 +1,60 @@
+/* The Suggested speakers card on Settings. Colours come from the same tokens the
+   rest of the portal uses, so the card follows the light and dark themes. */
+.suggested-block { margin-top: 23px; }
+.suggested-label { color: var(--c-44444a); font-size: 10px; font-weight: 800; letter-spacing: .1em; margin: 0 0 9px; text-transform: uppercase; }
+.suggested-presets { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.suggested-preset {
+  align-items: flex-start;
+  background: var(--c-f5f5f6);
+  border: 1px solid var(--c-eeeeef);
+  border-radius: 5px;
+  color: var(--c-44444a);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 56px;
+  padding: 10px 12px;
+  text-align: left;
+}
+.suggested-preset strong { font-size: 13px; }
+.suggested-preset span { color: var(--c-85858b); font-size: 12px; }
+.suggested-preset.selected { background: var(--c-303030); border-color: var(--c-303030); color: var(--c-ffffff); }
+.suggested-preset.selected span { color: inherit; opacity: .85; }
+.suggested-preset:focus-visible,
+.suggested-select:focus-visible,
+.suggested-actions button:focus-visible { outline: 2px solid var(--c-303030); outline-offset: 2px; }
+.suggested-hint { color: var(--c-85858b); font-size: 12px; line-height: 1.5; margin: 9px 0 0; }
+.suggested-total { color: var(--c-44444a); font-size: 12px; font-weight: 700; margin: 14px 0 0; }
+.suggested-total.off { color: var(--sys-bad-fg); }
+.suggested-select {
+  background: var(--c-f1f1f2);
+  border: 1px solid var(--c-69696e);
+  border-radius: 0;
+  color: var(--c-303035);
+  font-size: 13px;
+  min-height: 34px;
+  padding: 8px 11px;
+  width: 100%;
+}
+.suggested-card .settings-field input:disabled { cursor: not-allowed; opacity: .65; }
+.suggested-problems {
+  background: var(--sys-bad-bg);
+  border: 1px solid var(--sys-bad-line);
+  border-radius: 5px;
+  color: var(--sys-bad-fg);
+  font-size: 12px;
+  line-height: 1.5;
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 10px 14px;
+}
+.suggested-actions { align-items: center; border-top: 1px solid var(--c-ececee); display: flex; gap: 10px; justify-content: flex-end; margin-top: 23px; padding-top: 17px; }
+.suggested-actions button { background: transparent; border: 0; color: var(--c-65656b); font-size: 12px; font-weight: 750; padding: 11px 18px; text-transform: uppercase; }
+.suggested-actions button.save-settings { background: var(--c-303030); border-radius: 4px; color: var(--c-ffffff); min-width: 110px; }
+.suggested-actions button:disabled { cursor: not-allowed; opacity: .5; }
+@media (max-width: 900px) {
+  .suggested-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .suggested-preset { transition: none; }
+}

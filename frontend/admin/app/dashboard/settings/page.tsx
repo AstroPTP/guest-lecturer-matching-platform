@@ -4,11 +4,14 @@ import Image, { type StaticImageData } from "next/image";
 import { useEffect, useState, type FormEvent } from "react";
 import groupIcon from "@/assets/group.png";
 import ruleIcon from "@/assets/rule.png";
+import SuggestedSpeakersCard from "@/components/settings/SuggestedSpeakersCard";
+import { validateSuggestedSpeakers } from "@/components/settings/suggestedSpeakers";
 import { getSettings, saveSettings, type PlatformSettings } from "@/services/adminApi";
 
 const settingsNav: Array<{ label: string; href: string; icon: StaticImageData }> = [
   { label: "General", href: "#general", icon: ruleIcon },
   { label: "Matching rules", href: "#rules", icon: groupIcon },
+  { label: "Suggested speakers", href: "#suggestions", icon: groupIcon },
 ];
 
 type Editable = Omit<PlatformSettings, "updatedAt">;
@@ -46,6 +49,13 @@ export default function SettingsPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!draft) return;
+    // The API and the database refuse the same values; this saves the trip.
+    const problems = validateSuggestedSpeakers(draft);
+    if (problems.length > 0) {
+      setNotice("");
+      setErrorMessage(problems[0]);
+      return;
+    }
     setIsSaving(true);
     setNotice("");
     setErrorMessage("");
@@ -55,6 +65,11 @@ export default function SettingsPage() {
         supportEmail: draft.supportEmail,
         requireAdminApproval: draft.requireAdminApproval,
         contactLimitDays: draft.contactLimitDays,
+        suggestionsEnabled: draft.suggestionsEnabled,
+        suggestionsFitWeight: draft.suggestionsFitWeight,
+        suggestionsRotationWeight: draft.suggestionsRotationWeight,
+        suggestionsExposureWeight: draft.suggestionsExposureWeight,
+        suggestionsHalfLifeDays: draft.suggestionsHalfLifeDays,
       });
       setSaved(next);
       setDraft(next);
@@ -159,6 +174,13 @@ export default function SettingsPage() {
               </div>
             </div>
           </section>
+
+          <SuggestedSpeakersCard
+            isSaving={isSaving}
+            storedHalfLifeDays={saved.suggestionsHalfLifeDays}
+            onChange={(changes) => setDraft((current) => (current ? { ...current, ...changes } : current))}
+            value={draft}
+          />
 
           <footer className="settings-actions">
             {notice && <span role="status">{notice}</span>}

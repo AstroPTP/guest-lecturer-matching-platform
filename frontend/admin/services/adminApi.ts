@@ -411,6 +411,12 @@ export interface PlatformSettings {
   supportEmail: string;
   requireAdminApproval: boolean;
   contactLimitDays: number;
+  /** Suggested speakers: on or off, the three ranking weights (whole percentages adding up to 100) and the half-life in days. */
+  suggestionsEnabled: boolean;
+  suggestionsFitWeight: number;
+  suggestionsRotationWeight: number;
+  suggestionsExposureWeight: number;
+  suggestionsHalfLifeDays: number;
   updatedAt: string;
 }
 
