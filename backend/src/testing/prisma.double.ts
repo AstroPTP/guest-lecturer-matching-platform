@@ -23,10 +23,32 @@ function model(): Record<string, AnyFn> {
     delete: () => Promise.resolve({}),
     createMany: () => Promise.resolve({ count: 0 }),
     deleteMany: () => Promise.resolve({ count: 0 }),
+    count: () => Promise.resolve(0),
   };
 }
 
+/**
+ * Runs an interactive transaction. The callback gets a transaction client of
+ * its own, separate from the root one, as it does in Prisma. A statement the
+ * code under test mistakenly runs on the root client instead of inside the
+ * transaction then shows up on the wrong object rather than passing quietly.
+ * A test that cares passes its own through `mockImplementation`.
+ */
+function transaction(fn: (tx: unknown) => Promise<unknown>): Promise<unknown> {
+  return fn({
+    $executeRaw: () => Promise.resolve(0),
+    $queryRaw: () => Promise.resolve([]),
+  });
+}
+
 export const prisma = {
+  // Raw SQL and transactions. The defaults do nothing and report nothing, so a
+  // test that cares spies on them and supplies what the statement would return.
+  // $queryRaw is called as a tagged template, so it takes any arguments.
+  $executeRaw: () => Promise.resolve(0),
+  $queryRaw: (..._args: unknown[]) => Promise.resolve([] as unknown[]),
+  $transaction: transaction,
+  $disconnect: () => Promise.resolve(),
   users: model(),
   guests: model(),
   coordinators: model(),
@@ -35,8 +57,11 @@ export const prisma = {
   match_requests: model(),
   dismissals: model(),
   messages: model(),
+  images: model(),
   events: model(),
   notifications: model(),
+  audit_entries: model(),
+  admin_settings: model(),
   availability: model(),
   user_expertise: model(),
 };

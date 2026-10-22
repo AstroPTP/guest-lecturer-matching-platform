@@ -4,6 +4,7 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
+import { visibleGuestsWhere } from '../admin/platform-rules';
 import { profileImageUrl } from '../images/images.service';
 
 type GuestRow = NonNullable<
@@ -179,9 +180,13 @@ export class GuestSpeakersService {
 
   /**
    * Every guest speaker, from the database. What the discovery page lists.
+   *
+   * Deactivated accounts are left out, and so are unapproved profiles while
+   * an administrator requires approval.
    */
   async findAll() {
     const guests = await prisma.guests.findMany({
+      where: await visibleGuestsWhere(),
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>

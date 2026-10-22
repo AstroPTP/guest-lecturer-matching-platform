@@ -1,18 +1,76 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
 import searchIcon from "@/assets/search.png";
-import {auditActorRoles,auditCategories,  auditDateRange, auditEntries, auditEntryTotal, auditMetrics} from "@/data/audit_log";
-import type { AuditActorRole, AuditCategory } from "@/types/admin";
+import { getAuditEntries } from "@/services/adminApi";
+import type { AuditActorRole, AuditCategory, AuditEntry } from "@/types/admin";
+
+const auditCategories: AuditCategory[] = [
+  "Discovery",
+  "Match",
+  "Event",
+  "Invitation",
+  "Account Management",
+];
+
+const auditActorRoles: AuditActorRole[] = [
+  "Administrator",
+  "System",
+  "Unit Coordinator",
+  "Guest Lecturer",
+];
+
+const ENTRIES_PER_PAGE = 20;
+
+/**
+ * A date as a datetime-local value. Those inputs read their value as local
+ * time, so it is built from local time; toISOString() alone is UTC and would
+ * cut the range short by the UTC offset.
+ */
+function toLocalInput(when: Date): string {
+  return new Date(when.getTime() - when.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+/** A datetime-local value that far back, for the default range. */
+function monthsAgo(count: number): string {
+  const when = new Date();
+  when.setMonth(when.getMonth() - count);
+  return toLocalInput(when);
+}
 
 export default function AuditLogPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<AuditCategory | "All">("All");
   const [actorRole, setActorRole] = useState<AuditActorRole | "All">("All");
-  const [startDateTime, setStartDateTime] = useState<string>(auditDateRange.start);
-  const [endDateTime, setEndDateTime] = useState<string>(auditDateRange.end);
+  const [startDateTime, setStartDateTime] = useState<string>(monthsAgo(6));
+  const [endDateTime, setEndDateTime] = useState<string>(toLocalInput(new Date()));
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const rows = await getAuditEntries(500);
+        if (active) setAuditEntries(rows);
+      } catch (error) {
+        if (active) {
+          setErrorMessage(
+            error instanceof Error ? error.message : "The audit log could not be loaded.",
+          );
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const filteredEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -35,7 +93,32 @@ export default function AuditLogPage() {
         (actorRole === "All" || entry.actorRole === actorRole)
       );
     });
-  }, [actorRole, category, endDateTime, query, startDateTime]);
+  }, [actorRole, auditEntries, category, endDateTime, query, startDateTime]);
+
+  // Pagination that actually pages. The four footer buttons had no handlers at
+  // all, and the count claimed 2,841 entries over a fixed list of fourteen.
+  const totalEntries = filteredEntries.length;
+  const totalPages = Math.max(1, Math.ceil(totalEntries / ENTRIES_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const firstShown = totalEntries === 0 ? 0 : (safePage - 1) * ENTRIES_PER_PAGE + 1;
+  const lastShown = Math.min(safePage * ENTRIES_PER_PAGE, totalEntries);
+  const pageEntries = filteredEntries.slice(
+    (safePage - 1) * ENTRIES_PER_PAGE,
+    safePage * ENTRIES_PER_PAGE,
+  );
+
+  const auditMetrics = [
+    { label: "Entries recorded", value: String(auditEntries.length) },
+    { label: "Matching this filter", value: String(totalEntries) },
+    {
+      label: "Account actions",
+      value: String(auditEntries.filter((e) => e.category === "Account Management").length),
+    },
+    {
+      label: "Distinct actors",
+      value: String(new Set(auditEntries.map((e) => e.actorName)).size),
+    },
+  ];
 
   return (
     <div className="audit-page">
@@ -133,8 +216,8 @@ export default function AuditLogPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredEntries.map((entry) => (
-                <tr key={entry.timestamp + "-" + entry.action}>
+              {pageEntries.map((entry, index) => (
+                <tr key={entry.timestamp + "-" + entry.action + "-" + index}>
                   <td>
                     {entry.timestamp.split("\n").map((part) => (
                       <span key={part}>{part}</span>
@@ -157,10 +240,16 @@ export default function AuditLogPage() {
                   </td>
                 </tr>
               ))}
-              {filteredEntries.length === 0 && (
+              {pageEntries.length === 0 && (
                 <tr>
                   <td className="audit-empty" colSpan={7}>
-                    No audit entries match your filters.
+                    {isLoading
+                      ? "Loading audit entries…"
+                      : errorMessage
+                        ? errorMessage
+                        : auditEntries.length === 0
+                          ? "Nothing has been recorded yet."
+                          : "No audit entries match your filters."}
                   </td>
                 </tr>
               )}
@@ -170,16 +259,37 @@ export default function AuditLogPage() {
 
         <footer className="audit-pagination">
           <span>
-            Showing 1 to {filteredEntries.length} of {auditEntryTotal.toLocaleString()} entries
+            Showing {firstShown} to {lastShown} of {totalEntries.toLocaleString()} entries
           </span>
           <div>
-            <button aria-label="Previous page" disabled>
+            <button
+              aria-label="Previous page"
+              disabled={safePage === 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              type="button"
+            >
               <Image alt="" height={12} src={arrowIcon} width={12} />
             </button>
-            <button className="current">1</button>
-            <button>2</button>
-            <button>3</button>
-            <button aria-label="Next page">
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, index) => {
+              const page = index + 1;
+              return (
+                <button
+                  aria-current={safePage === page ? "page" : undefined}
+                  className={safePage === page ? "current" : ""}
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  type="button"
+                >
+                  {page}
+                </button>
+              );
+            })}
+            <button
+              aria-label="Next page"
+              disabled={safePage === totalPages}
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+              type="button"
+            >
               <Image alt="" height={12} src={arrowIcon} width={12} />
             </button>
           </div>

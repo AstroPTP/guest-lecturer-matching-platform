@@ -1,188 +1,139 @@
-import Image, { type StaticImageData } from "next/image";
-import Link from "next/link";
-import analyticsIcon from "@/assets/analytics.png";
-import groupIcon from "@/assets/group.png";
-import historyIcon from "@/assets/history.png";
-import verifiedUserIcon from "@/assets/verified_user.png";
-import { analyticsStats, eventFunnel, monthlyRegistrations } from "@/data/analytics";
-import { mostActiveGuestLecturers, topCoordinatorEngagement } from "@/data/engagement_leaders";
-import { eventFormats } from "@/data/event_formats";
-import { topRequestedExpertise } from "@/data/expertise_topics";
+"use client";
 
-const statIcons: Record<(typeof analyticsStats)[number]["key"], StaticImageData> = {
-  matches: verifiedUserIcon,
-  acceptance: analyticsIcon,
-  lecturers: groupIcon,
-  events: historyIcon,
-};
+import { useEffect, useState } from "react";
+import {
+  downloadUsageReport,
+  getCoordinatorActivity,
+  getOverview,
+  withWidths,
+  type AdminOverview,
+  type CoordinatorActivity,
+} from "@/services/adminApi";
 
-const createdEvents = eventFunnel.find((stage) => stage.label === "Created")?.value ?? 0;
-const acceptedEvents = eventFunnel.find((stage) => stage.label === "Accepted")?.value ?? 0;
-const createdToAcceptedRate =
-  createdEvents > 0 ? Math.round((acceptedEvents / createdEvents) * 100) : 0;
+/**
+ * Platform usage, for the CCAE administrator.
+ *
+ * The metrics the client listed: matches made, users who have signed in,
+ * contacts made, profiles created, and requests sent by each unit
+ * coordinator. The CSV download is the platform usage report.
+ */
+export default function Analytics() {
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [coordinators, setCoordinators] = useState<CoordinatorActivity[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
-export default function AnalyticsPage() {
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const [summary, perCoordinator] = await Promise.all([getOverview(), getCoordinatorActivity()]);
+        if (!active) return;
+        setOverview(summary);
+        setCoordinators(perCoordinator);
+      } catch (error) {
+        if (active) setErrorMessage(error instanceof Error ? error.message : "Analytics could not be loaded.");
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function exportReport() {
+    setIsExporting(true);
+    try {
+      await downloadUsageReport();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "The report could not be generated.");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  if (isLoading) return <p className="control-empty">Loading analytics…</p>;
+  if (errorMessage || !overview) return <p className="control-empty">{errorMessage ?? "No data available."}</p>;
+
+  const figures = [
+    { label: "Profiles created", value: overview.profiles.created, detail: `${overview.profiles.createdLast30Days} in the last 30 days` },
+    { label: "Signed in, last 30 days", value: overview.signIns.last30Days, detail: `of ${overview.people.active} active accounts` },
+    { label: "Contacts made", value: overview.contacts.raised, detail: `${overview.contacts.pending} awaiting a reply` },
+    { label: "Matches made", value: overview.contacts.accepted, detail: `${overview.contacts.acceptanceRate}% acceptance` },
+  ];
+
+  const funnel = withWidths([
+    { label: "Contacts made", value: overview.contacts.raised },
+    { label: "Accepted", value: overview.contacts.accepted },
+    { label: "Declined", value: overview.contacts.declined },
+    { label: "Awaiting reply", value: overview.contacts.pending },
+  ]);
+
+  const perCoordinator = withWidths(
+    coordinators.slice(0, 10).map((c) => ({ label: c.name, value: c.requests, accepted: c.accepted })),
+  );
+
   return (
-    <div className="analytics-page">
-      <header className="analytics-heading">
-        <h1>Platform Analytics</h1>
-        <p>Event outcomes and lecturer demand for the current semester.</p>
+    <div className="overview-page">
+      <header className="overview-heading page-heading">
+        <div>
+          <h1>Platform Usage</h1>
+          <p>The figures the client asked for, counted live from the database.</p>
+        </div>
+        <button className="primary-button" type="button" onClick={exportReport} disabled={isExporting}>
+          {isExporting ? "Preparing…" : "Download usage report (CSV)"}
+        </button>
       </header>
 
-      <section className="analytics-stats" aria-label="Analytics summary">
-        {analyticsStats.map((stat) => (
-          <article key={stat.label}>
-            <div>
-              <span>{stat.label}</span>
-              <Image alt="" aria-hidden="true" src={statIcons[stat.key]} />
+      <section className="overview-stats" aria-label="Usage figures">
+        {figures.map((figure) => (
+          <article className="overview-stat" key={figure.label}>
+            <div className="overview-stat-label">
+              <span>{figure.label}</span>
             </div>
-            <strong>{stat.value}</strong>
+            <strong>{figure.value}</strong>
+            <small>{figure.detail}</small>
           </article>
         ))}
       </section>
 
-      <section className="analytics-charts">
-        <article className="analytics-card event-funnel-card">
-          <header>
-            <h2>Event conversion</h2>
-            <span className="chart-header-unit">Units: events</span>
-            <p>Created → Sent → Accepted</p>
-          </header>
-          <div className="event-funnel">
-            {eventFunnel.map((stage) => (
+      <section className="overview-content">
+        <article className="registration-chart-card">
+          <div className="overview-card-heading">
+            <h2>Contacts and matches</h2>
+          </div>
+          <div className="funnel">
+            {funnel.map((stage) => (
               <div className="funnel-row" key={stage.label}>
-                <span>{stage.label}</span>
-                <div>
-                  <i style={{ backgroundColor: stage.color, width: stage.width + "%" }} />
-                </div>
+                <span className="funnel-label">{stage.label}</span>
+                <span className="funnel-bar" style={{ backgroundColor: stage.color, width: stage.width + "%" }} />
                 <strong>{stage.value}</strong>
               </div>
             ))}
           </div>
-          <footer>
-            <strong>{createdToAcceptedRate}%</strong>
-            <span>of created events were accepted</span>
-          </footer>
         </article>
 
-        <article className="analytics-card discipline-card">
-          <header>
-            <h2>Events by format</h2>
-            <span className="chart-header-unit">Units: events</span>
-            <p>Activity mix across the Faculty of Business and Law</p>
-          </header>
-          <div className="discipline-chart">
-            {eventFormats.map((format) => (
-              <div className="discipline-column" key={format.label}>
-                <div className="discipline-value-area">
-                  <div className="discipline-bar-stack" style={{ height: format.height + "%" }}>
-                    <strong>{format.value}</strong>
-                    <i style={{ backgroundColor: format.color }} />
-                  </div>
-                </div>
-                <span>{format.label}</span>
-              </div>
-            ))}
+        <article className="recent-card">
+          <div className="overview-card-heading">
+            <h2>Requests by unit coordinator</h2>
           </div>
-        </article>
-      </section>
-
-      <section className="analytics-charts">
-        <article className="analytics-card">
-          <header>
-            <h2>Monthly registrations</h2>
-            <span className="chart-header-unit">Units: users</span>
-            <p>New account sign-ups across the last 6 months</p>
-          </header>
-          <div className="bar-chart">
-            <div className="bar-grid" />
-            <div className="bars">
-              {monthlyRegistrations.map((month) => (
-                <div className="bar-column" key={month.label}>
-                  <strong>{month.value}</strong>
-                  <span style={{ backgroundColor: month.color, height: month.height + "%" }} />
-                  <small>{month.label}</small>
+          {perCoordinator.length === 0 ? (
+            <p className="control-empty">No coordinator has sent a request yet.</p>
+          ) : (
+            <div className="funnel per-coordinator">
+              {perCoordinator.map((row) => (
+                <div className="funnel-row" key={row.label}>
+                  <span className="funnel-label">{row.label}</span>
+                  <span className="funnel-bar" style={{ backgroundColor: row.color, width: row.width + "%" }} />
+                  <strong>
+                    {row.value} <small>({row.accepted} accepted)</small>
+                  </strong>
                 </div>
               ))}
             </div>
-          </div>
-        </article>
-
-        <article className="analytics-card">
-          <header>
-            <h2>Top requested expertise</h2>
-            <span className="chart-header-unit">Units: requests</span>
-            <p>Most requested topics across all coordinator requests this semester</p>
-          </header>
-          <div className="discipline-chart">
-            {topRequestedExpertise.map((topic) => (
-              <div className="discipline-column" key={topic.label}>
-                <div className="discipline-value-area">
-                  <div className="discipline-bar-stack" style={{ height: topic.height + "%" }}>
-                    <strong>{topic.value}</strong>
-                    <i style={{ backgroundColor: topic.color }} />
-                  </div>
-                </div>
-                <span>{topic.label}</span>
-              </div>
-            ))}
-          </div>
-        </article>
-      </section>
-
-      <section className="analytics-actions">
-        <article className="analytics-card engagement-ranking-card">
-          <header>
-            <h2>Most active guest lecturers</h2>
-            <p>Guest lecturers with the highest event participation this semester</p>
-          </header>
-          <div className="engagement-ranking-list">
-            {mostActiveGuestLecturers.map((lecturer) => (
-              <div key={lecturer.name}>
-                <span className="lecturer-initials">
-                  {lecturer.name.split(" ").slice(-2).map((part) => part[0]).join("")}
-                </span>
-                <p>
-                  <strong>{lecturer.name}</strong>
-                  <small>{lecturer.expertise}</small>
-                </p>
-                <span>
-                  <b>{lecturer.eventsAttended}</b> events
-                </span>
-                <span>
-                  <b>{lecturer.participationRate}%</b> attended
-                </span>
-                <Link href={"/dashboard/lecturers/" + encodeURIComponent(lecturer.id)}>View</Link>
-              </div>
-            ))}
-          </div>
-          <Link className="directory-link" href="/dashboard/lecturers">View lecturer directory</Link>
-        </article>
-
-        <article className="analytics-card engagement-ranking-card">
-          <header>
-            <h2>Top unit coordinators</h2>
-            <p>Coordinators with the highest guest lecturer participation</p>
-          </header>
-          <div className="engagement-ranking-list">
-            {topCoordinatorEngagement.map((coordinator) => {
-              return (
-                <div key={coordinator.name}>
-                  <span className="lecturer-initials">
-                    {coordinator.name.split(" ").slice(-2).map((part) => part[0]).join("")}
-                  </span>
-                  <p>
-                    <strong>{coordinator.name}</strong>
-                    <small>{coordinator.unit}</small>
-                  </p>
-                  <span><b>{coordinator.guestLecturers}</b> lecturers</span>
-                  <span><b>{coordinator.eventsHosted}</b> events</span>
-                  <Link href={"/dashboard/coordinators/" + encodeURIComponent(coordinator.id)}>View</Link>
-                </div>
-              );
-            })}
-          </div>
-          <Link className="directory-link" href="/dashboard/coordinators">View coordinator directory</Link>
+          )}
         </article>
       </section>
     </div>

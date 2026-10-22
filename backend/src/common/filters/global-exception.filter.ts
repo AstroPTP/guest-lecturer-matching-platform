@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { monitoringStore } from '../../monitoring/monitoring.store';
 import { ErrorCode, ErrorEnvelope } from '../error-codes';
 
 /**
@@ -50,6 +51,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.warn(context);
     }
 
+    // Feeds the administrator's security signals. Kept out of the way of the
+    // response: a fault in the monitoring code must never be the reason a
+    // client does not get its error.
+    try {
+      monitoringStore.record({
+        status,
+        method: request.method,
+        path: request.path,
+        userId: numericUserIdOf(request),
+      });
+    } catch {
+      // Deliberately silent. Logging here would spend a line on every request
+      // if the fault were persistent.
+    }
+
     // DOS-08. A 429 without Retry-After leaves a well-behaved client guessing,
     // so it retries immediately and stays limited. 60 matches the ttl on both
     // throttler tiers: the 60/min global default and the 10/min on /auth.
@@ -66,6 +82,21 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     response.status(status).json(body);
   }
+}
+
+/**
+ * The caller's internal numeric id, only if the authenticated user carries
+ * one, otherwise null.
+ *
+ * AuthenticatedUser.id is the Auth0 subject string, which is an identifier for
+ * a person and is not copied into the monitoring record. A numeric id would
+ * only appear if the guards one day attach the users.userid.
+ */
+function numericUserIdOf(request: Request): number | null {
+  const user = (request as { user?: { id?: unknown } }).user;
+  return typeof user?.id === 'number' && Number.isSafeInteger(user.id)
+    ? user.id
+    : null;
 }
 
 /**
