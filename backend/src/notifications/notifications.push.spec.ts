@@ -6,7 +6,10 @@ import { prisma } from '../prisma';
 import { NotificationsService } from './notifications.service';
 import { pushToUsers } from './push';
 
-jest.mock('web-push', () => ({ sendNotification: jest.fn() }));
+jest.mock('web-push', () => ({
+  sendNotification: jest.fn(),
+  encrypt: jest.fn(),
+}));
 
 const send = webPush.sendNotification as jest.Mock;
 
@@ -112,7 +115,9 @@ describe('NotificationsService and pushed notifications', () => {
       href: '/guest_lecturer/messages',
     });
     expect(lookup).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { user_id: { in: [1n] } } }),
+      expect.objectContaining({
+        where: { user_id: { in: [1n] }, users: { deletedat: null } },
+      }),
     );
   });
 
@@ -212,42 +217,129 @@ describe('NotificationsService and pushed notifications', () => {
   });
 
   describe('createOrRefreshUnread', () => {
-    it('sends the notice when it adds a new one', async () => {
+    // A clock the tests move, and a conversation of their own each, so that what
+    // one test pushed is not remembered by the next.
+    let clock = 1_800_000_000_000;
+    let conversation = 0;
+    const message = () => ({
+      ...dto,
+      href: `/guest_lecturer/messages?with=${conversation}`,
+    });
+
+    beforeEach(() => {
+      clock += 60 * 60_000;
+      conversation += 1;
+      jest.spyOn(Date, 'now').mockImplementation(() => clock);
+    });
+
+    /**
+     * A transaction that behaves as the database does: the first message in a
+     * conversation adds an unread notice, and each later one moves it, until
+     * the person reads it.
+     */
+    function database() {
+      const unread = new Set<string>();
       jest
         .spyOn(prisma, '$transaction')
         .mockImplementation(async (work: (tx: unknown) => Promise<unknown>) =>
           work({
             $executeRaw: () => Promise.resolve(0),
             notifications: {
-              updateMany: () => Promise.resolve({ count: 0 }),
-              create: jest.fn(),
+              updateMany: (args: {
+                where: { user_id: bigint; href: string };
+              }) =>
+                Promise.resolve({
+                  count: unread.has(`${args.where.user_id}:${args.where.href}`)
+                    ? 1
+                    : 0,
+                }),
+              create: (args: { data: { user_id: bigint; href: string } }) => {
+                unread.add(`${args.data.user_id}:${args.data.href}`);
+                return Promise.resolve({});
+              },
             },
           }),
         );
+      return {
+        read: (href: string) => unread.delete(`1:${href}`),
+      };
+    }
 
-      await service.createOrRefreshUnread(dto);
+    it('sends the notice when it adds a new one', async () => {
+      database();
+
+      await service.createOrRefreshUnread(message());
       await settle();
 
       expect(send).toHaveBeenCalledTimes(1);
     });
 
-    it('sends the notice again when it only moves an unread one back to the top', async () => {
-      jest
-        .spyOn(prisma, '$transaction')
-        .mockImplementation(async (work: (tx: unknown) => Promise<unknown>) =>
-          work({
-            $executeRaw: () => Promise.resolve(0),
-            notifications: {
-              updateMany: () => Promise.resolve({ count: 1 }),
-              create: jest.fn(),
-            },
-          }),
-        );
+    it('sends one push for three quick messages in one conversation', async () => {
+      database();
 
-      await service.createOrRefreshUnread(dto);
+      await service.createOrRefreshUnread(message());
+      await service.createOrRefreshUnread(message());
+      await service.createOrRefreshUnread(message());
       await settle();
 
       expect(send).toHaveBeenCalledTimes(1);
+      // The skipped ones did not so much as look for devices.
+      expect(lookup).toHaveBeenCalledTimes(1);
+    });
+
+    it('pushes again once five minutes have passed since the last push', async () => {
+      database();
+
+      await service.createOrRefreshUnread(message());
+      clock += 4 * 60_000 + 59_000;
+      await service.createOrRefreshUnread(message());
+      await settle();
+      expect(send).toHaveBeenCalledTimes(1);
+
+      clock += 1_000;
+      await service.createOrRefreshUnread(message());
+      await settle();
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('counts the five minutes from the last push, not from the first message', async () => {
+      database();
+
+      await service.createOrRefreshUnread(message());
+      clock += 6 * 60_000;
+      await service.createOrRefreshUnread(message());
+      clock += 2 * 60_000;
+      await service.createOrRefreshUnread(message());
+      await settle();
+
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('pushes each conversation separately', async () => {
+      database();
+      const first = message();
+      conversation += 1;
+      const second = message();
+
+      await service.createOrRefreshUnread(first);
+      await service.createOrRefreshUnread(second);
+      await service.createOrRefreshUnread(first);
+      await service.createOrRefreshUnread(second);
+      await settle();
+
+      expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('pushes a message that arrives after the person read the last notice', async () => {
+      const db = database();
+
+      await service.createOrRefreshUnread(message());
+      db.read(message().href);
+      await service.createOrRefreshUnread(message());
+      await settle();
+
+      // Read, so the next message is a new notice and not a moved one.
+      expect(send).toHaveBeenCalledTimes(2);
     });
 
     it('sends nothing when the transaction fails', async () => {
@@ -255,12 +347,27 @@ describe('NotificationsService and pushed notifications', () => {
         .spyOn(prisma, '$transaction')
         .mockRejectedValue(new Error('deadlock'));
 
-      await expect(service.createOrRefreshUnread(dto)).rejects.toThrow(
+      await expect(service.createOrRefreshUnread(message())).rejects.toThrow(
         'deadlock',
       );
       await settle();
 
       expect(send).not.toHaveBeenCalled();
+    });
+
+    it('does not hold back the next message because a push failed to send', async () => {
+      database();
+      send.mockRejectedValue(
+        Object.assign(new Error('down'), { statusCode: 503 }),
+      );
+
+      await service.createOrRefreshUnread(message());
+      await service.createOrRefreshUnread(message());
+      await settle();
+
+      // Pushed once, as the rule allows. The failure is the push service's to
+      // recover from; the next push comes after the window.
+      expect(send).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -286,7 +393,9 @@ describe('NotificationsService and pushed notifications', () => {
 
       expect(lookup).toHaveBeenCalledTimes(1);
       expect(lookup).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { user_id: { in: [7n, 8n] } } }),
+        expect.objectContaining({
+          where: { user_id: { in: [7n, 8n] }, users: { deletedat: null } },
+        }),
       );
       expect(sent()[0]).toEqual({
         title: 'Session cancelled',

@@ -6,7 +6,7 @@ import {
 import { AppRole } from '../auth/roles';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
-import { pushToUsers } from './push';
+import { notePushed, pushToUsers, repeatPushDue } from './push';
 
 /** A notice before it is addressed to anyone. */
 export type AdminNotice = Omit<CreateNotificationDto, 'recipientId'>;
@@ -141,7 +141,7 @@ export class NotificationsService {
     const userId = await resolveUserId(dto.recipientId);
     const lockKey = String(userId) + ':' + dto.href;
 
-    await prisma.$transaction(async (tx) => {
+    const moved = await prisma.$transaction(async (tx) => {
       // cspell:disable-next-line -- hashtext is a Postgres function
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${NOTIFICATION_LOCK_NAMESPACE}::int, hashtext(${lockKey}::text))`;
 
@@ -157,11 +157,18 @@ export class NotificationsService {
       if (count === 0) {
         await tx.notifications.create({ data: this.toRowData(userId, dto) });
       }
+      return count > 0;
     });
 
-    // Sent for a moved notice as well as a new one: the person asked to be told
-    // when someone replies, and a reply in a conversation they have not opened
-    // is still a reply. Sent after the transaction, once the notice is stored.
+    // A new notice is always pushed. One that only moved an unread notice back
+    // to the top is pushed too, so a reply in a conversation the person has not
+    // opened still reaches them, but not again within five minutes of the last
+    // push for that conversation: a run of quick messages is one buzz, as it is
+    // one entry in the bell. Sent after the transaction, once the notice is stored.
+    if (moved && !repeatPushDue(userId, dto.href)) {
+      return;
+    }
+    notePushed(userId, dto.href);
     void pushToUsers([userId], dto);
   }
 
