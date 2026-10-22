@@ -34,8 +34,13 @@ export class MessagesService {
     private readonly notifications: NotificationsService,
   ) {}
 
+  /**
+   * The latest message in each conversation the caller can open. A paused
+   * conversation is left out, since opening it is refused, and a thread the
+   * caller cannot open should not be advertised in the list.
+   */
   async findSummaries(auth0Id: string): Promise<ConversationSummary[]> {
-    const { matches } = await this.matchRequests.findAcceptedMatches(auth0Id);
+    const { matches } = await this.matchRequests.findUnpausedMatches(auth0Id);
     if (matches.length === 0) {
       return [];
     }

@@ -88,10 +88,11 @@ export function readReportHoldThreshold(
 }
 
 /**
- * Whether a report was raised through an accepted match. Only these count
- * toward a hold: they come from someone the other person agreed to match
- * with, whereas the plain `reportedUserId` body can name anyone, so counting
- * it would let two throwaway accounts hold any account.
+ * Whether a report was raised through a match. Only these count toward a
+ * hold: they come from someone the other person agreed to match with, whereas
+ * a report with no match behind it could name anyone, so counting it would let
+ * two throwaway accounts hold any account. Reports stored before every report
+ * needed a match may still lack one.
  */
 export function isMatchReport(detail: unknown): boolean {
   if (typeof detail !== 'object' || detail === null) return false;
@@ -99,29 +100,51 @@ export function isMatchReport(detail: unknown): boolean {
   return typeof matchId === 'string' && matchId !== '';
 }
 
-/** Open reports, oldest first, with the reporter's email. */
-export async function findOpenReports(db: Db = prisma) {
-  const reports = await db.audit_entries.findMany({
-    where: { action: 'user.reported' },
-    orderBy: { occurred_at: 'asc' },
-    include: { actor: { select: { email: true } } },
-  });
-  if (reports.length === 0) return [];
-
-  // Only decisions about these reports matter, so the second read is bounded
-  // by the number of reports rather than by everything ever resolved.
-  const resolutions = await db.audit_entries.findMany({
-    where: {
-      action: 'report.resolved',
-      target_id: { in: reports.map((r) => r.entry_id.toString()) },
-    },
-    select: { target_id: true },
-  });
-  const resolved = new Set(resolutions.map((r) => r.target_id));
-  return reports.filter((r) => !resolved.has(r.entry_id.toString()));
+/** An open report, with the reporter's email when the reporter still has one. */
+export interface OpenReport {
+  entry_id: bigint;
+  actor_user_id: bigint | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  detail: Prisma.JsonValue | null;
+  occurred_at: Date;
+  actor: { email: string | null } | null;
 }
 
-export type OpenReport = Awaited<ReturnType<typeof findOpenReports>>[number];
+/** One row of the open-reports query: an audit entry and its actor's email. */
+type OpenReportRow = Omit<OpenReport, 'actor'> & {
+  actor_email: string | null;
+};
+
+/**
+ * Open reports, oldest first, with the reporter's email.
+ *
+ * One statement: a report is open when no 'report.resolved' entry names it, so
+ * the decisions are matched inside the database rather than read back as a
+ * list of every open report's id. The NOT EXISTS is served by the index on
+ * (action, target_id). A report's entry id is a number and a decision records
+ * it as text in target_id, hence the cast.
+ */
+export async function findOpenReports(db: Db = prisma): Promise<OpenReport[]> {
+  const rows = await db.$queryRaw<OpenReportRow[]>`
+    SELECT r.entry_id, r.actor_user_id, r.action, r.target_type, r.target_id,
+           r.detail, r.occurred_at, u.email AS actor_email
+    FROM audit_entries r
+    LEFT JOIN users u ON u.userid = r.actor_user_id
+    WHERE r.action = 'user.reported'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM audit_entries d
+        WHERE d.action = 'report.resolved'
+          AND d.target_id = r.entry_id::text
+      )
+    ORDER BY r.occurred_at ASC, r.entry_id ASC`;
+  return rows.map(({ actor_email, ...report }) => ({
+    ...report,
+    actor: report.actor_user_id === null ? null : { email: actor_email },
+  }));
+}
 
 export type HoldReason = 'threshold' | 'admin';
 

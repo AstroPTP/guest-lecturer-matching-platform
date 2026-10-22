@@ -342,6 +342,8 @@ export interface OpenReport {
   onHold: boolean;
   /** Why: enough different reporters ("threshold"), or an administrator ("admin"). */
   holdReasons: ('threshold' | 'admin')[];
+  /** True when an administrator's hold on this person was placed for this report. */
+  coveredByHold: boolean;
   reportedAt: string;
 }
 

@@ -159,11 +159,11 @@ export default function ReportsPage() {
               </div>
               <div className="review-actions">
                 <button
-                  disabled={pendingId === row.id || row.holdReasons.includes("admin")}
+                  disabled={pendingId === row.id || row.coveredByHold}
                   onClick={() => void hold(row)}
                   type="button"
                 >
-                  {row.holdReasons.includes("admin") ? "Held" : "Hold until reviewed"}
+                  {row.coveredByHold ? "Held" : "Hold until reviewed"}
                 </button>
                 <button
                   disabled={pendingId === row.id}

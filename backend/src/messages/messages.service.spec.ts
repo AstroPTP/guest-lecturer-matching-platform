@@ -4,6 +4,7 @@ import { MessagesService } from './messages.service';
 import { MatchRequestsService } from '../match-requests/match-requests.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma } from '../prisma';
+import { stubOpenReports } from '../testing/open-reports';
 
 describe('MessagesService', () => {
   let service: MessagesService;
@@ -309,14 +310,13 @@ describe('MessagesService', () => {
         guest_id: 7n,
         status: 'ACCEPTED',
       } as never);
-      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce(
+      stubOpenReports(
         reports.map(([actor, target], i) => ({
           entry_id: BigInt(40 + i),
           actor_user_id: actor,
           target_id: target,
           detail: { reason: 'asked for money', matchId: '6007' },
-          actor: null,
-        })) as never,
+        })),
       );
     }
 
@@ -358,7 +358,7 @@ describe('MessagesService', () => {
 
   describe('findSummaries', () => {
     it('returns the latest message for each match that has any', async () => {
-      jest.spyOn(matchRequests, 'findAcceptedMatches').mockResolvedValue({
+      jest.spyOn(matchRequests, 'findUnpausedMatches').mockResolvedValue({
         side: 'guest',
         matches: [
           { matchId: 6007n, targetId: '2005' },
@@ -377,6 +377,106 @@ describe('MessagesService', () => {
           lastSentAt: sentAt.toISOString(),
         },
       ]);
+    });
+
+    it('asks only for conversations that are not paused', async () => {
+      const accepted = jest.spyOn(matchRequests, 'findAcceptedMatches');
+      jest
+        .spyOn(matchRequests, 'findUnpausedMatches')
+        .mockResolvedValue({ side: 'guest', matches: [] });
+
+      await expect(service.findSummaries(userId)).resolves.toEqual([]);
+      expect(accepted).not.toHaveBeenCalled();
+    });
+
+    describe('while a report keeps two people apart', () => {
+      /** Guest 7 (user 1 in the double) matched with coordinators 5 (user 55) and 6 (user 56). */
+      function matchedWithTwo(reports: [reporter: bigint, reported: string][]) {
+        jest
+          .spyOn(prisma.coordinators, 'findUnique')
+          .mockResolvedValueOnce(null);
+        jest
+          .spyOn(prisma.guests, 'findUnique')
+          .mockResolvedValue({ guest_id: 7n } as never);
+        jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue(
+          [5n, 6n].map((coordinator_id) => ({
+            match_id: 6000n + coordinator_id,
+            coordinator_id,
+            guest_id: 7n,
+            status: 'ACCEPTED',
+          })) as never,
+        );
+        jest.spyOn(prisma.coordinators, 'findMany').mockResolvedValue([
+          { coordinator_id: 5n, user_id: 55n },
+          { coordinator_id: 6n, user_id: 56n },
+        ] as never);
+        const messages = jest
+          .spyOn(prisma.messages, 'findMany')
+          .mockResolvedValue(
+            [6005n, 6006n].map((match_id) => ({
+              match_id,
+              content: `Hello ${match_id}`,
+              sent_at: sentAt,
+            })) as never,
+          );
+        stubOpenReports(
+          reports.map(([actor, target], i) => ({
+            entry_id: BigInt(40 + i),
+            actor_user_id: actor,
+            target_id: target,
+            detail: { reason: 'asked for money', matchId: '6005' },
+          })),
+        );
+        return messages;
+      }
+      const listed = async () =>
+        (await service.findSummaries(userId)).map((c) => c.targetId);
+
+      it('lists both threads when nobody has been reported', async () => {
+        matchedWithTwo([]);
+
+        await expect(listed()).resolves.toEqual(['5', '6']);
+      });
+
+      it('leaves out the thread with the person the caller reported', async () => {
+        matchedWithTwo([[1n, '55']]);
+
+        await expect(listed()).resolves.toEqual(['6']);
+      });
+
+      it('leaves out the thread with the person who reported the caller', async () => {
+        matchedWithTwo([[55n, '1']]);
+
+        await expect(listed()).resolves.toEqual(['6']);
+      });
+
+      it('leaves out the thread with a person held for everybody', async () => {
+        matchedWithTwo([
+          [900n, '56'],
+          [901n, '56'],
+        ]);
+
+        await expect(listed()).resolves.toEqual(['5']);
+      });
+
+      it('lists nothing for a caller who is held', async () => {
+        matchedWithTwo([
+          [900n, '1'],
+          [901n, '1'],
+        ]);
+
+        await expect(listed()).resolves.toEqual([]);
+      });
+
+      it('does not read the messages of a paused thread', async () => {
+        const messages = matchedWithTwo([[1n, '55']]);
+
+        await listed();
+
+        expect(messages).toHaveBeenCalledWith(
+          expect.objectContaining({ where: { match_id: { in: [6006n] } } }),
+        );
+      });
     });
   });
 });

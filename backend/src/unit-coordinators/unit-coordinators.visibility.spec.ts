@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { stubOpenReports } from '../testing/open-reports';
 import { UnitCoordinatorsService } from './unit-coordinators.service';
 
 describe('UnitCoordinatorsService.findAll visibility', () => {
@@ -19,14 +20,13 @@ describe('UnitCoordinatorsService.findAll visibility', () => {
   describe('after reports', () => {
     /** Open reports as [reporter, reported] pairs; the double's viewer is user 1. */
     function reports(pairs: [reporter: bigint, reported: string][]) {
-      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce(
+      stubOpenReports(
         pairs.map(([actor, target], i) => ({
           entry_id: BigInt(40 + i),
           actor_user_id: actor,
           target_id: target,
           detail: { reason: 'asked for money', matchId: '6001' },
-          actor: null,
-        })) as never,
+        })),
       );
     }
 
