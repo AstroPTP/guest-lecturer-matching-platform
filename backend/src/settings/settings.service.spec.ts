@@ -489,6 +489,22 @@ describe('deleteAccount', () => {
     });
   });
 
+  it('removes the devices inside the deletion transaction, before the user row is blanked', async () => {
+    const tx = deletionTransaction({});
+    const outside = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
+
+    await deleteWith(tx);
+
+    // On the transaction's own client, so it commits or rolls back with the
+    // rest of the deletion, and never on a separate connection.
+    expect(tx.push_subscriptions.deleteMany).toHaveBeenCalledTimes(1);
+    expect(outside).not.toHaveBeenCalled();
+    expect(tx.order.indexOf('push_subscriptions')).toBeGreaterThanOrEqual(0);
+    expect(tx.order.indexOf('push_subscriptions')).toBeLessThan(
+      tx.order.indexOf('users'),
+    );
+  });
+
   it('removes the requests for details sent to the caller, with their messages', async () => {
     const tx = deletionTransaction({});
 
