@@ -100,5 +100,10 @@ export async function proxy(request) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|icon.svg).*)'],
+  // Left out: static assets, and the files a browser fetches before anyone has
+  // signed in, or from a background process with no session: the install
+  // manifest, the service worker and the generated icons.
+  matcher: [
+    '/((?!_next/static|_next/image|icon|apple-icon|push-badge|manifest.webmanifest|sw.js).*)',
+  ],
 };
