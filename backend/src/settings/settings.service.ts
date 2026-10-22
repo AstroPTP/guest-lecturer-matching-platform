@@ -440,7 +440,8 @@ export class SettingsService {
   }
 
   /**
-   * Deletes the Auth0 user, then the caller's rows.
+   * Deletes the Auth0 user, then the caller's rows: profiles, profile photos,
+   * topics, availability and notifications.
    *
    * The users row itself is kept with deletedat set and personal fields
    * cleared. JwtAuthGuard refuses any token whose subject has that marker, so
@@ -452,11 +453,30 @@ export class SettingsService {
 
     const userId = await resolveUserId(id);
     await prisma.$transaction(async (tx) => {
+      // The photos hang off the profiles, so their ids are read before the
+      // profiles go. Deleting the profile alone would leave the image bytes
+      // behind with nothing pointing at them.
+      const guest = await tx.guests.findUnique({
+        where: { user_id: userId },
+        select: { profile_image_id: true },
+      });
+      const coordinator = await tx.coordinators.findUnique({
+        where: { user_id: userId },
+        select: { profile_image_id: true },
+      });
+      const photoIds = [guest, coordinator].flatMap((profile) =>
+        profile?.profile_image_id == null ? [] : [profile.profile_image_id],
+      );
+
       await tx.availability.deleteMany({ where: { user_id: userId } });
       await tx.user_expertise.deleteMany({ where: { user_id: userId } });
+      await tx.notifications.deleteMany({ where: { user_id: userId } });
       // match_requests, and the messages under them, cascade from these two.
       await tx.guests.deleteMany({ where: { user_id: userId } });
       await tx.coordinators.deleteMany({ where: { user_id: userId } });
+      if (photoIds.length > 0) {
+        await tx.images.deleteMany({ where: { image_id: { in: photoIds } } });
+      }
       await tx.users.update({
         where: { userid: userId },
         data: {

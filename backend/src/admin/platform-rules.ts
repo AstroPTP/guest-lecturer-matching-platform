@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { prisma } from '../prisma';
+import { notHiddenWhere } from './open-reports';
 import type { Prisma } from '../../generated/prisma/client';
 
 /**
@@ -18,13 +19,20 @@ export function readSettings() {
 }
 
 /**
- * Which guest lecturers coordinators may see: never a deactivated account,
- * and only approved profiles while approval is required.
+ * Which guest lecturers a viewer may see: never a deactivated account, only
+ * approved profiles while approval is required, and never someone on hold after
+ * reports or someone the viewer has an open report with (whoever made it).
+ *
+ * Shared by the discovery list and by the profile photo route, so a photo is
+ * served to exactly the people the profile is listed to.
  */
-export async function visibleGuestsWhere(): Promise<Prisma.guestsWhereInput> {
+export async function visibleGuestsWhere(
+  viewerAuth0Id?: string,
+): Promise<Prisma.guestsWhereInput> {
   const { require_admin_approval: approvalRequired } = await readSettings();
   return {
     OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+    AND: [await notHiddenWhere(viewerAuth0Id)],
     ...(approvalRequired ? { approved_at: { not: null } } : {}),
   };
 }

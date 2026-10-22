@@ -4,7 +4,6 @@ import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
-import { notHiddenWhere } from '../admin/open-reports';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { profileImageUrl } from '../images/images.service';
 
@@ -188,10 +187,7 @@ export class GuestSpeakersService {
    */
   async findAll(viewerAuth0Id?: string) {
     const guests = await prisma.guests.findMany({
-      where: {
-        ...(await visibleGuestsWhere()),
-        AND: [await notHiddenWhere(viewerAuth0Id)],
-      },
+      where: await visibleGuestsWhere(viewerAuth0Id),
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>
