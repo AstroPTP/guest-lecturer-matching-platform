@@ -15,6 +15,11 @@ function friendlyMessage(error: unknown): string {
   if (error.status === 404) {
     return "That person no longer has an account that can be reported.";
   }
+  // The 409 wording is written for the person ("you already have 5 reports
+  // waiting", "you have already reported this person"), so it is shown as sent.
+  if (error.status === 409 && error.message) {
+    return error.message;
+  }
   if (error.status === 429) {
     return "You are sending reports too quickly. Please wait a minute and try again.";
   }

@@ -1640,6 +1640,7 @@ a { color: inherit; text-decoration: none; }
 .report-context dt { color: var(--c-73737a); font-weight: 600; }
 .report-context dt::after { content: ":"; }
 .report-context dd { margin: 0; }
+.report-context dd.report-hold.on { color: var(--c-dc2626); font-weight: 700; }
 .review-actions { align-items: center; display: flex; flex-direction: column; gap: 8px; }
 .review-actions button {
   background: var(--c-17231f);

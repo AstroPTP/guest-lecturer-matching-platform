@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getOpenReports, resolveReport, type OpenReport } from "@/services/adminApi";
+import { getOpenReports, holdReport, resolveReport, type OpenReport } from "@/services/adminApi";
 
 const ROLE_LABELS: Record<string, string> = {
   guest_speaker: "Guest lecturer",
@@ -12,9 +12,22 @@ const ROLE_LABELS: Record<string, string> = {
 /**
  * The moderation queue: reports users have raised about one another that
  * nobody has dealt with yet. Dismissing or deactivating closes the report,
- * and both are recorded in the audit log. A report raised from a match keeps
- * the person out of Discovery and messaging until it is closed.
+ * and both are recorded in the audit log.
+ *
+ * An open report keeps the reporter and the person reported apart. It hides
+ * the person from everyone only once enough different people have reported
+ * them, or an administrator holds them here. Every decision reloads the queue,
+ * because closing one report changes the counts shown on the others.
  */
+
+function holdText(row: OpenReport): string {
+  if (!row.onHold) return "Not on hold";
+  const why = row.holdReasons.map((reason) =>
+    reason === "admin" ? "held by an administrator" : `${row.holdThreshold} or more people reported them`,
+  );
+  return `On hold: ${why.join("; ")}`;
+}
+
 export default function ReportsPage() {
   const [rows, setRows] = useState<OpenReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,6 +53,24 @@ export default function ReportsPage() {
     };
   }, []);
 
+  async function reload() {
+    setRows(await getOpenReports());
+  }
+
+  /** Runs one decision on a report, then reloads the queue. */
+  async function decide(row: OpenReport, action: () => Promise<void>, failure: string) {
+    setPendingId(row.id);
+    setErrorMessage(null);
+    try {
+      await action();
+      await reload();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : failure);
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   async function close(row: OpenReport, outcome: "dismissed" | "deactivated") {
     if (
       outcome === "deactivated" &&
@@ -47,16 +78,11 @@ export default function ReportsPage() {
     ) {
       return;
     }
-    setPendingId(row.id);
-    setErrorMessage(null);
-    try {
-      await resolveReport(row.id, outcome);
-      setRows((current) => current.filter((item) => item.id !== row.id));
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "That decision could not be saved.");
-    } finally {
-      setPendingId(null);
-    }
+    await decide(row, () => resolveReport(row.id, outcome), "That decision could not be saved.");
+  }
+
+  async function hold(row: OpenReport) {
+    await decide(row, () => holdReport(row.id), "The hold could not be placed.");
   }
 
   if (isLoading) return <p className="control-empty">Loading reports…</p>;
@@ -65,7 +91,7 @@ export default function ReportsPage() {
     <div className="overview-page">
       <header className="overview-heading">
         <h1>Reports</h1>
-        <p>Reports users have raised about the people they matched with. Until you decide, that person is hidden from Discovery and cannot send or receive messages. Dismissing restores them.</p>
+        <p>Reports users have raised about the people they matched with. While a report is open, the two people can no longer see or message each other. A person is hidden from everyone only when several different people have reported them, or when you hold them. Dismissing the last open report lifts the hold.</p>
       </header>
 
       {errorMessage ? (
@@ -104,11 +130,21 @@ export default function ReportsPage() {
                     <dd>{row.matchId ? `Match #${row.matchId}` : "Not raised from a match"}</dd>
                   </div>
                   <div>
+                    <dt>Open reporters</dt>
+                    <dd>
+                      {row.openReporters} of {row.holdThreshold} needed to hold
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Hold</dt>
+                    <dd className={row.onHold ? "report-hold on" : "report-hold"}>{holdText(row)}</dd>
+                  </div>
+                  <div>
                     <dt>While open</dt>
                     <dd>
-                      {row.reportedIsBlocked
-                        ? "Hidden from Discovery and unable to message, until you decide."
-                        : "No restriction. Only reports raised from a match restrict the account."}
+                      {row.onHold
+                        ? "Hidden from Discovery for everyone and unable to send or receive messages."
+                        : "Only the reporter and this person are kept apart. Everyone else is unaffected."}
                     </dd>
                   </div>
                 </dl>
@@ -122,6 +158,13 @@ export default function ReportsPage() {
                 </small>
               </div>
               <div className="review-actions">
+                <button
+                  disabled={pendingId === row.id || row.holdReasons.includes("admin")}
+                  onClick={() => void hold(row)}
+                  type="button"
+                >
+                  {row.holdReasons.includes("admin") ? "Held" : "Hold until reviewed"}
+                </button>
                 <button
                   disabled={pendingId === row.id}
                   onClick={() => void close(row, "dismissed")}
