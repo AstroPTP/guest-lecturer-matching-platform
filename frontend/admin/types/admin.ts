@@ -49,7 +49,11 @@ export type AuditAction =
   | "Account Deactivated"
   | "Profile Approved"
   | "Settings Changed"
-  | "Report Resolved";
+  | "Report Resolved"
+  | "Details Requested"
+  | "Request Replied"
+  | "Request Closed"
+  | "Request Reopened";
 export type AuditStatus = "Success" | "Failed" | "Pending";
 export type AuditActorRole =
   | "Administrator"

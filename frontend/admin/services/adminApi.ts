@@ -261,6 +261,10 @@ const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategor
   'report.resolved': { label: 'Report Resolved', category: 'Account Management' },
   'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
   'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
+  'support.requested': { label: 'Details Requested', category: 'Account Management' },
+  'support.replied': { label: 'Request Replied', category: 'Account Management' },
+  'support.closed': { label: 'Request Closed', category: 'Account Management' },
+  'support.reopened': { label: 'Request Reopened', category: 'Account Management' },
 };
 
 const ACTOR_ROLES: Record<string, AuditActorRole> = {
@@ -386,4 +390,101 @@ export async function getSystemSnapshot(): Promise<SystemSnapshot> {
 /** Failed sign-ins, refused admin requests, rate limiting and server errors. */
 export async function getSecuritySignals(): Promise<SecuritySignals> {
   return backendFetch<SecuritySignals>('/admin/system/security', { cache: 'no-store' });
+}
+
+// ---------------------------------------------------------------------------
+// Requests for further details
+// ---------------------------------------------------------------------------
+
+export type RequestStatus = 'open' | 'closed';
+
+export interface RequestThreadSummary {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string | null;
+  userRole: string | null;
+  subject: string;
+  status: RequestStatus;
+  /** Messages from the user that no administrator has opened yet. */
+  unreadFromUser: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface RequestMessage {
+  id: string;
+  sender: 'admin' | 'user';
+  content: string;
+  sentAt: string;
+  attachment: RequestAttachment | null;
+}
+
+export interface RequestThread {
+  id: string;
+  subject: string;
+  status: RequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; name: string; email: string | null; role: string | null };
+  messages: RequestMessage[];
+}
+
+/** Asks one user for further details. The user is told in their Messages page. */
+export async function requestDetails(input: {
+  userId: string;
+  subject: string;
+  message: string;
+}): Promise<{ id: string }> {
+  return backendFetch<{ id: string }>('/admin/support/threads', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId: numericId(input.userId),
+      subject: input.subject,
+      message: input.message,
+    }),
+  });
+}
+
+export async function getRequestThreads(): Promise<RequestThreadSummary[]> {
+  return backendFetch<RequestThreadSummary[]>('/admin/support/threads', { cache: 'no-store' });
+}
+
+/** Opening a request counts as reading what the user sent. */
+export async function getRequestThread(id: string): Promise<RequestThread> {
+  return backendFetch<RequestThread>(`/admin/support/threads/${encodeURIComponent(id)}`, {
+    cache: 'no-store',
+  });
+}
+
+export async function replyToRequest(id: string, content: string): Promise<RequestMessage> {
+  return backendFetch<RequestMessage>(`/admin/support/threads/${encodeURIComponent(id)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function setRequestStatus(
+  id: string,
+  status: RequestStatus,
+): Promise<{ id: string; status: RequestStatus }> {
+  return backendFetch(`/admin/support/threads/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/**
+ * Where an attached file is served. Through the portal's own server route, so
+ * the access token is added there and the link needs nothing from the page.
+ */
+export function requestAttachmentHref(attachmentId: string): string {
+  return `/api/backend/support/attachments/${encodeURIComponent(attachmentId)}`;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import { getOpenReports, resolveReport, type OpenReport } from "@/services/adminApi";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -112,6 +113,12 @@ export default function ReportsPage() {
                 >
                   Deactivate account
                 </button>
+                {row.reportedUserId ? (
+                  <RequestDetailsButton
+                    userId={row.reportedUserId}
+                    userName={row.reportedEmail ?? "this user"}
+                  />
+                ) : null}
               </div>
             </li>
           ))}
