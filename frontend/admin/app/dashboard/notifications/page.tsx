@@ -5,14 +5,10 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import eventIcon from "@/assets/event.png";
 import notificationIcon from "@/assets/notification.png";
+import { isPortalPath } from "@/lib/portalPath";
 import { NOTIFICATIONS_MARKED_READ_EVENT, UNREAD_COUNT_CHANGED_EVENT } from "@/lib/unreadCountPoller";
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from "@/services/adminApi";
 import type { AdminNotification } from "@/types/admin";
-
-/** Only a path inside the portal is followed; anything else is shown without a link. */
-function isPortalPath(href: string): boolean {
-  return href.startsWith("/") && !href.startsWith("//");
-}
 
 function formatWhen(value: string): string {
   return new Intl.DateTimeFormat("en-AU", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
