@@ -14,6 +14,7 @@ import historyIcon from "@/assets/history.png";
 import howToRegIcon from "@/assets/how_to_reg.png";
 import logoutIcon from "@/assets/log_out.png";
 import infoIcon from "@/assets/info.png";
+import notificationIcon from "@/assets/notification.png";
 import settingsIcon from "@/assets/settings.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
 import visibilityIcon from "@/assets/visibility.png";
@@ -42,6 +43,7 @@ const navigation: NavigationItem[] = [
   { href: "/dashboard/analytics", label: "Analytics", icon: analyticsIcon },
   { href: "/dashboard/system", label: "System", icon: visibilityIcon },
   { href: "/dashboard/reports", label: "Reports", icon: descriptionIcon },
+  { href: "/dashboard/requests", label: "Requests", icon: notificationIcon },
   { href: "/dashboard/audit_log", label: "Audit Log", icon: historyIcon },
   { href: "/dashboard/settings", label: "Settings", icon: settingsIcon },
   { href: "/dashboard/help", label: "Help", icon: infoIcon },

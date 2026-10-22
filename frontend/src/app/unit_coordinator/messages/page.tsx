@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import MessagesPageContent from "@/components/messages/MessagesPageContent";
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
+import { BackendError } from "@/lib/api/backendClient";
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
 import type { ConversationSeed } from "@/types/messages/messageTypes";
 import { formatStoredValue } from "@/utils/displayFormatters";
@@ -47,8 +48,15 @@ export default function UnitCoordinatorMessagesPage() {
 
         setConversationSeeds(nextSeeds);
       } catch (error) {
-        console.error("Unable to load conversations:", error);
-        setErrorMessage("Unable to load data. Please try again.");
+        if (error instanceof BackendError && error.status === 403) {
+          // An account with no profile yet has no matches, and the API will
+          // not list them. It can still hear from CCAE, so the page opens with
+          // no matched conversations rather than with an error.
+          setConversationSeeds([]);
+        } else {
+          console.error("Unable to load conversations:", error);
+          setErrorMessage("Unable to load data. Please try again.");
+        }
       } finally {
         setIsLoading(false);
       }

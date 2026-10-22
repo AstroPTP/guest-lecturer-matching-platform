@@ -22,6 +22,11 @@ import {
 } from './platform-rules';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { CreateReportDto } from './dto/create-report.dto';
+import {
+  openReportRows,
+  stubOpenReports,
+  type ReportFixture,
+} from '../testing/open-reports';
 
 afterEach(() => jest.restoreAllMocks());
 
@@ -106,16 +111,16 @@ describe('UpdateSettingsDto', () => {
 });
 
 describe('CreateReportDto', () => {
-  it('rejects a non-numeric user id and an empty reason', async () => {
+  it('rejects a non-numeric profile id and an empty reason', async () => {
     const errors = await validate(
       plainToInstance(CreateReportDto, {
-        reportedUserId: '1 OR 1=1',
+        targetId: '1 OR 1=1',
         reason: '',
       }),
     );
     expect(errors.map((e) => e.property).sort()).toEqual([
       'reason',
-      'reportedUserId',
+      'targetId',
     ]);
   });
 });
@@ -133,10 +138,26 @@ describe('CreateReportDto bodies', () => {
     );
   });
 
-  it('still accepts the user id body', async () => {
-    expect(
-      await check({ reportedUserId: '5', reason: 'asked for money' }),
-    ).toEqual([]);
+  it('no longer takes a user id, which was not checked against any match', async () => {
+    const errors = await check({
+      reportedUserId: '5',
+      reason: 'asked for money',
+    });
+
+    expect(errors.map((e) => e.property).sort()).toEqual([
+      'reportedUserId',
+      'targetId',
+    ]);
+  });
+
+  it('refuses a body that sends a user id beside the profile id', async () => {
+    const errors = await check({
+      targetId: '12',
+      reportedUserId: '5',
+      reason: 'asked for money',
+    });
+
+    expect(errors.map((e) => e.property)).toEqual(['reportedUserId']);
   });
 
   it.each([
@@ -199,6 +220,9 @@ function useTransaction() {
         return Promise.resolve(1);
       },
     ),
+    // The open-reports query.
+    $queryRaw: (...args: unknown[]) =>
+      through(prisma, '$queryRaw', 'read')(...args),
     audit_entries: {
       findMany: (...args: unknown[]) =>
         through(prisma.audit_entries, 'findMany', 'read')(...args),
@@ -208,6 +232,10 @@ function useTransaction() {
     users: {
       findFirst: (...args: unknown[]) =>
         through(prisma.users, 'findFirst', 'actor')(...args),
+      findUnique: (...args: unknown[]) =>
+        through(prisma.users, 'findUnique', 'status')(...args),
+      update: (...args: unknown[]) =>
+        through(prisma.users, 'update', 'status')(...args),
     },
   };
   jest
@@ -311,6 +339,22 @@ function serialisedDatabase(initial: StoredEntry[]) {
           releases.push(release);
           return 1;
         },
+        // The open-reports query: reports no decision names.
+        $queryRaw: async () => {
+          await yieldToOthers();
+          const decided = new Set(
+            stored
+              .filter((row) => row.action === 'report.resolved')
+              .map((row) => row.target_id),
+          );
+          return openReportRows(
+            stored.filter(
+              (row) =>
+                row.action === 'user.reported' &&
+                !decided.has(row.entry_id.toString()),
+            ),
+          );
+        },
         audit_entries: auditEntries,
         users: {
           findFirst: (args: { where: { auth0Id: string } }) =>
@@ -393,16 +437,6 @@ describe('GovernanceService', () => {
     ).not.toHaveProperty('requireAdminApproval');
   });
 
-  it('will not let someone report themselves', async () => {
-    jest
-      .spyOn(prisma.users, 'findUnique')
-      .mockResolvedValue({ userid: 5n, auth0Id: 'auth0|me' } as never);
-
-    await expect(
-      service.report('auth0|me', { reportedUserId: '5', reason: 'testing' }),
-    ).rejects.toThrow('You cannot report yourself.');
-  });
-
   describe('reporting the person on the other side of a match', () => {
     const reason = 'asked me to pay a fee first';
     const auditRow = {
@@ -462,7 +496,6 @@ describe('GovernanceService', () => {
     it.each([
       ['pending', { status: 'PENDING' }],
       ['rejected', { status: 'REJECTED' }],
-      ['ended', { status: 'UNMATCHED' }],
       ['never made', null],
     ])('refuses when the match is %s', async (_label, match) => {
       const { audit } = asCoordinator(match);
@@ -471,6 +504,22 @@ describe('GovernanceService', () => {
         service.report('auth0|me', { targetId: '3001', reason }),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(audit).not.toHaveBeenCalled();
+    });
+
+    it('takes a report after the match was ended, and still records the match', async () => {
+      const { audit } = asCoordinator({ status: 'UNMATCHED' });
+
+      await expect(
+        service.report('auth0|me', { targetId: '3001', reason }),
+      ).resolves.toMatchObject({ id: '31' });
+
+      expect(audit.mock.calls[0][0]).toMatchObject({
+        data: {
+          action: 'user.reported',
+          target_id: '77',
+          detail: { reason, matchId: '6001' },
+        },
+      });
     });
 
     it('only ever looks in matches the caller is part of', async () => {
@@ -517,30 +566,16 @@ describe('GovernanceService', () => {
       expect(audit).not.toHaveBeenCalled();
     });
 
-    it('refuses a body that names the person twice', async () => {
-      const { lookup, audit } = asCoordinator({ status: 'ACCEPTED' });
-
-      await expect(
-        service.report('auth0|me', {
-          targetId: '3001',
-          reportedUserId: '9',
-          reason,
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(lookup).not.toHaveBeenCalled();
-      expect(audit).not.toHaveBeenCalled();
-    });
-
     it('still takes a report about someone who is already reported', async () => {
       const { audit } = asCoordinator({ status: 'ACCEPTED' });
-      jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValue([
+      stubOpenReports([
         {
           entry_id: 20n,
+          actor_user_id: 2n,
           target_id: '77',
           detail: { reason: 'earlier', matchId: '9' },
-          actor: null,
         },
-      ] as never);
+      ]);
 
       await service.report('auth0|me', { targetId: '3001', reason });
 
@@ -549,20 +584,17 @@ describe('GovernanceService', () => {
 
     describe('limits on how much one person can report', () => {
       /** An open report by user 1 (the double's caller) about `target`. */
-      const mine = (id: bigint, target: string) => ({
+      const mine = (id: bigint, target: string): ReportFixture => ({
         entry_id: id,
         actor_user_id: 1n,
         target_id: target,
         detail: { reason: 'earlier', matchId: '9' },
-        actor: null,
       });
-      const openReports = (rows: object[], decided: string[] = []) =>
-        jest
-          .spyOn(prisma.audit_entries, 'findMany')
-          .mockResolvedValueOnce(rows as never)
-          .mockResolvedValueOnce(
-            decided.map((target_id) => ({ target_id })) as never,
-          );
+      // The open-reports query already leaves out the decided ones.
+      const openReports = (rows: ReportFixture[], decided: string[] = []) =>
+        stubOpenReports(
+          rows.filter((r) => !decided.includes(r.entry_id.toString())),
+        );
       const code = (value: string) => ({ response: { code: value } });
 
       it('refuses a second open report about the same person', async () => {
@@ -631,69 +663,36 @@ describe('GovernanceService', () => {
 
         expect(audit).toHaveBeenCalledTimes(1);
       });
-
-      it('applies to the user id body as well', async () => {
-        jest
-          .spyOn(prisma.users, 'findUnique')
-          .mockResolvedValue({ userid: 9n, auth0Id: 'auth0|other' } as never);
-        const audit = jest.spyOn(prisma.audit_entries, 'create');
-        openReports([mine(20n, '9')]);
-
-        await expect(
-          service.report('auth0|me', { reportedUserId: '9', reason }),
-        ).rejects.toMatchObject(code('REPORT_ALREADY_OPEN'));
-        expect(audit).not.toHaveBeenCalled();
-      });
-    });
-
-    it('keeps the user id body working, without a match behind it', async () => {
-      jest
-        .spyOn(prisma.users, 'findUnique')
-        .mockResolvedValue({ userid: 9n, auth0Id: 'auth0|other' } as never);
-      const audit = jest
-        .spyOn(prisma.audit_entries, 'create')
-        .mockResolvedValue(auditRow as never);
-
-      await service.report('auth0|me', { reportedUserId: '9', reason });
-
-      const { data } = audit.mock.calls[0][0] as {
-        data: { target_id: string; detail: object };
-      };
-      expect(data.target_id).toBe('9');
-      expect(data.detail).toEqual({ reason });
     });
   });
 
   it('shows who reported whom, from which match, how many people, and the hold', async () => {
-    jest
-      .spyOn(prisma.audit_entries, 'findMany')
-      .mockResolvedValueOnce([
-        {
-          entry_id: 8n,
-          actor_user_id: 2n,
-          target_id: '77',
-          detail: { reason: 'asked for a fee', matchId: '6001' },
-          occurred_at: new Date('2026-10-20T01:00:00.000Z'),
-          actor: { email: 'coord@example.com' },
-        },
-        {
-          entry_id: 9n,
-          actor_user_id: null,
-          target_id: '78',
-          detail: { reason: 'sent through the old body' },
-          occurred_at: new Date('2026-10-21T01:00:00.000Z'),
-          actor: null,
-        },
-      ] as never)
-      .mockResolvedValueOnce([] as never)
-      // The administrator has held person 77.
-      .mockResolvedValueOnce([
-        {
-          action: 'user.held',
-          target_id: '77',
-          detail: { reportIds: ['8'] },
-        },
-      ] as never);
+    stubOpenReports([
+      {
+        entry_id: 8n,
+        actor_user_id: 2n,
+        target_id: '77',
+        detail: { reason: 'asked for a fee', matchId: '6001' },
+        occurred_at: new Date('2026-10-20T01:00:00.000Z'),
+        actor: { email: 'coord@example.com' },
+      },
+      {
+        entry_id: 9n,
+        actor_user_id: null,
+        target_id: '78',
+        detail: { reason: 'sent before every report needed a match' },
+        occurred_at: new Date('2026-10-21T01:00:00.000Z'),
+        actor: null,
+      },
+    ]);
+    // The administrator has held person 77.
+    jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce([
+      {
+        action: 'user.held',
+        target_id: '77',
+        detail: { reportIds: ['8'] },
+      },
+    ] as never);
     jest.spyOn(prisma.users, 'findMany').mockResolvedValue([
       {
         userid: 2n,
@@ -740,6 +739,7 @@ describe('GovernanceService', () => {
       holdThreshold: 2,
       onHold: true,
       holdReasons: ['admin'],
+      coveredByHold: true,
     });
     expect(plain).toMatchObject({
       reporterName: null,
@@ -749,21 +749,18 @@ describe('GovernanceService', () => {
       openReporters: 0,
       onHold: false,
       holdReasons: [],
+      coveredByHold: false,
     });
   });
 
   it('says a person is on hold because of the threshold when enough people reported them', async () => {
-    const row = (id: bigint, actor: bigint) => ({
+    const row = (id: bigint, actor: bigint): ReportFixture => ({
       entry_id: id,
       actor_user_id: actor,
       target_id: '77',
       detail: { reason: 'asked for a fee', matchId: '6001' },
-      occurred_at: new Date('2026-10-20T01:00:00.000Z'),
-      actor: null,
     });
-    jest
-      .spyOn(prisma.audit_entries, 'findMany')
-      .mockResolvedValueOnce([row(8n, 2n), row(9n, 3n)] as never);
+    stubOpenReports([row(8n, 2n), row(9n, 3n)]);
 
     const rows = await service.openReports();
 
@@ -771,41 +768,91 @@ describe('GovernanceService', () => {
     expect(rows[0]).toMatchObject({ onHold: true, holdReasons: ['threshold'] });
   });
 
-  it('leaves resolved reports out of the queue', async () => {
-    jest
-      .spyOn(prisma.audit_entries, 'findMany')
-      .mockResolvedValueOnce([
-        {
-          entry_id: 1n,
-          target_id: '7',
-          detail: { reason: 'a' },
-          occurred_at: new Date(),
-          actor: null,
-        },
-        {
-          entry_id: 2n,
-          target_id: '7',
-          detail: { reason: 'b' },
-          occurred_at: new Date(),
-          actor: null,
-        },
-      ] as never)
-      .mockResolvedValueOnce([{ target_id: '1' }] as never);
-    jest.spyOn(prisma.users, 'findMany').mockResolvedValue([]);
-
-    const open = await service.openReports();
-
-    expect(open.map((r) => r.id)).toEqual(['2']);
-  });
-
-  describe('holding and releasing', () => {
-    const openRow = (id: bigint, actor: bigint, target = '77') => ({
+  describe('which reports a hold covers', () => {
+    const matchReport = (id: bigint, actor: bigint, target = '77') => ({
       entry_id: id,
       actor_user_id: actor,
       target_id: target,
       detail: { reason: 'asked for a fee', matchId: '6001' },
-      occurred_at: new Date('2026-10-20T01:00:00.000Z'),
-      actor: null,
+    });
+    const held = (...reportIds: string[]) => ({
+      action: 'user.held',
+      target_id: '77',
+      detail: { reportIds },
+    });
+    const queue = async (reports: ReportFixture[], marks: object[]) => {
+      stubOpenReports(reports);
+      jest
+        .spyOn(prisma.audit_entries, 'findMany')
+        .mockResolvedValueOnce(marks as never);
+      jest.spyOn(prisma.users, 'findMany').mockResolvedValue([]);
+      return (await service.openReports()).map((r) => [
+        r.id,
+        r.onHold,
+        r.coveredByHold,
+      ]);
+    };
+
+    it('marks only the reports the administrator held the person for', async () => {
+      // Held for 8; report 9 came in afterwards.
+      await expect(
+        queue(
+          [
+            matchReport(8n, 2n),
+            matchReport(9n, 3n),
+            matchReport(10n, 4n, '78'),
+          ],
+          [held('8')],
+        ),
+      ).resolves.toEqual([
+        ['8', true, true],
+        ['9', true, false],
+        ['10', false, false],
+      ]);
+    });
+
+    it('marks nothing when nobody is held', async () => {
+      await expect(queue([matchReport(8n, 2n)], [])).resolves.toEqual([
+        ['8', false, false],
+      ]);
+    });
+
+    it('marks nothing once every report the hold names is decided', async () => {
+      // Placed for report 4, which was decided long ago.
+      await expect(queue([matchReport(9n, 3n)], [held('4')])).resolves.toEqual([
+        ['9', false, false],
+      ]);
+    });
+
+    it('marks nothing after the person was released', async () => {
+      await expect(
+        queue(
+          [matchReport(8n, 2n)],
+          [held('8'), { action: 'user.released', target_id: '77' }],
+        ),
+      ).resolves.toEqual([['8', false, false]]);
+    });
+
+    it('does not say a person held only by the threshold is covered by an administrator', async () => {
+      await expect(
+        queue([matchReport(8n, 2n), matchReport(9n, 3n)], []),
+      ).resolves.toEqual([
+        ['8', true, false],
+        ['9', true, false],
+      ]);
+    });
+  });
+
+  describe('holding and releasing', () => {
+    const openRow = (
+      id: bigint,
+      actor: bigint,
+      target = '77',
+    ): ReportFixture => ({
+      entry_id: id,
+      actor_user_id: actor,
+      target_id: target,
+      detail: { reason: 'asked for a fee', matchId: '6001' },
     });
     /** A hold the administrator placed while `reportIds` were open about person 77. */
     const held = (...reportIds: string[]) => ({
@@ -815,22 +862,25 @@ describe('GovernanceService', () => {
     });
 
     /**
-     * The audit trail on each read, in order. A read is the open reports, then
-     * (when there are any) the decisions about them and the administrator's
-     * holds. `reads` gives each read as [reports, decided report ids, holds].
+     * The audit trail on each read, in order. A read is the open-reports query,
+     * which leaves out the decided reports, then (when any are open) the
+     * administrator's holds. `reads` gives each read as
+     * [reports, decided report ids, holds].
      */
     function audit(
-      ...reads: [reports: object[], decided?: string[], holds?: object[]][]
+      ...reads: [
+        reports: ReportFixture[],
+        decided?: string[],
+        holds?: object[],
+      ][]
     ) {
-      const find = jest.spyOn(prisma.audit_entries, 'findMany');
+      const marks = jest.spyOn(prisma.audit_entries, 'findMany');
       for (const [reports, decided = [], holds = []] of reads) {
-        find.mockResolvedValueOnce(reports as never);
-        if (reports.length > 0) {
-          find.mockResolvedValueOnce(
-            decided.map((target_id) => ({ target_id })) as never,
-          );
-          find.mockResolvedValueOnce(holds as never);
-        }
+        const open = reports.filter(
+          (r) => !decided.includes(r.entry_id.toString()),
+        );
+        stubOpenReports(open);
+        if (open.length > 0) marks.mockResolvedValueOnce(holds as never);
       }
       return jest.spyOn(prisma.audit_entries, 'create');
     }
@@ -921,7 +971,7 @@ describe('GovernanceService', () => {
         reportRow(8n);
         const oldBody = {
           ...openRow(8n, 2n),
-          detail: { reason: 'sent through the old body' },
+          detail: { reason: 'sent before every report needed a match' },
         };
         const create = audit([[oldBody]]);
 
@@ -938,13 +988,41 @@ describe('GovernanceService', () => {
         reportRow(8n);
         const oldBody = {
           ...openRow(8n, 2n),
-          detail: { reason: 'sent through the old body' },
+          detail: { reason: 'sent before every report needed a match' },
         };
         const create = audit([[oldBody, openRow(9n, 3n)]]);
 
         await service.hold('8', 'auth0|admin');
 
         expect(actions(create)).toEqual(['user.held']);
+      });
+
+      it('names only the reports raised from a match, never one without', async () => {
+        reportRow(8n);
+        const oldBody = {
+          ...openRow(8n, 2n),
+          detail: { reason: 'sent before every report needed a match' },
+        };
+        const create = audit([[oldBody, openRow(9n, 3n), openRow(10n, 4n)]]);
+
+        await service.hold('8', 'auth0|admin');
+
+        expect(create.mock.calls[0][0]).toMatchObject({
+          data: { detail: { reportId: '8', reportIds: ['9', '10'] } },
+        });
+      });
+
+      it('writes nothing when the hold already names every report from a match, even if the one clicked has none', async () => {
+        reportRow(8n);
+        const oldBody = {
+          ...openRow(8n, 2n),
+          detail: { reason: 'sent before every report needed a match' },
+        };
+        const create = audit([[oldBody, openRow(9n, 3n)], [], [held('9')]]);
+
+        await service.hold('8', 'auth0|admin');
+
+        expect(create).not.toHaveBeenCalled();
       });
 
       it('writes a fresh hold when the report is not one the current hold covers', async () => {
@@ -1071,6 +1149,7 @@ describe('GovernanceService', () => {
           '77',
           'deactivated',
           'auth0|admin',
+          transaction.tx,
         );
         expect(actions(create)).toEqual(['report.resolved', 'user.released']);
       });
@@ -1093,12 +1172,24 @@ describe('GovernanceService', () => {
       occurred_at: new Date('2026-10-19T01:00:00.000Z'),
       actor: null,
     });
-    const legacyReport = (reportedUserId: string) => {
-      jest.spyOn(prisma.users, 'findUnique').mockResolvedValue({
-        userid: BigInt(reportedUserId),
-        auth0Id: `auth0|other-${reportedUserId}`,
+    /**
+     * Signs in as coordinator 5, accepted with guest `profile` whose account
+     * has the same number, and reports them.
+     */
+    const reportThroughMatch = (profile: string) => {
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValue({ coordinator_id: 5n } as never);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6001n,
+        coordinator_id: 5n,
+        guest_id: BigInt(profile),
+        status: 'ACCEPTED',
       } as never);
-      return service.report('auth0|me', { reportedUserId, reason });
+      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValue({
+        user_id: BigInt(profile),
+      } as never);
+      return service.report('auth0|me', { targetId: profile, reason });
     };
 
     it('takes the reporter’s lock before reading the limit and storing the report', async () => {
@@ -1107,7 +1198,7 @@ describe('GovernanceService', () => {
         occurred_at: new Date('2026-10-20T01:00:00.000Z'),
       } as never);
 
-      await legacyReport('9');
+      await reportThroughMatch('9');
 
       expect(transaction.log).toEqual(['lock', 'read', 'actor', 'write']);
       // The double signs every caller in as user 1.
@@ -1115,13 +1206,10 @@ describe('GovernanceService', () => {
     });
 
     it('does not take the reporter’s lock for a report it refuses before storing', async () => {
-      jest
-        .spyOn(prisma.users, 'findUnique')
-        .mockResolvedValue({ userid: 9n, auth0Id: 'auth0|me' } as never);
-
-      await expect(
-        service.report('auth0|me', { reportedUserId: '9', reason }),
-      ).rejects.toBeInstanceOf(BadRequestException);
+      // The double signs every caller in as user 1, so profile 1 is themselves.
+      await expect(reportThroughMatch('1')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
 
       expect(transaction.log).toEqual([]);
     });
@@ -1131,21 +1219,15 @@ describe('GovernanceService', () => {
         entry_id: 31n,
         occurred_at: new Date('2026-10-20T01:00:00.000Z'),
       } as never);
-      await legacyReport('9');
+      await reportThroughMatch('9');
       const reporterLock = transaction.locks[0];
 
       jest.spyOn(prisma.audit_entries, 'findFirst').mockResolvedValue({
         entry_id: 8n,
         target_id: '77',
       } as never);
-      jest
-        .spyOn(prisma.audit_entries, 'findMany')
-        .mockResolvedValueOnce([row(8n, 2n, '77')] as never)
-        .mockResolvedValueOnce([] as never)
-        .mockResolvedValueOnce([] as never)
-        .mockResolvedValueOnce([row(8n, 2n, '77')] as never)
-        .mockResolvedValueOnce([] as never)
-        .mockResolvedValueOnce([] as never);
+      // Open for the hold, then open again for the decision's first read.
+      stubOpenReports([row(8n, 2n, '77')], [row(8n, 2n, '77')]);
       transaction.locks.length = 0;
       transaction.log.length = 0;
 
@@ -1171,17 +1253,32 @@ describe('GovernanceService', () => {
         row(3n, 1n, '13'),
         row(4n, 1n, '14'),
       ]);
-      jest.spyOn(prisma.users, 'findUnique').mockImplementation(((args: {
-        where: { userid: bigint };
-      }) =>
-        Promise.resolve({
-          userid: args.where.userid,
-          auth0Id: `auth0|other-${args.where.userid}`,
-        })) as never);
+      // Coordinator 5 is matched with guests 21 and 22, whose accounts have
+      // the same numbers.
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValue({ coordinator_id: 5n } as never);
+      jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockImplementation(((args: {
+          where: {
+            coordinator_id_guest_id: { guest_id: bigint };
+          };
+        }) =>
+          Promise.resolve({
+            match_id: 6000n + args.where.coordinator_id_guest_id.guest_id,
+            coordinator_id: 5n,
+            guest_id: args.where.coordinator_id_guest_id.guest_id,
+            status: 'ACCEPTED',
+          })) as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockImplementation(((args: { where: { guest_id: bigint } }) =>
+          Promise.resolve({ user_id: args.where.guest_id })) as never);
 
       const results = await Promise.allSettled([
-        service.report('auth0|me', { reportedUserId: '21', reason }),
-        service.report('auth0|me', { reportedUserId: '22', reason }),
+        service.report('auth0|me', { targetId: '21', reason }),
+        service.report('auth0|me', { targetId: '22', reason }),
       ]);
 
       expect(results.map((r) => r.status).sort()).toEqual([
@@ -1217,27 +1314,23 @@ describe('GovernanceService', () => {
   });
 
   it('does not call a person held when the only hold names reports that are decided', async () => {
-    jest
-      .spyOn(prisma.audit_entries, 'findMany')
-      .mockResolvedValueOnce([
-        {
-          entry_id: 9n,
-          actor_user_id: 3n,
-          target_id: '77',
-          detail: { reason: 'a newer complaint', matchId: '6002' },
-          occurred_at: new Date('2026-10-21T01:00:00.000Z'),
-          actor: null,
-        },
-      ] as never)
-      .mockResolvedValueOnce([] as never)
-      // Placed for report 4, which was decided long ago.
-      .mockResolvedValueOnce([
-        {
-          action: 'user.held',
-          target_id: '77',
-          detail: { reportIds: ['4'] },
-        },
-      ] as never);
+    stubOpenReports([
+      {
+        entry_id: 9n,
+        actor_user_id: 3n,
+        target_id: '77',
+        detail: { reason: 'a newer complaint', matchId: '6002' },
+        occurred_at: new Date('2026-10-21T01:00:00.000Z'),
+      },
+    ]);
+    // Placed for report 4, which was decided long ago.
+    jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValueOnce([
+      {
+        action: 'user.held',
+        target_id: '77',
+        detail: { reportIds: ['4'] },
+      },
+    ] as never);
     jest.spyOn(prisma.users, 'findMany').mockResolvedValue([] as never);
 
     const [report] = await service.openReports();
@@ -1255,6 +1348,40 @@ describe('GovernanceService', () => {
 
     await service.resolveReport('2', 'deactivated', 'auth0|admin');
 
-    expect(deactivate).toHaveBeenCalledWith('7', 'deactivated', 'auth0|admin');
+    expect(deactivate).toHaveBeenCalledWith(
+      '7',
+      'deactivated',
+      'auth0|admin',
+      transaction.tx,
+    );
+  });
+
+  it('deactivates inside the transaction that records the decision', async () => {
+    jest
+      .spyOn(prisma.audit_entries, 'findFirst')
+      .mockResolvedValue({ entry_id: 2n, target_id: '7' } as never);
+    jest
+      .spyOn(prisma.users, 'findUnique')
+      .mockResolvedValue({ userid: 7n } as never);
+    jest
+      .spyOn(prisma.users, 'update')
+      .mockResolvedValue({ userid: 7n, deletedat: new Date() } as never);
+    jest.spyOn(prisma.users, 'findFirst').mockResolvedValue(null);
+
+    await service.resolveReport('2', 'deactivated', 'auth0|admin');
+
+    // Lock, the status change (look-up and write) and its audit entry, the
+    // decision, then the read after it: all through the transaction's client.
+    expect(transaction.log).toEqual([
+      'lock',
+      'read',
+      'status',
+      'status',
+      'actor',
+      'write',
+      'actor',
+      'write',
+      'read',
+    ]);
   });
 });

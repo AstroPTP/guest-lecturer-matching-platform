@@ -386,10 +386,14 @@ describe('deleteAccount', () => {
   /** Every call the transaction makes, in order, as "table.method". */
   type Tx = ReturnType<typeof deletionTransaction>;
 
-  function deletionTransaction(photos: {
-    guest?: bigint | null;
-    coordinator?: bigint | null;
-  }) {
+  function deletionTransaction(
+    photos: {
+      guest?: bigint | null;
+      coordinator?: bigint | null;
+    },
+    /** attachment_id of each support message in the caller's threads. */
+    supportFiles: (bigint | null)[] = [],
+  ) {
     const order: string[] = [];
     const record = (name: string) => {
       order.push(name);
@@ -409,6 +413,21 @@ describe('deleteAccount', () => {
       availability: { deleteMany: jest.fn(() => record('availability')) },
       user_expertise: { deleteMany: jest.fn(() => record('user_expertise')) },
       notifications: { deleteMany: jest.fn(() => record('notifications')) },
+      support_messages: {
+        findMany: jest.fn(() => {
+          order.push('support_messages.findMany');
+          return Promise.resolve(
+            supportFiles.map((attachment_id) => ({ attachment_id })),
+          );
+        }),
+        deleteMany: jest.fn(() => record('support_messages.deleteMany')),
+      },
+      support_threads: {
+        deleteMany: jest.fn(() => record('support_threads')),
+      },
+      support_attachments: {
+        deleteMany: jest.fn(() => record('support_attachments')),
+      },
       images: { deleteMany: jest.fn(() => record('images')) },
       guests: profile('guests', photos.guest),
       coordinators: profile('coordinators', photos.coordinator),
@@ -455,6 +474,67 @@ describe('deleteAccount', () => {
     expect(tx.notifications.deleteMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
     });
+  });
+
+  it('removes the requests for details sent to the caller, with their messages', async () => {
+    const tx = deletionTransaction({});
+
+    await deleteWith(tx);
+
+    expect(tx.support_messages.deleteMany).toHaveBeenCalledWith({
+      where: { thread: { user_id: 1n } },
+    });
+    expect(tx.support_threads.deleteMany).toHaveBeenCalledWith({
+      where: { user_id: 1n },
+    });
+  });
+
+  it('removes the files attached to those messages, after the messages that point at them', async () => {
+    const tx = deletionTransaction({}, [21n, null, 22n]);
+
+    await deleteWith(tx);
+
+    expect(tx.support_messages.findMany).toHaveBeenCalledWith({
+      where: { thread: { user_id: 1n }, attachment_id: { not: null } },
+      select: { attachment_id: true },
+    });
+    // Only a file nothing else refers to is deleted.
+    expect(tx.support_attachments.deleteMany).toHaveBeenCalledWith({
+      where: { attachment_id: { in: [21n, 22n] }, messages: { none: {} } },
+    });
+    const at = (call: string) => tx.order.indexOf(call);
+    expect(at('support_messages.findMany')).toBeLessThan(
+      at('support_messages.deleteMany'),
+    );
+    expect(at('support_messages.deleteMany')).toBeLessThan(
+      at('support_attachments'),
+    );
+  });
+
+  it('deletes no files for a caller whose messages had none', async () => {
+    const tx = deletionTransaction({}, [null, null]);
+
+    await deleteWith(tx);
+
+    expect(tx.support_attachments.deleteMany).not.toHaveBeenCalled();
+    expect(tx.support_threads.deleteMany).toHaveBeenCalled();
+  });
+
+  it('does all of it in the one transaction, before the users row is marked deleted', async () => {
+    const tx = deletionTransaction({ guest: 11n }, [21n]);
+    const transaction = jest.spyOn(prisma, '$transaction');
+
+    await deleteWith(tx);
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+
+    // Every call above went through the transaction's client (the root client
+    // has no support tables in the test double, so a stray call would throw).
+    const at = (call: string) => tx.order.indexOf(call);
+    expect(at('support_threads')).toBeGreaterThanOrEqual(0);
+    expect(at('support_attachments')).toBeGreaterThanOrEqual(0);
+    expect(at('support_threads')).toBeLessThan(at('users'));
+    expect(at('support_attachments')).toBeLessThan(at('users'));
   });
 
   it('removes the guest lecturer photo along with the profile', async () => {

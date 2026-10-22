@@ -30,7 +30,9 @@ export type AuditCategory =
   | "Match"
   | "Event"
   | "Invitation"
-  | "Account Management";
+  | "Account Management"
+  | "Security"
+  | "System";
 export type AuditAction =
   | "Interest Expressed"
   | "Profile Dismissed"
@@ -50,6 +52,12 @@ export type AuditAction =
   | "Profile Approved"
   | "Settings Changed"
   | "Report Resolved"
+  | "Details Requested"
+  | "Request Replied"
+  | "Request Closed"
+  | "Request Reopened"
+  | "Signed In"
+  | "Retention Purge"
   | "Account Held"
   | "Account Released";
 export type AuditStatus = "Success" | "Failed" | "Pending";
@@ -68,6 +76,8 @@ export interface AuditEntry {
   targetType: "Profile" | "Match" | "Event" | "Invitation" | "Account";
   category: AuditCategory;
   status: AuditStatus;
+  /** Ties the entry to the request that caused it; null for older entries and scheduled jobs. */
+  correlationId: string | null;
 }
 
 export type NotificationType = "Matching" | "User" | "Security" | "Event";

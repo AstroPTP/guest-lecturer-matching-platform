@@ -1,4 +1,5 @@
 import { backendFetch } from '@/lib/api/backendClient';
+import { isThreadId } from '@/lib/requestFormat';
 import {
   AccountStatus,
   VerificationStatus,
@@ -263,13 +264,39 @@ const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategor
   'user.released': { label: 'Account Released', category: 'Account Management' },
   'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
   'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
+  'support.requested': { label: 'Details Requested', category: 'Account Management' },
+  'support.replied': { label: 'Request Replied', category: 'Account Management' },
+  'support.closed': { label: 'Request Closed', category: 'Account Management' },
+  'support.reopened': { label: 'Request Reopened', category: 'Account Management' },
+  'user.signed_in': { label: 'Signed In', category: 'Security' },
+  'retention.purge': { label: 'Retention Purge', category: 'System' },
 };
+
+/**
+ * The actions the Audit Log can be narrowed to, for its filter. Taken from
+ * ACTION_LABELS so a label added there appears in the filter without a second
+ * edit.
+ */
+export const AUDIT_ACTION_FILTERS = Object.entries(ACTION_LABELS).map(
+  ([action, { label }]) => ({ action, label }),
+);
 
 const ACTOR_ROLES: Record<string, AuditActorRole> = {
   ccae_admin: 'Administrator',
   unit_coordinator: 'Unit Coordinator',
   guest_speaker: 'Guest Lecturer',
 };
+
+/**
+ * The correlation id the backend stored in the entry's detail, if there is a
+ * well-formed one. Entries written before ids were recorded, and entries from
+ * scheduled jobs that run outside any request, have none.
+ */
+function correlationIdOf(detail: unknown): string | null {
+  if (typeof detail !== 'object' || detail === null) return null;
+  const id = (detail as { correlationId?: unknown }).correlationId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
 
 function toAuditEntry(row: AuditRow): AuditEntry {
   const known = ACTION_LABELS[row.action];
@@ -285,11 +312,19 @@ function toAuditEntry(row: AuditRow): AuditEntry {
     targetType: row.targetType === 'guest' ? 'Profile' : 'Account',
     category: known?.category ?? 'Account Management',
     status: 'Success',
+    correlationId: correlationIdOf(row.detail),
   };
 }
 
-export async function getAuditEntries(limit = 200): Promise<AuditEntry[]> {
-  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?limit=${limit}`);
+/**
+ * Newest first. `action` is the stored key, such as "user.signed_in", and is
+ * filtered on the server: a busy action like sign-ins would otherwise fill the
+ * whole page of rows and push everything else out of view.
+ */
+export async function getAuditEntries(limit = 200, action?: string): Promise<AuditEntry[]> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (action) query.set('action', action);
+  const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?${query.toString()}`);
   return rows.map(toAuditEntry);
 }
 
@@ -342,6 +377,8 @@ export interface OpenReport {
   onHold: boolean;
   /** Why: enough different reporters ("threshold"), or an administrator ("admin"). */
   holdReasons: ('threshold' | 'admin')[];
+  /** True when an administrator's hold on this person was placed for this report. */
+  coveredByHold: boolean;
   reportedAt: string;
 }
 
@@ -406,4 +443,109 @@ export async function getSystemSnapshot(): Promise<SystemSnapshot> {
 /** Failed sign-ins, refused admin requests, rate limiting and server errors. */
 export async function getSecuritySignals(): Promise<SecuritySignals> {
   return backendFetch<SecuritySignals>('/admin/system/security', { cache: 'no-store' });
+}
+
+// ---------------------------------------------------------------------------
+// Requests for further details
+// ---------------------------------------------------------------------------
+
+export type RequestStatus = 'open' | 'closed';
+
+export interface RequestThreadSummary {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string | null;
+  userRole: string | null;
+  subject: string;
+  status: RequestStatus;
+  /** Messages from the user that no administrator has opened yet. */
+  unreadFromUser: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface RequestMessage {
+  id: string;
+  sender: 'admin' | 'user';
+  content: string;
+  sentAt: string;
+  attachment: RequestAttachment | null;
+}
+
+export interface RequestThread {
+  id: string;
+  subject: string;
+  status: RequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; name: string; email: string | null; role: string | null };
+  messages: RequestMessage[];
+}
+
+/** Asks one user for further details. The user is told in their Messages page. */
+export async function requestDetails(input: {
+  userId: string;
+  subject: string;
+  message: string;
+}): Promise<{ id: string }> {
+  return backendFetch<{ id: string }>('/admin/support/threads', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId: numericId(input.userId),
+      subject: input.subject,
+      message: input.message,
+    }),
+  });
+}
+
+/** The API path of one request, refusing an id that is not a number. */
+function threadPath(id: string): string {
+  if (!isThreadId(id)) {
+    throw new Error('That request could not be found.');
+  }
+  return `/admin/support/threads/${id}`;
+}
+
+export async function getRequestThreads(): Promise<RequestThreadSummary[]> {
+  return backendFetch<RequestThreadSummary[]>('/admin/support/threads', { cache: 'no-store' });
+}
+
+/** Opening a request counts as reading what the user sent. */
+export async function getRequestThread(id: string): Promise<RequestThread> {
+  return backendFetch<RequestThread>(threadPath(id), {
+    cache: 'no-store',
+  });
+}
+
+export async function replyToRequest(id: string, content: string): Promise<RequestMessage> {
+  return backendFetch<RequestMessage>(`${threadPath(id)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function setRequestStatus(
+  id: string,
+  status: RequestStatus,
+): Promise<{ id: string; status: RequestStatus }> {
+  return backendFetch(threadPath(id), {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/**
+ * Where an attached file is served. Through the portal's own server route, so
+ * the access token is added there and the link needs nothing from the page.
+ */
+export function requestAttachmentHref(attachmentId: string): string {
+  return `/api/backend/support/attachments/${encodeURIComponent(attachmentId)}`;
 }

@@ -4,6 +4,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { requestContextMiddleware } from './common/request-context.middleware';
 import { validateEnv } from './config/env.validation';
 import { loadEnvFile } from './config/load-env';
 
@@ -26,6 +27,10 @@ async function bootstrap() {
   const env = validateEnv();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // First, so that everything after it, including a CORS preflight and a body
+  // refused for its size, has a correlation id and ends up in the request log.
+  app.use(requestContextMiddleware());
 
   app.use(
     helmet({
@@ -55,6 +60,9 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type', 'X-Correlation-Id'],
+    // A browser hides response headers that are not listed. Without this a
+    // cross-origin caller sends an id but cannot read the one that came back.
+    exposedHeaders: ['X-Correlation-Id'],
     maxAge: 600,
   });
 

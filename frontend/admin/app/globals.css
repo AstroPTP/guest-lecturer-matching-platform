@@ -927,7 +927,7 @@ a { color: inherit; text-decoration: none; }
   align-items: end;
   display: grid;
   gap: 11px;
-  grid-template-columns: minmax(260px, 1fr) 150px 150px;
+  grid-template-columns: minmax(260px, 1fr) 150px 150px 150px;
   margin-top: 34px;
 }
 .audit-search {
@@ -976,7 +976,7 @@ a { color: inherit; text-decoration: none; }
 .audit-metrics strong { color: var(--c-303030); font-size: 23px; }
 .audit-table-card { background: var(--c-ffffff); border-radius: 5px; margin-top: 24px; overflow: hidden; }
 .audit-table-scroll { overflow-x: auto; }
-.audit-table { border-collapse: collapse; min-width: 980px; table-layout: fixed; width: 100%; }
+.audit-table { border-collapse: collapse; min-width: 1060px; table-layout: fixed; width: 100%; }
 .audit-table th {
   background: var(--c-fafafa);
   color: var(--c-707076);
@@ -987,12 +987,13 @@ a { color: inherit; text-decoration: none; }
   text-align: left;
   text-transform: uppercase;
 }
-.audit-table th:nth-child(1) { width: 13%; }
-.audit-table th:nth-child(2) { width: 13%; }
-.audit-table th:nth-child(3) { width: 13%; }
-.audit-table th:nth-child(4) { width: 16%; }
-.audit-table th:nth-child(5) { width: 22%; }
-.audit-table th:nth-child(6) { width: 13%; }
+.audit-table th:nth-child(1) { width: 10%; }
+.audit-table th:nth-child(2) { width: 12%; }
+.audit-table th:nth-child(3) { width: 10%; }
+.audit-table th:nth-child(4) { width: 12%; }
+.audit-table th:nth-child(5) { width: 14%; }
+.audit-table th:nth-child(6) { width: 11%; }
+.audit-table th:nth-child(7) { width: 21%; }
 .audit-table th:last-child { text-align: right; width: 10%; }
 .audit-table td {
   border-top: 1px solid var(--c-f0f0f1);
@@ -1005,6 +1006,16 @@ a { color: inherit; text-decoration: none; }
 .audit-table td:first-child > span { display: block; }
 .audit-table td:last-child { text-align: right; }
 .audit-actor-name { color: var(--c-303035); font-size: 9px; }
+/* One click selects the whole id, so it can be copied without dragging across it. */
+.audit-correlation {
+  color: var(--c-303035);
+  cursor: text;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.audit-correlation-none { color: var(--c-96969c); font-style: italic; }
 .target-type { color: var(--c-929298); display: block; font-size: 6px; font-weight: 800; letter-spacing: .08em; margin-bottom: 3px; text-transform: uppercase; }
 .audit-target { color: var(--c-4e4e54); font-size: 8px; font-weight: 550; }
 .category-label {
@@ -1462,6 +1473,7 @@ a { color: inherit; text-decoration: none; }
 .audit-admin small { font-size: 11px; }
 .target-type { font-size: 9px; }
 .audit-target { font-size: 12px; }
+.audit-correlation { font-size: 11px; }
 .audit-action,
 .audit-status { font-size: 10px; }
 .audit-pagination > span,
@@ -2783,3 +2795,159 @@ textarea:focus-visible,
 
 :root[data-theme="dark"] img:not(.help-hero-image) { filter: invert(0.85); }
 :root[data-theme="dark"] .login-form-panel img { filter: none; }
+
+/* Requests for further details --------------------------------------------
+   Status is always written out ("Open", "Closed", "3 unread") as well as
+   coloured, so no meaning rests on colour alone. Every colour is an existing
+   token, so the dark theme follows without anything extra here. */
+
+.review-actions button.secondary-action,
+.profile-actions button.secondary-action,
+.request-heading-actions button.secondary-action {
+  background: transparent;
+  border: 1px solid var(--c-77777d);
+  border-radius: 6px;
+  color: var(--c-17231f);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 9px 18px;
+  white-space: nowrap;
+}
+.review-actions button.secondary-action:disabled,
+.request-heading-actions button.secondary-action:disabled { opacity: .5; }
+
+.request-sent {
+  color: var(--c-15803d);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 4px 0 0;
+  max-width: 220px;
+  text-align: center;
+}
+.request-sent a { color: var(--c-2563eb); font-weight: 600; text-decoration: underline; }
+/* On a profile the buttons sit in a wrapping row; the notice takes its own line. */
+.profile-actions .request-sent { flex-basis: 100%; max-width: none; text-align: left; }
+
+.request-dialog { background: var(--c-ffffff); color: var(--c-17231f); max-width: 480px; width: calc(100% - 32px); }
+.request-dialog p { margin-bottom: 16px; }
+.request-field { display: grid; gap: 6px; margin-bottom: 14px; }
+.request-field label { color: var(--c-17231f); font-size: 13px; font-weight: 700; }
+.request-field input,
+.request-field textarea {
+  background: var(--c-ffffff);
+  border: 1px solid var(--c-77777d);
+  border-radius: 8px;
+  color: var(--c-17231f);
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 11px;
+  width: 100%;
+}
+.request-field textarea { min-height: 120px; resize: vertical; }
+.request-count { color: var(--c-73737a); font-size: 12px; text-align: right; }
+.request-error { color: var(--c-dc2626); font-size: 13px; margin: 0 0 14px; }
+.request-dialog .confirm-actions button { color: var(--c-17231f); }
+.request-dialog .confirm-actions button.request-submit {
+  background: var(--c-17231f);
+  border-color: var(--c-17231f);
+  color: var(--c-ffffff);
+}
+.request-dialog .confirm-actions button:disabled { opacity: .5; }
+
+.request-badges { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 8px; }
+.request-badge,
+.request-unread {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 2px 10px;
+}
+.request-badge.open { background: var(--c-eff6ff); color: var(--c-1e3a8a); }
+.request-badge.closed { background: var(--c-ffffff); color: var(--c-4b5563); }
+.request-unread { background: var(--c-fef2f2); color: var(--c-7f1d1d); }
+
+.request-page { margin: 0 auto; max-width: 820px; }
+.request-heading {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+  margin: 6px 0 20px;
+}
+.request-heading h1 { font-size: 24px; margin: 0; overflow-wrap: anywhere; }
+.request-heading p { color: var(--c-73737a); font-size: 13px; margin: 6px 0 0; }
+.request-heading p a { color: var(--c-2563eb); font-weight: 600; }
+.request-heading-actions { align-items: center; display: flex; gap: 10px; }
+
+.request-thread { display: grid; gap: 12px; list-style: none; margin: 0; padding: 0; }
+.request-message {
+  background: var(--c-ffffff);
+  border-left: 4px solid var(--c-77777d);
+  border-radius: 7px;
+  box-shadow: 0 1px 2px #0000000b;
+  padding: 14px 18px;
+}
+.request-message.admin { border-left-color: var(--c-2563eb); }
+.request-message.user { border-left-color: var(--c-15803d); }
+.request-message > header { align-items: baseline; display: flex; gap: 12px; justify-content: space-between; }
+.request-message > header strong { font-size: 13px; }
+.request-message > header time { color: var(--c-73737a); font-size: 12px; }
+.request-message p { font-size: 14px; line-height: 1.55; margin: 8px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.request-attachment {
+  align-items: center;
+  border: 1px solid var(--c-77777d);
+  border-radius: 8px;
+  color: var(--c-2563eb);
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 8px;
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+  padding: 7px 12px;
+}
+.request-attachment:hover { text-decoration: underline; }
+.request-attachment small { color: var(--c-73737a); font-size: 12px; font-weight: 400; }
+.request-attachment-kind {
+  background: var(--c-eff6ff);
+  border-radius: 4px;
+  color: var(--c-1e3a8a);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 1px 6px;
+}
+
+.request-reply { display: grid; gap: 8px; margin-top: 20px; }
+.request-reply label { color: var(--c-17231f); font-size: 13px; font-weight: 700; }
+.request-reply textarea {
+  background: var(--c-ffffff);
+  border: 1px solid var(--c-77777d);
+  border-radius: 8px;
+  color: var(--c-17231f);
+  font: inherit;
+  font-size: 14px;
+  min-height: 96px;
+  padding: 9px 11px;
+  resize: vertical;
+  width: 100%;
+}
+.request-reply-row { align-items: center; display: flex; justify-content: space-between; }
+.request-reply-row button {
+  background: var(--c-17231f);
+  border: 0;
+  border-radius: 6px;
+  color: var(--c-ffffff);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 20px;
+}
+.request-reply-row button:disabled { opacity: .5; }
+
+@media (max-width: 640px) {
+  .request-heading-actions { flex-wrap: wrap; }
+  .request-message > header { flex-direction: column; gap: 2px; }
+}

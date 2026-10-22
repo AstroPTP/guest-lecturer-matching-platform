@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import { getOpenReports, holdReport, resolveReport, type OpenReport } from "@/services/adminApi";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -159,11 +160,11 @@ export default function ReportsPage() {
               </div>
               <div className="review-actions">
                 <button
-                  disabled={pendingId === row.id || row.holdReasons.includes("admin")}
+                  disabled={pendingId === row.id || row.coveredByHold}
                   onClick={() => void hold(row)}
                   type="button"
                 >
-                  {row.holdReasons.includes("admin") ? "Held" : "Hold until reviewed"}
+                  {row.coveredByHold ? "Held" : "Hold until reviewed"}
                 </button>
                 <button
                   disabled={pendingId === row.id}
@@ -180,6 +181,12 @@ export default function ReportsPage() {
                 >
                   Deactivate account
                 </button>
+                {row.reportedUserId ? (
+                  <RequestDetailsButton
+                    userId={row.reportedUserId}
+                    userName={row.reportedEmail ?? "this user"}
+                  />
+                ) : null}
               </div>
             </li>
           ))}

@@ -13,6 +13,10 @@ export const ErrorCode = {
   AuthzInsufficientRole: 'AUTHZ_INSUFFICIENT_ROLE',
   /** Request body failed validation. */
   ValidationFailed: 'VALIDATION_FAILED',
+  /** The route or the record it names does not exist. */
+  NotFound: 'NOT_FOUND',
+  /** The request is well-formed but clashes with the current state of the record. */
+  Conflict: 'CONFLICT',
   /** Rate limit exceeded. */
   RateLimitExceeded: 'RATE_LIMIT_EXCEEDED',
   /** Request body exceeded the configured size limit. */

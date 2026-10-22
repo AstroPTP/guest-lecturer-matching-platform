@@ -1,13 +1,19 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
 import { isUniqueViolation } from '../common/prisma-errors';
+import { personLabel } from '../notifications/person-label';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
-import { assertGuestCanBeContacted } from '../admin/platform-rules';
+import {
+  assertGuestCanBeContacted,
+  visibleGuestsWhere,
+} from '../admin/platform-rules';
+import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
 import {
   isConversationPaused,
   loadModerationState,
@@ -48,6 +54,8 @@ interface MatchRequestRow {
  */
 @Injectable()
 export class MatchRequestsService {
+  private readonly logger = new Logger(MatchRequestsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   async findMine(auth0Id: string): Promise<MatchRequest[]> {
@@ -71,7 +79,7 @@ export class MatchRequestsService {
   async create(auth0Id: string, targetId: string): Promise<MatchRequest> {
     const caller = await this.resolveSide(auth0Id);
     const target = toId(targetId, 'targetId');
-    await this.assertTargetExists(caller.side, target);
+    await this.assertCanRequest(caller, auth0Id, target);
 
     const pair = this.toPair(caller, target);
     const now = new Date();
@@ -93,6 +101,7 @@ export class MatchRequestsService {
             updated_at: now,
           },
         });
+        await this.notifyInterest(pair, caller.side);
         return this.toMatchRequest(caller, row);
       } catch (error) {
         // A request for the same pair landed first; go again against its row.
@@ -132,18 +141,47 @@ export class MatchRequestsService {
     statuses: string[] = ['ACCEPTED'],
   ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
     const caller = await this.resolveSide(auth0Id);
-    const rows = await prisma.match_requests.findMany({
-      where: {
-        status: { in: statuses },
-        ...(caller.side === 'coordinator'
-          ? { coordinator_id: caller.ownId }
-          : { guest_id: caller.ownId }),
-      },
-    });
+    const rows = await this.matchRowsOf(caller, statuses);
 
     return {
       side: caller.side,
       matches: rows.map((row) => ({
+        matchId: row.match_id,
+        targetId: this.toMatchRequest(caller, row).targetId,
+      })),
+    };
+  }
+
+  /**
+   * The caller's accepted matches whose conversation is not paused, for lists
+   * that must not show a thread the caller cannot open. Uses the same rule as
+   * `findAcceptedMatch`. However many matches there are, it reads the open
+   * reports once and, only when there are any, looks the other profiles up in
+   * one query.
+   */
+  async findUnpausedMatches(
+    auth0Id: string,
+  ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
+    const caller = await this.resolveSide(auth0Id);
+    const rows = await this.matchRowsOf(caller, ['ACCEPTED']);
+    const state = rows.length > 0 ? await loadModerationState() : null;
+
+    let open = rows;
+    if (state && state.reports.length > 0) {
+      const accounts = await this.accountsOfCounterparts(caller, rows);
+      open = rows.filter(
+        (row) =>
+          !isConversationPaused(
+            state,
+            caller.userId,
+            accounts.get(this.counterpartProfileId(caller, row)) ?? null,
+          ),
+      );
+    }
+
+    return {
+      side: caller.side,
+      matches: open.map((row) => ({
         matchId: row.match_id,
         targetId: this.toMatchRequest(caller, row).targetId,
       })),
@@ -171,11 +209,13 @@ export class MatchRequestsService {
   }
 
   /**
-   * The person on the other side of the caller's accepted match, for acting on
-   * them rather than messaging them, such as reporting. A pause does not refuse
-   * this: someone already reported can be reported by others, and a person on
-   * hold can still report. The counterpart's user id is null for a profile that
-   * was never linked to an account.
+   * The person on the other side of the caller's match, for acting on them
+   * rather than messaging them, such as reporting. The match may be accepted
+   * or since ended (UNMATCHED): ending a match must not stop someone reporting
+   * what happened in it. A pause does not refuse this either: someone already
+   * reported can be reported by others, and a person on hold can still report.
+   * The counterpart's user id is null for a profile that was never linked to an
+   * account.
    */
   async findAcceptedCounterpart(
     auth0Id: string,
@@ -190,6 +230,7 @@ export class MatchRequestsService {
       caller,
       targetId,
       'You can only report someone you have matched with.',
+      ['ACCEPTED', 'UNMATCHED'],
     );
 
     return {
@@ -243,11 +284,15 @@ export class MatchRequestsService {
     await this.notifyUnmatch(pair, caller.side);
   }
 
-  /** The caller's row with one profile, refused with `message` unless ACCEPTED. */
+  /**
+   * The caller's row with one profile, refused with `message` unless its
+   * status is one of `statuses` (ACCEPTED by default).
+   */
   private async requireAcceptedRow(
     caller: CallerSide,
     targetId: string,
     message: string,
+    statuses: string[] = ['ACCEPTED'],
   ): Promise<MatchRequestRow> {
     const row = await prisma.match_requests.findUnique({
       where: {
@@ -257,13 +302,66 @@ export class MatchRequestsService {
         ),
       },
     });
-    if (row?.status !== 'ACCEPTED') {
+    if (!row?.status || !statuses.includes(row.status)) {
       throw new ForbiddenException({
         code: ErrorCode.AuthzInsufficientRole,
         message,
       });
     }
     return row;
+  }
+
+  /** Every row the caller is in whose status is one of `statuses`. */
+  private matchRowsOf(
+    caller: CallerSide,
+    statuses: string[],
+  ): Promise<MatchRequestRow[]> {
+    return prisma.match_requests.findMany({
+      where: {
+        status: { in: statuses },
+        ...(caller.side === 'coordinator'
+          ? { coordinator_id: caller.ownId }
+          : { guest_id: caller.ownId }),
+      },
+    });
+  }
+
+  /** The profile id of the other side of a row. */
+  private counterpartProfileId(
+    caller: CallerSide,
+    row: MatchRequestRow,
+  ): bigint {
+    return caller.side === 'coordinator' ? row.guest_id : row.coordinator_id;
+  }
+
+  /**
+   * users.userid for each other side's profile, in one query. A profile that
+   * was never linked to an account is left out.
+   */
+  private async accountsOfCounterparts(
+    caller: CallerSide,
+    rows: MatchRequestRow[],
+  ): Promise<Map<bigint, bigint>> {
+    const ids = rows.map((row) => this.counterpartProfileId(caller, row));
+    const accounts = new Map<bigint, bigint>();
+    if (caller.side === 'coordinator') {
+      const guests = await prisma.guests.findMany({
+        where: { guest_id: { in: ids } },
+        select: { guest_id: true, user_id: true },
+      });
+      for (const g of guests) {
+        if (g.user_id !== null) accounts.set(g.guest_id, g.user_id);
+      }
+    } else {
+      const coordinators = await prisma.coordinators.findMany({
+        where: { coordinator_id: { in: ids } },
+        select: { coordinator_id: true, user_id: true },
+      });
+      for (const c of coordinators) {
+        if (c.user_id !== null) accounts.set(c.coordinator_id, c.user_id);
+      }
+    }
+    return accounts;
   }
 
   /** users.userid of the other side of a match, if their profile has one. */
@@ -286,8 +384,8 @@ export class MatchRequestsService {
 
   /**
    * Refuses when messaging between the two is paused: an open report between
-   * them, or either of them on hold. The message does not say which, or who
-   * reported whom, so it tells neither person more than the other could see.
+   * them, or either of them on hold. The message does not say why, or that a
+   * report exists at all, so the person reported is not told they were.
    */
   private async assertConversationNotPaused(
     caller: CallerSide,
@@ -303,7 +401,7 @@ export class MatchRequestsService {
       throw new ForbiddenException({
         code: 'CONVERSATION_PAUSED',
         message:
-          'Messaging with this person is paused while an administrator reviews a report. It resumes if the report is dismissed.',
+          'Messaging with this person is paused for now. Please try again later.',
       });
     }
   }
@@ -402,6 +500,86 @@ export class MatchRequestsService {
     }
   }
 
+  /**
+   * Tells the person a new request was made to that someone is interested.
+   * Only a request that starts a pair comes here: accepting the other side's
+   * request makes a match, which notifyMatch announces instead.
+   *
+   * The request is already saved by now, so a notice that cannot be saved is
+   * logged and dropped rather than failing a request that went through.
+   */
+  private async notifyInterest(
+    pair: { coordinator_id: bigint; guest_id: bigint },
+    senderSide: Side,
+  ): Promise<void> {
+    try {
+      const profile = {
+        first_name: true,
+        last_name: true,
+        role: true,
+        users: { select: { auth0Id: true } },
+      };
+      const [coordinator, guest] = await Promise.all([
+        prisma.coordinators.findUnique({
+          where: { coordinator_id: pair.coordinator_id },
+          select: profile,
+        }),
+        prisma.guests.findUnique({
+          where: { guest_id: pair.guest_id },
+          select: profile,
+        }),
+      ]);
+
+      const fromCoordinator = senderSide === 'coordinator';
+      const sender = fromCoordinator ? coordinator : guest;
+      const recipientId = (fromCoordinator ? guest : coordinator)?.users
+        ?.auth0Id;
+      if (!recipientId) {
+        return;
+      }
+
+      // Someone who dismissed this profile has hidden it from their Discovery,
+      // so a notice about it would put it back in front of them. The request
+      // itself still stands; only the notice is held back.
+      const dismissed = await prisma.dismissals.findUnique({
+        where: {
+          coordinator_id_guest_id_dismissed_by: {
+            ...pair,
+            dismissed_by: fromCoordinator ? 'guest' : 'coordinator',
+          },
+        },
+        select: { dismissal_id: true },
+      });
+      if (dismissed) {
+        return;
+      }
+
+      // Discovery is where they answer: the sender's card is still there to
+      // accept, which makes the match, or to dismiss. The id after "from" is
+      // that card, so Discovery opens on it and a repeat from someone else is
+      // not mistaken for this one.
+      const senderId = fromCoordinator ? pair.coordinator_id : pair.guest_id;
+      const discovery = fromCoordinator
+        ? '/guest_lecturer/discovery'
+        : '/unit_coordinator/discovery';
+      await this.notificationsService.createUnlessRecent({
+        recipientId,
+        type: 'match',
+        title: 'New interest',
+        description: personLabel(sender) + ' is interested in working with you',
+        actionLabel: 'View',
+        href: discovery + '?from=' + String(senderId),
+      });
+    } catch (error) {
+      // Only the error's name: a database error's message can quote the
+      // names and ids it was working with, and none of that belongs in a log.
+      this.logger.warn(
+        'Could not notify about a new request: ' +
+          (error instanceof Error ? error.name : 'UnknownError'),
+      );
+    }
+  }
+
   /** Tells the other person that the caller ended the match. */
   private async notifyUnmatch(
     pair: { coordinator_id: bigint; guest_id: bigint },
@@ -430,19 +608,49 @@ export class MatchRequestsService {
     });
   }
 
-  /** A coordinator requests guests, and a guest requests coordinators. */
-  private async assertTargetExists(side: Side, target: bigint): Promise<void> {
-    const exists =
-      side === 'coordinator'
-        ? await prisma.guests.findUnique({
-            where: { guest_id: target },
-            select: { guest_id: true },
-          })
-        : await prisma.coordinators.findUnique({
-            where: { coordinator_id: target },
-            select: { coordinator_id: true },
-          });
-    if (!exists) {
+  /**
+   * A coordinator requests guests, and a guest requests coordinators.
+   *
+   * Refused with the same 404 as a profile that does not exist when either end
+   * is one Discovery hides from the caller: the target, or the caller's own
+   * profile. That is the shared visibility rule, so a profile that is
+   * deactivated, not yet approved while approval is required, on hold, or
+   * reported by or against the caller cannot be reached by guessing its id,
+   * and the 404 does not say which of those it was.
+   */
+  private async assertCanRequest(
+    caller: CallerSide,
+    auth0Id: string,
+    target: bigint,
+  ): Promise<void> {
+    const [guestsWhere, coordinatorsWhere] = await Promise.all([
+      visibleGuestsWhere(auth0Id),
+      visibleCoordinatorsWhere(auth0Id),
+    ]);
+
+    const [own, other] =
+      caller.side === 'coordinator'
+        ? await Promise.all([
+            prisma.coordinators.findFirst({
+              where: { coordinator_id: caller.ownId, ...coordinatorsWhere },
+              select: { coordinator_id: true },
+            }),
+            prisma.guests.findFirst({
+              where: { guest_id: target, ...guestsWhere },
+              select: { guest_id: true },
+            }),
+          ])
+        : await Promise.all([
+            prisma.guests.findFirst({
+              where: { guest_id: caller.ownId, ...guestsWhere },
+              select: { guest_id: true },
+            }),
+            prisma.coordinators.findFirst({
+              where: { coordinator_id: target, ...coordinatorsWhere },
+              select: { coordinator_id: true },
+            }),
+          ]);
+    if (!own || !other) {
       throw new NotFoundException('That profile does not exist.');
     }
   }

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
+import { isSafeProxyPath } from '@/lib/api/proxyPath';
 import { backendUrl } from '@/lib/auth/config';
 import { readAccessToken } from '@/lib/auth/session';
 
@@ -35,18 +36,52 @@ const HOP_BY_HOP = new Set([
   // own credentials and defeat the whole arrangement.
   'authorization',
   'cookie',
+  // Conditional requests would let the API answer 304 with no body, which is
+  // not what a no-store response should be built from.
+  'if-none-match',
+  'if-modified-since',
+  'if-match',
+  'if-unmodified-since',
+  'if-range',
 ]);
 
-async function forward(request: NextRequest, path: string[]) {
+/**
+ * Everything this route returns is per-user and must not be kept by a shared
+ * cache, so every response, including the errors built here, says so. The
+ * headers passed through from the API are chosen one by one below; nothing
+ * that would allow shared caching (Cache-Control, ETag, Last-Modified) is
+ * among them.
+ */
+const NO_SHARED_CACHE = 'private, no-store';
+
+/** A response built here rather than passed through from the API. */
+function refuse(body: Record<string, string>, status: number) {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'Cache-Control': NO_SHARED_CACHE },
+  });
+}
+
+async function forward(request: NextRequest, path: string[] | null) {
+  // Checked before anything else, and before the API is called. A segment that
+  // is a dot segment or holds a separator could make this server request a
+  // different route from the one the browser asked for.
+  if (!path || !isSafeProxyPath(path)) {
+    return refuse(
+      { code: 'VALIDATION_FAILED', message: 'The request path is not valid.' },
+      400,
+    );
+  }
+
   const token = await readAccessToken();
 
   // No session, or it could not be refreshed. Answer here rather than sending
   // an unauthenticated call the backend would refuse anyway; backendFetch
   // turns this 401 into a redirect to /login.
   if (!token) {
-    return NextResponse.json(
+    return refuse(
       { code: 'AUTH_REQUIRED', message: 'Please sign in to continue.' },
-      { status: 401 },
+      401,
     );
   }
 
@@ -78,47 +113,67 @@ async function forward(request: NextRequest, path: string[]) {
   }).catch(() => null);
 
   if (!response) {
-    return NextResponse.json(
+    return refuse(
       {
         code: 'BACKEND_UNREACHABLE',
         message: 'The API is not responding.',
         correlationId: headers.get('x-correlation-id') ?? '',
         timestamp: new Date().toISOString(),
       },
-      { status: 502 },
+      502,
     );
   }
 
   // Pass the body and status straight through so the error envelope the
   // backend produced reaches the client unchanged.
+  const passed: Record<string, string> = {
+    'Content-Type': response.headers.get('content-type') ?? 'application/json',
+    'Cache-Control': NO_SHARED_CACHE,
+  };
+  // A downloaded file arrives with how it may be shown (a PDF is a download,
+  // never displayed in the page) and a ban on type sniffing. Dropping either
+  // would let the browser decide for itself what the file is.
+  for (const name of ['content-disposition', 'x-content-type-options']) {
+    const value = response.headers.get(name);
+    if (value) passed[name] = value;
+  }
   return new NextResponse(response.body, {
     status: response.status,
-    headers: {
-      'Content-Type': response.headers.get('content-type') ?? 'application/json',
-      // Per-user data; no shared cache may keep it.
-      'Cache-Control': 'no-store',
-    },
+    headers: passed,
   });
 }
 
 type Context = { params: Promise<{ path: string[] }> };
 
+/**
+ * The path segments, or null when they cannot be read, for instance because
+ * one is not valid percent-encoding. Null is answered with a 400 like any
+ * other path that is not valid.
+ */
+async function pathOf(context: Context): Promise<string[] | null> {
+  try {
+    return (await context.params).path;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function POST(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function PATCH(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function PUT(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function DELETE(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }

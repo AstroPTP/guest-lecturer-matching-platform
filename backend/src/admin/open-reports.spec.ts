@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { prisma } from '../prisma';
+import { stubOpenReports } from '../testing/open-reports';
 import {
   DEFAULT_REPORT_HOLD_THRESHOLD,
   assertReporterWithinLimits,
@@ -43,20 +44,21 @@ const released = (target: string) => ({
 });
 
 /**
- * What the audit trail holds: the reports, then the decisions about them, then
- * the administrator's holds and releases in the order they were made.
+ * What the audit trail holds: the open-reports query, which already leaves out
+ * the reports a decision was made about, and then the administrator's holds
+ * and releases in the order they were made.
  */
 function stubAudit(
-  reports: unknown[],
+  reports: ReturnType<typeof report>[],
   resolvedReportIds: string[] = [],
   marks: unknown[] = [],
 ) {
+  const open = reports.filter(
+    (r) => !resolvedReportIds.includes(`${r.entry_id}`),
+  );
+  stubOpenReports(open);
   return jest
     .spyOn(prisma.audit_entries, 'findMany')
-    .mockResolvedValueOnce(reports as never)
-    .mockResolvedValueOnce(
-      resolvedReportIds.map((target_id) => ({ target_id })) as never,
-    )
     .mockResolvedValueOnce(marks as never);
 }
 
@@ -92,43 +94,80 @@ describe('isMatchReport', () => {
 });
 
 describe('findOpenReports', () => {
+  /** The statement the open-reports query ran, with its placeholders blanked. */
+  const sqlOf = (query: jest.SpyInstance) =>
+    (query.mock.calls[0] as [TemplateStringsArray])[0]
+      .join('?')
+      .replace(/\s+/g, ' ');
+
   it('asks for nothing more when nobody has been reported', async () => {
-    const find = stubAudit([]);
+    const query = jest.spyOn(prisma, '$queryRaw');
+    const marks = jest.spyOn(prisma.audit_entries, 'findMany');
 
     await expect(findOpenReports()).resolves.toEqual([]);
 
-    expect(find).toHaveBeenCalledTimes(1);
-    expect(find.mock.calls[0][0]).toMatchObject({
-      where: { action: 'user.reported' },
-    });
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(marks).not.toHaveBeenCalled();
   });
 
-  it('reads only the decisions about the reports it found', async () => {
-    const find = stubAudit([report(4n, 1n, '7'), report(9n, 2n, '8')]);
+  it('finds the open reports in one statement, however many there are', async () => {
+    const query = stubOpenReports([report(4n, 1n, '7'), report(9n, 2n, '8')]);
+    const reads = jest.spyOn(prisma.audit_entries, 'findMany');
+
+    await expect(findOpenReports()).resolves.toHaveLength(2);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(reads).not.toHaveBeenCalled();
+  });
+
+  it('leaves a report out once a decision names it, inside the database', async () => {
+    const query = stubOpenReports([report(4n, 1n, '7')]);
 
     await findOpenReports();
 
-    expect(find.mock.calls[1][0]).toMatchObject({
-      where: { action: 'report.resolved', target_id: { in: ['4', '9'] } },
-    });
+    const sql = sqlOf(query);
+    expect(sql).toContain("r.action = 'user.reported'");
+    expect(sql).toMatch(
+      /NOT EXISTS \( SELECT 1 FROM audit_entries d WHERE d\.action = 'report\.resolved' AND d\.target_id = r\.entry_id::text \)/,
+    );
+    // Oldest first, as the queue is shown.
+    expect(sql).toContain('ORDER BY r.occurred_at ASC');
   });
 
-  it('leaves out a report once an administrator has decided it', async () => {
-    stubAudit([report(4n, 1n, '7'), report(9n, 2n, '8')], ['4']);
+  it('runs on the transaction it is given instead of the root client', async () => {
+    const root = jest.spyOn(prisma, '$queryRaw');
+    const inTransaction = jest.fn().mockResolvedValue([]);
+
+    await findOpenReports({ $queryRaw: inTransaction } as never);
+
+    expect(inTransaction).toHaveBeenCalledTimes(1);
+    expect(root).not.toHaveBeenCalled();
+  });
+
+  it('gives each report its reporter’s email, and none when there is no reporter', async () => {
+    stubOpenReports([
+      { ...report(4n, 1n, '7'), actor: { email: 'ann@example.com' } },
+      report(9n, null, '8'),
+    ]);
 
     const open = await findOpenReports();
 
-    expect(open.map((r) => r.entry_id)).toEqual([9n]);
+    expect(open.map((r) => [r.entry_id, r.actor])).toEqual([
+      [4n, { email: 'ann@example.com' }],
+      [9n, null],
+    ]);
   });
 });
 
 describe('loadModerationState', () => {
   it('reads once and finds nothing when nobody has been reported', async () => {
-    const find = stubAudit([]);
+    const query = stubOpenReports([]);
+    const marks = jest.spyOn(prisma.audit_entries, 'findMany');
 
     const state = await loadModerationState();
 
-    expect(find).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(marks).not.toHaveBeenCalled();
     expect(state.held.size).toBe(0);
     expect(state.blockedWith.size).toBe(0);
   });
@@ -341,7 +380,7 @@ describe('loadModerationState', () => {
 
 describe('isConversationPaused', () => {
   async function stateFor(
-    reports: unknown[],
+    reports: ReturnType<typeof report>[],
     resolved: string[] = [],
     marks: unknown[] = [],
   ) {
