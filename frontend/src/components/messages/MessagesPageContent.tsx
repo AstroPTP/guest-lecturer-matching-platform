@@ -13,6 +13,7 @@ import type { ChatMessage, Conversation, ConversationParticipant, ConversationSe
 import type { UserRole } from "@/types/shared/userRole";
 import { ServiceError } from "@/lib/serviceErrors";
 import CreateEventModal from "@/components/events/CreateEventModal";
+import PushPromptBanner from "./PushPromptBanner";
 import SessionCard from "./SessionCard";
 import { acceptEvent, createEvent, declineEvent, getEventPrefill, getEventsForCoordinator, getEventsForGuestLecturer } from "@/services/events/eventService";
 import type { AcademicEvent, CreateAcademicEventData, EventPrefill } from "@/types/events/eventTypes";
@@ -425,7 +426,11 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         onSelect={selectConversation}
       />
 
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {conversationSeeds.length > 0 && (
+          <PushPromptBanner settingsHref={userType === "unitCoordinator" ? "/unit_coordinator/settings" : "/guest_lecturer/settings"} />
+        )}
+
         {actionError && (
           <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-700" role="alert">
             {actionError}
