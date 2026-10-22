@@ -48,9 +48,8 @@ self.addEventListener("push", (event) => {
       icon: "/icon/192",
       badge: "/push-badge",
       // One notification per page: a second about the same conversation
-      // replaces the first instead of stacking, and renotify makes it sound again.
+      // replaces the first instead of stacking.
       tag: href,
-      renotify: true,
     }),
   );
 });

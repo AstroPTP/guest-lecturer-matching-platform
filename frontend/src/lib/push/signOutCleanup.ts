@@ -3,8 +3,10 @@
  *
  * On a shared computer, or a phone that is handed on, the next person to sign
  * in would otherwise see the previous person's messages arrive. So on every
- * way out (the Logout link, Delete Account, a sign-in that has expired, the
- * step after email verification) this runs first.
+ * way out (the Logout link, Delete Account, the step after email
+ * verification, a page restored after signing out, the sign-in page reached
+ * with no session) this runs first. A refused request is not one of them: a
+ * failed token refresh can be momentary, and it must not switch notifications off.
  *
  * It does two things, in this order:
  *
@@ -17,9 +19,6 @@
  *
  * It never throws, and the only wait is the local step, capped so that signing
  * out can never be held up by a browser that does not answer.
- *
- * Kept free of the API client on purpose: the client calls this when a request
- * is refused as signed out, and importing it back would be a cycle.
  */
 
 const WORKER_URL = "/sw.js";

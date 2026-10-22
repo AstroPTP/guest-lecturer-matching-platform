@@ -6,24 +6,32 @@ import {
 } from '@nestjs/common';
 import { createECDH, randomBytes } from 'node:crypto';
 import * as webPush from 'web-push';
+import * as openReports from '../admin/open-reports';
 import * as prismaDouble from '../prisma';
 import { prisma } from '../prisma';
 import {
   BODY_LIMIT,
   MAX_SUBSCRIPTIONS_PER_USER,
+  TEST_PUSH_LIMIT,
   buildPayload,
   normalisePushEndpoint,
   publicKeyStatus,
   pushToUsers,
+  notePushed,
   readPushConfig,
+  repeatPushDue,
   removeSubscription,
   saveSubscription,
   sendTest,
 } from './push';
 
-jest.mock('web-push', () => ({ sendNotification: jest.fn() }));
+jest.mock('web-push', () => ({
+  sendNotification: jest.fn(),
+  encrypt: jest.fn(),
+}));
 
 const send = webPush.sendNotification as jest.Mock;
+const encrypt = webPush.encrypt as jest.Mock;
 
 const vapid = (
   jest.requireActual<typeof import('web-push')>('web-push') as {
@@ -60,6 +68,7 @@ beforeEach(() => {
   };
   Object.assign(process.env, ENV);
   send.mockReset().mockResolvedValue({ statusCode: 201 });
+  encrypt.mockReset();
   // Failed pushes and bad settings are logged as warnings; the tests cause both on purpose.
   jest.spyOn(Logger.prototype, 'warn').mockImplementation();
 });
@@ -142,7 +151,6 @@ describe('normalisePushEndpoint', () => {
     'https://updates.push.services.mozilla.com/wpush/v2/gAAAAABexample',
     'https://web.push.apple.com/QGLPLexample',
     'https://wns2-par02p.notify.windows.com/w/?token=BQYAAAexample',
-    'https://api.push.apple.com/3/device/abc',
   ])('accepts %s', (endpoint) => {
     expect(normalisePushEndpoint(endpoint)).toBe(endpoint);
   });
@@ -160,6 +168,14 @@ describe('normalisePushEndpoint', () => {
     ['a push host as a prefix', 'https://fcm.googleapis.com.evil.example/x'],
     ['a host that only ends like one', 'https://evilfcm.googleapis.com/x'],
     ['a suffix with no subdomain', 'https://notify.windows.com/x'],
+    [
+      'an Apple host that is not the web push service',
+      'https://api.push.apple.com/3/device/abc',
+    ],
+    [
+      'a subdomain of the Apple web push host',
+      'https://x.web.push.apple.com/abc',
+    ],
     ['a lookalike of a suffix', 'https://evilnotify.windows.com/x'],
     [
       'credentials in front of a push host',
@@ -335,6 +351,57 @@ describe('saveSubscription', () => {
       NotFoundException,
     );
     expect(rows).toEqual([]);
+  });
+
+  describe('the device key', () => {
+    it.each([
+      ['the right length but not a point on the curve', 'A'.repeat(87)],
+      ['a point on the wrong curve length', 'B'.repeat(86)],
+      ['not base64url at all', '!'.repeat(87)],
+    ])('answers 400 and stores nothing for %s', async (_label, p256dh) => {
+      const rows = fakeDevices([]);
+
+      await expect(
+        saveSubscription('auth0|a', { ...input, p256dh }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(rows).toEqual([]);
+    });
+
+    it('answers 400 for a value that starts like a point but is not on the curve', async () => {
+      const rows = fakeDevices([]);
+      const offCurve = Buffer.concat([
+        Buffer.from([0x04]),
+        Buffer.alloc(64, 1),
+      ]).toString('base64url');
+
+      await expect(
+        saveSubscription('auth0|a', { ...input, p256dh: offCurve }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(rows).toEqual([]);
+    });
+
+    it('answers 400 for a 65-byte value that does not start like an uncompressed point', async () => {
+      const rows = fakeDevices([]);
+      const bytes = Buffer.from(keys.p256dh, 'base64url');
+      bytes[0] = 0x02;
+
+      await expect(
+        saveSubscription('auth0|a', {
+          ...input,
+          p256dh: bytes.toString('base64url'),
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(rows).toEqual([]);
+    });
+
+    it('accepts a key a browser would really make', async () => {
+      const rows = fakeDevices([]);
+
+      await expect(saveSubscription('auth0|a', input)).resolves.toEqual({
+        subscribed: true,
+      });
+      expect(rows).toHaveLength(1);
+    });
   });
 
   describe('when the address has not been seen before', () => {
@@ -644,7 +711,9 @@ describe('pushToUsers', () => {
     await pushToUsers([4n, 5n], notice);
 
     expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { user_id: { in: [4n, 5n] } } }),
+      expect.objectContaining({
+        where: { user_id: { in: [4n, 5n] }, users: { deletedat: null } },
+      }),
     );
   });
 
@@ -769,7 +838,224 @@ describe('pushToUsers', () => {
   });
 });
 
+describe('who is sent a push', () => {
+  const notice = {
+    title: 'New message',
+    description: 'Ada Lee replied to you',
+    href: '/guest_lecturer/messages',
+  };
+  type Row = {
+    subscription_id: bigint;
+    user_id: bigint;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    deactivated: boolean;
+  };
+  const row = (id: bigint, userId: bigint, deactivated = false): Row => ({
+    subscription_id: id,
+    user_id: userId,
+    endpoint: FCM + id,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+    deactivated,
+  });
+
+  /** A table that applies the filters the lookup asks for, as the database would. */
+  function table(rows: Row[]) {
+    return jest
+      .spyOn(prisma.push_subscriptions, 'findMany')
+      .mockImplementation(((args: {
+        where: { user_id: { in: bigint[] }; users?: { deletedat: null } };
+      }) =>
+        Promise.resolve(
+          rows.filter(
+            (r) =>
+              args.where.user_id.in.includes(r.user_id) &&
+              (args.where.users?.deletedat === null ? !r.deactivated : true),
+          ),
+        )) as never);
+  }
+
+  function holdOnly(...people: bigint[]) {
+    jest.spyOn(openReports, 'loadModerationState').mockResolvedValue({
+      held: new Map(people.map((person) => [person, ['admin']])),
+    } as never);
+  }
+
+  it('sends nothing to a deactivated account, and its devices are kept', async () => {
+    const devices = [row(1n, 5n, true)];
+    table(devices);
+    const deleteMany = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
+
+    await expect(pushToUsers([5n], notice)).resolves.toBe(0);
+
+    expect(send).not.toHaveBeenCalled();
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('resumes when the account is reactivated', async () => {
+    const devices = [row(1n, 5n, true)];
+    table(devices);
+
+    await pushToUsers([5n], notice);
+    expect(send).not.toHaveBeenCalled();
+
+    devices[0].deactivated = false;
+    await expect(pushToUsers([5n], notice)).resolves.toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends to the active people in a group and not to a deactivated one', async () => {
+    table([row(1n, 5n), row(2n, 6n, true), row(3n, 7n)]);
+
+    await expect(pushToUsers([5n, 6n, 7n], notice)).resolves.toBe(2);
+
+    const sentTo = (send.mock.calls as [{ endpoint: string }][]).map(
+      ([subscription]) => subscription.endpoint,
+    );
+    expect(sentTo.sort()).toEqual([FCM + '1', FCM + '3']);
+  });
+
+  it('sends nothing to someone on hold until the hold is lifted', async () => {
+    table([row(1n, 5n), row(2n, 6n)]);
+    holdOnly(5n);
+
+    await expect(pushToUsers([5n, 6n], notice)).resolves.toBe(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((send.mock.calls[0] as [{ endpoint: string }])[0].endpoint).toBe(
+      FCM + '2',
+    );
+
+    send.mockClear();
+    holdOnly();
+    await expect(pushToUsers([5n, 6n], notice)).resolves.toBe(2);
+  });
+
+  it('does not even look up devices when everyone named is on hold', async () => {
+    const lookup = table([row(1n, 5n)]);
+    holdOnly(5n);
+
+    await expect(pushToUsers([5n], notice)).resolves.toBe(0);
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing if the hold cannot be read', async () => {
+    table([row(1n, 5n)]);
+    jest
+      .spyOn(openReports, 'loadModerationState')
+      .mockRejectedValue(new Error('database down'));
+
+    await expect(pushToUsers([5n], notice)).resolves.toBe(0);
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('a device whose stored keys cannot encrypt', () => {
+  const notice = {
+    title: 'New message',
+    description: 'Ada Lee replied to you',
+    href: '/guest_lecturer/messages',
+  };
+  const stored = (id: bigint, p256dh = keys.p256dh) => ({
+    subscription_id: id,
+    endpoint: FCM + id,
+    p256dh,
+    auth: keys.auth,
+  });
+
+  it('is deleted, is not sent to, and does not stop the others', async () => {
+    jest
+      .spyOn(prisma.push_subscriptions, 'findMany')
+      .mockResolvedValue([stored(1n), stored(2n)] as never);
+    encrypt.mockImplementationOnce(() => {
+      throw new Error('bad key');
+    });
+    const deleteMany = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
+
+    await expect(pushToUsers([1n], notice)).resolves.toBe(1);
+
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { subscription_id: { in: [1n] } },
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((send.mock.calls[0] as [{ endpoint: string }])[0].endpoint).toBe(
+      FCM + '2',
+    );
+  });
+
+  it('is deleted when the real library cannot encrypt for the stored key', async () => {
+    const actual = jest.requireActual<typeof import('web-push')>('web-push');
+    encrypt.mockImplementation(actual.encrypt as never);
+    // The right length and not a point on the curve: it would be accepted by
+    // a length check and then fail every push.
+    jest
+      .spyOn(prisma.push_subscriptions, 'findMany')
+      .mockResolvedValue([stored(1n, 'A'.repeat(87)), stored(2n)] as never);
+    const deleteMany = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
+
+    await expect(pushToUsers([1n], notice)).resolves.toBe(1);
+
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: { subscription_id: { in: [1n] } },
+    });
+  });
+
+  it('is not deleted for a failure while sending, which may pass', async () => {
+    jest
+      .spyOn(prisma.push_subscriptions, 'findMany')
+      .mockResolvedValue([stored(1n)] as never);
+    send.mockRejectedValueOnce(new Error('Socket timeout'));
+    const deleteMany = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
+
+    await expect(pushToUsers([1n], notice)).resolves.toBe(0);
+    expect(deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('repeat pushes for one conversation', () => {
+  const at = (minutes: number) => 1_800_000_000_000 + minutes * 60_000;
+
+  it('is due when nothing has been pushed for the conversation', () => {
+    expect(repeatPushDue(40n, '/guest_lecturer/messages?with=1', at(0))).toBe(
+      true,
+    );
+  });
+
+  it('is not due for five minutes after a push, then is', () => {
+    notePushed(41n, '/guest_lecturer/messages?with=1', at(0));
+
+    expect(repeatPushDue(41n, '/guest_lecturer/messages?with=1', at(1))).toBe(
+      false,
+    );
+    expect(
+      repeatPushDue(41n, '/guest_lecturer/messages?with=1', at(4.99)),
+    ).toBe(false);
+    expect(repeatPushDue(41n, '/guest_lecturer/messages?with=1', at(5))).toBe(
+      true,
+    );
+  });
+
+  it('keeps conversations and people apart', () => {
+    notePushed(42n, '/guest_lecturer/messages?with=1', at(0));
+
+    expect(repeatPushDue(42n, '/guest_lecturer/messages?with=2', at(1))).toBe(
+      true,
+    );
+    expect(repeatPushDue(43n, '/guest_lecturer/messages?with=1', at(1))).toBe(
+      true,
+    );
+  });
+});
+
 describe('sendTest', () => {
+  // A clock the tests move, so each test starts with a fresh minute.
+  let clock = 1_800_000_000_000;
+  beforeEach(() => {
+    clock += 10 * 60_000;
+    jest.spyOn(Date, 'now').mockImplementation(() => clock);
+  });
+
   it('sends a test to the caller own devices and says how many took it', async () => {
     const findMany = jest
       .spyOn(prisma.push_subscriptions, 'findMany')
@@ -779,7 +1065,9 @@ describe('sendTest', () => {
 
     await expect(sendTest('auth0|a')).resolves.toEqual({ sent: 1 });
     expect(findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { user_id: { in: [1n] } } }),
+      expect.objectContaining({
+        where: { user_id: { in: [1n] }, users: { deletedat: null } },
+      }),
     );
     expect(send).toHaveBeenCalledTimes(1);
   });
@@ -791,5 +1079,94 @@ describe('sendTest', () => {
   it('is refused while push is off', async () => {
     switchPushOff();
     await expect(sendTest('auth0|a')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  describe('the limit of three a minute per person', () => {
+    const asPerson = (id: bigint) =>
+      jest.spyOn(prismaDouble, 'resolveUserId').mockResolvedValue(id);
+
+    it('allows three, then answers 429 and sends nothing for the fourth', async () => {
+      asPerson(11n);
+      jest
+        .spyOn(prisma.push_subscriptions, 'findMany')
+        .mockResolvedValue([
+          { subscription_id: 1n, endpoint: FCM, ...keys },
+        ] as never);
+
+      expect(TEST_PUSH_LIMIT).toBe(3);
+      for (let i = 0; i < 3; i += 1) {
+        await expect(sendTest('auth0|a')).resolves.toEqual({ sent: 1 });
+      }
+      send.mockClear();
+
+      await expect(sendTest('auth0|a')).rejects.toMatchObject({ status: 429 });
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('counts each person separately', async () => {
+      for (let i = 0; i < 3; i += 1) {
+        asPerson(12n);
+        await sendTest('auth0|a');
+      }
+      asPerson(12n);
+      await expect(sendTest('auth0|a')).rejects.toMatchObject({ status: 429 });
+
+      asPerson(13n);
+      await expect(sendTest('auth0|b')).resolves.toEqual({ sent: 0 });
+    });
+
+    it('allows more once a minute has passed since the earliest', async () => {
+      asPerson(14n);
+      await sendTest('auth0|a');
+      clock += 20_000;
+      await sendTest('auth0|a');
+      clock += 20_000;
+      await sendTest('auth0|a');
+      clock += 19_000;
+      await expect(sendTest('auth0|a')).rejects.toMatchObject({ status: 429 });
+
+      // 60 seconds after the first, which now leaves the window.
+      clock += 1_000;
+      await expect(sendTest('auth0|a')).resolves.toEqual({ sent: 0 });
+    });
+
+    it('does not count a refused request against the person', async () => {
+      asPerson(15n);
+      for (let i = 0; i < 3; i += 1) await sendTest('auth0|a');
+      for (let i = 0; i < 5; i += 1) {
+        await expect(sendTest('auth0|a')).rejects.toMatchObject({
+          status: 429,
+        });
+      }
+
+      clock += 61_000;
+      await expect(sendTest('auth0|a')).resolves.toEqual({ sent: 0 });
+    });
+
+    it('starts a person from nothing once their minute has passed', async () => {
+      asPerson(16n);
+      await sendTest('auth0|a');
+      clock += 120_000;
+      asPerson(17n);
+      await sendTest('auth0|b');
+
+      // Two minutes on, the earlier test no longer counts.
+      asPerson(16n);
+      for (let i = 0; i < 3; i += 1) {
+        await expect(sendTest('auth0|a')).resolves.toBeDefined();
+      }
+    });
+
+    it('does not count a test while push is off', async () => {
+      asPerson(18n);
+      switchPushOff();
+      for (let i = 0; i < 5; i += 1) {
+        await expect(sendTest('auth0|a')).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+      }
+      Object.assign(process.env, ENV);
+      await expect(sendTest('auth0|a')).resolves.toEqual({ sent: 0 });
+    });
   });
 });

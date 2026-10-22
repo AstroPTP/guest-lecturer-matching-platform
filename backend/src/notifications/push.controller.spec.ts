@@ -1,25 +1,31 @@
 import 'reflect-metadata';
 import {
+  CanActivate,
   ExecutionContext,
   INestApplication,
+  Injectable,
   ValidationPipe,
 } from '@nestjs/common';
 import { APP_GUARD, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { createECDH, randomBytes } from 'node:crypto';
-import type { NextFunction, Request, Response } from 'express';
+import type { Request } from 'express';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import * as webPush from 'web-push';
 import { AppRole } from '../auth/roles';
 import { RolesGuard } from '../auth/roles.guard';
 import { GlobalExceptionFilter } from '../common/filters/global-exception.filter';
+import * as prismaDouble from '../prisma';
 import { prisma } from '../prisma';
 import { SubscribePushDto } from './dto/push-subscription.dto';
 import { PushController } from './push.controller';
 
-jest.mock('web-push', () => ({ sendNotification: jest.fn() }));
+jest.mock('web-push', () => ({
+  sendNotification: jest.fn(),
+  encrypt: jest.fn(),
+}));
 
 const send = webPush.sendNotification as jest.Mock;
 
@@ -41,26 +47,41 @@ function deviceKeys() {
 const FCM = 'https://fcm.googleapis.com/fcm/send/abc:APA91bExample_token-1';
 const keys = deviceKeys();
 
+/** One user id per person for the whole file, as in the real lookup, so a limit used up in one test is not met in another. */
+const people = new Map<string, bigint>();
+
 let app: INestApplication<App>;
 let saved: Record<string, string | undefined>;
+
+/**
+ * Stands in for the JWT guard, which AuthModule registers. Registered after the
+ * throttler below, in the order the real guards run: the throttler is first, so
+ * when it counts a request nothing has yet said who the caller is. A limit that
+ * depends on the signed-in person has to be applied later than that.
+ */
+@Injectable()
+class SignInAsHeaderGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<Request>();
+    (request as Request & { user: unknown }).user = {
+      id: request.header('x-test-user') ?? 'auth0|alice',
+      roles: [],
+    };
+    return true;
+  }
+}
 
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }])],
     controllers: [PushController],
-    providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+    providers: [
+      { provide: APP_GUARD, useClass: ThrottlerGuard },
+      { provide: APP_GUARD, useClass: SignInAsHeaderGuard },
+    ],
   }).compile();
 
   app = moduleRef.createNestApplication();
-  // Stands in for the JWT guard, which is registered by AuthModule. The header
-  // lets one test act as two different people.
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    (req as Request & { user: unknown }).user = {
-      id: req.header('x-test-user') ?? 'auth0|alice',
-      roles: [],
-    };
-    next();
-  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -86,6 +107,12 @@ beforeEach(() => {
   process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
   process.env.VAPID_SUBJECT = 'mailto:glmp@example.com';
   send.mockReset().mockResolvedValue({ statusCode: 201 });
+  // The test double maps every sign-in to one user. Give each its own, as the
+  // real lookup does, since the limit is per person.
+  jest.spyOn(prismaDouble, 'resolveUserId').mockImplementation((id: string) => {
+    if (!people.has(id)) people.set(id, BigInt(people.size + 1));
+    return Promise.resolve(people.get(id) as bigint);
+  });
 });
 
 afterEach(() => {
@@ -175,6 +202,10 @@ describe('POST /notifications/push/subscribe', () => {
     ['a short secret', { endpoint: FCM, keys: { ...keys, auth: 'abc' } }],
     ['no endpoint', { keys }],
     ['an endpoint that is not text', { endpoint: 5, keys }],
+    [
+      'a key of the right length that is not a point on the curve',
+      { endpoint: FCM, keys: { ...keys, p256dh: 'A'.repeat(87) } },
+    ],
     ['fields the route does not know', { ...body, expirationTime: null }],
     [
       'an address far too long',
@@ -254,10 +285,11 @@ describe('POST /notifications/push/test', () => {
     await as('auth0|busy').expect(201);
     await as('auth0|busy').expect(201);
     await as('auth0|busy').expect(201);
-    await as('auth0|busy').expect(429);
+    const refused = await as('auth0|busy').expect(429);
+    expect(refused.headers['retry-after']).toBe('60');
   });
 
-  it('counts each person separately, as everyone may arrive from one address', async () => {
+  it('counts each person separately although every request comes from one address', async () => {
     const as = (person: string) =>
       http().post('/notifications/push/test').set('x-test-user', person);
 
@@ -266,6 +298,19 @@ describe('POST /notifications/push/test', () => {
     }
     await as('auth0|crowded-one').expect(429);
     await as('auth0|crowded-two').expect(201);
+    await as('auth0|crowded-three').expect(201);
+  });
+
+  it('is not limited by address, which the throttler would see for everyone alike', () => {
+    const handler = (
+      PushController.prototype as unknown as Record<string, object>
+    ).test;
+    const limit = Reflect.getMetadata(
+      'THROTTLER:LIMITdefault',
+      handler,
+    ) as unknown;
+
+    expect(limit).toBeUndefined();
   });
 
   it('answers 404 while push is off', async () => {

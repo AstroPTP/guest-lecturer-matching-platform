@@ -1,11 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { timingSafeEqual } from 'node:crypto';
+import { createECDH, timingSafeEqual } from 'node:crypto';
 import * as webPush from 'web-push';
+import { loadModerationState } from '../admin/open-reports';
 import { isUniqueViolation } from '../common/prisma-errors';
 import { prisma, resolveUserId } from '../prisma';
 
@@ -124,7 +127,7 @@ const PUSH_HOSTS = new Set([
 ]);
 
 /** Push services that use a different subdomain per region or per device. */
-const PUSH_HOST_SUFFIXES = ['.notify.windows.com', '.push.apple.com'];
+const PUSH_HOST_SUFFIXES = ['.notify.windows.com'];
 
 /**
  * The push address in its canonical form, or null when it is not one this
@@ -217,9 +220,10 @@ function statusOf(error: unknown): number | undefined {
  * Sends one notice to every device the given people have set up, and returns
  * how many devices the push services accepted it for.
  *
- * Never throws. A device the push service says is gone (404 or 410) is
- * deleted, so it is not tried again. Any other failure is logged by status
- * only: the error object is left out because it carries the device's address.
+ * Never throws. A device the push service says is gone (404 or 410), or whose
+ * stored keys cannot encrypt a message, is deleted so it is not tried again.
+ * Any other failure is logged by status only: the error object is left out
+ * because it carries the device's address.
  */
 async function deliver(userIds: bigint[], notice: PushNotice): Promise<number> {
   const config = readPushConfig();
@@ -228,8 +232,18 @@ async function deliver(userIds: bigint[], notice: PushNotice): Promise<number> {
   }
 
   try {
+    // Someone held after reports is not sent anything until the hold is lifted,
+    // as they are not sent messages.
+    const held = (await loadModerationState()).held;
+    const recipients = userIds.filter((id) => !held.has(id));
+    if (recipients.length === 0) {
+      return 0;
+    }
+
+    // A deactivated account is not sent anything either. The devices are kept,
+    // so reactivating the account resumes them.
     const devices = await prisma.push_subscriptions.findMany({
-      where: { user_id: { in: userIds } },
+      where: { user_id: { in: recipients }, users: { deletedat: null } },
       select: {
         subscription_id: true,
         endpoint: true,
@@ -247,6 +261,17 @@ async function deliver(userIds: bigint[], notice: PushNotice): Promise<number> {
 
     await Promise.all(
       devices.map(async (device) => {
+        // Encrypting is the one step that depends only on the device's own
+        // keys, so a failure here means the stored keys are no use, and the
+        // device is removed. A failure while sending is not that: the network
+        // or the push service may be briefly down, and the device is kept.
+        try {
+          webPush.encrypt(device.p256dh, device.auth, message, 'aes128gcm');
+        } catch {
+          gone.push(device.subscription_id);
+          return;
+        }
+
         try {
           await webPush.sendNotification(
             {
@@ -326,6 +351,27 @@ export interface SubscriptionInput {
   endpoint: string;
   p256dh: string;
   auth: string;
+}
+
+/**
+ * Whether the key is a real point on the P-256 curve in uncompressed form,
+ * which is what a browser's subscription key always is. A value that only has
+ * the right length would be stored and then fail every time a push is encrypted
+ * for it.
+ */
+function isP256Point(key: string): boolean {
+  const bytes = Buffer.from(key, 'base64url');
+  if (bytes.length !== 65 || bytes[0] !== 0x04) {
+    return false;
+  }
+  try {
+    const ecdh = createECDH('prime256v1');
+    ecdh.generateKeys();
+    ecdh.computeSecret(bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Whether two keys are the same, without the time taken telling how much of them matched. */
@@ -430,6 +476,10 @@ export async function saveSubscription(
     );
   }
 
+  if (!isP256Point(input.p256dh)) {
+    throw new BadRequestException('That device key is not valid.');
+  }
+
   const userId = await resolveUserId(callerId);
   await claimDevice(
     endpoint,
@@ -474,19 +524,102 @@ export async function removeSubscription(
   return { removed: count > 0 };
 }
 
+/** How many tests one person may send in the window. */
+export const TEST_PUSH_LIMIT = 3;
+const TEST_PUSH_WINDOW_MS = 60_000;
+
+/** When each person last sent a test, within the window. Pruned on every use. */
+const recentTests = new Map<string, number[]>();
+
+/**
+ * Counts a test against the person, or refuses with 429 when they have already
+ * sent the limit within the last minute.
+ *
+ * Kept here, per person, instead of in the request throttler: that runs before
+ * the sign-in check and so can only see the caller's address, and behind the
+ * web app's proxy that is the same address for everyone. The count is held in
+ * this process, so with several instances running the limit is per instance.
+ */
+function takeTestSlot(userId: bigint, now: number = Date.now()): void {
+  for (const [person, times] of recentTests) {
+    const live = times.filter((time) => now - time < TEST_PUSH_WINDOW_MS);
+    if (live.length === 0) recentTests.delete(person);
+    else if (live.length !== times.length) recentTests.set(person, live);
+  }
+
+  const key = userId.toString();
+  const live = recentTests.get(key) ?? [];
+  if (live.length >= TEST_PUSH_LIMIT) {
+    throw new HttpException(
+      'You can send three tests a minute. Wait a moment and try again.',
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  live.push(now);
+  recentTests.set(key, live);
+}
+
 /**
  * Sends a short test to the caller's own devices and reports how many were
  * reached. Waits for the push services, since the answer is what the person
- * asked for.
+ * asked for. At most three a minute per person.
  */
 export async function sendTest(callerId: string): Promise<{ sent: number }> {
   requirePush();
 
   const userId = await resolveUserId(callerId);
+  takeTestSlot(userId);
   const sent = await pushToUsers([userId], {
     title: 'Curtin GLMP',
     description: 'Notifications are working on this device.',
     href: '/',
   });
   return { sent };
+}
+
+/** How long a conversation's notice goes without another push after one. */
+const REPEAT_PUSH_MS = 5 * 60 * 1000;
+
+/** When each conversation's notice was last pushed to each person. Pruned on every use. */
+const lastPushed = new Map<string, number>();
+
+/**
+ * Whether a notice that was already unread, and is only being moved back to the
+ * top of the person's list, should be pushed again: not if the same
+ * conversation's notice was pushed in the last five minutes.
+ *
+ * A run of replies is one entry in the bell, and it is one push as well. A
+ * phone that buzzed for each of ten quick messages would be switched off.
+ * Held in this process, so with several instances running it is per instance.
+ */
+export function repeatPushDue(
+  userId: bigint,
+  href: string,
+  now: number = Date.now(),
+): boolean {
+  for (const [key, time] of lastPushed) {
+    if (now - time >= REPEAT_PUSH_MS) lastPushed.delete(key);
+  }
+  return !lastPushed.has(`${userId}:${href}`);
+}
+
+/**
+ * Takes back a record made by notePushed, for a push that reached no device, so
+ * that the next message in the conversation is not held back for nothing.
+ */
+export function forgetPush(userId: bigint, href: string): void {
+  lastPushed.delete(`${userId}:${href}`);
+}
+
+/**
+ * Records that the conversation's notice was pushed to the person just now.
+ * Made when the push is started, not when it ends, so that messages arriving
+ * while it is still on its way are held back too.
+ */
+export function notePushed(
+  userId: bigint,
+  href: string,
+  now: number = Date.now(),
+): void {
+  lastPushed.set(`${userId}:${href}`, now);
 }
