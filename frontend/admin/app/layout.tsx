@@ -3,7 +3,7 @@ import "./globals.css";
 import { themeScript } from "@/components/theme/themeScript";
 
 export const metadata: Metadata = {
-  title: "CCAE Admin Portal",
+  title: { default: "Curtin GLMP", template: "Curtin GLMP | %s" },
   description: "CCAE platform administration workspace",
 };
 

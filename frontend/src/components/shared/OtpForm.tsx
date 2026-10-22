@@ -2,6 +2,7 @@
 
 import { ChangeEvent, KeyboardEvent, ReactNode, useRef, useState } from "react";
 import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import email from "@/assets/email.png";
 import info from "@/assets/info.png";
 
@@ -80,6 +81,9 @@ export default function OtpForm({ title, description, submitLabel, onVerify, onR
 
   return (
     <main className="w-full max-w-md bg-white rounded-xl p-8 md:p-10 flex flex-col items-center text-center shadow-[0_12px_32px_rgba(0,0,0,0.06)]">
+      <div className="mb-7">
+        <BrandLogo variant="compact" size={36} />
+      </div>
       <div className="w-16 h-16 bg-blue-50 ring-1 ring-blue-100 rounded-xl flex items-center justify-center mb-7">
         <Image src={email} alt="Email verification" width={32} height={32} className="object-contain" />
       </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import emailIcon from "@/assets/email.png";
 import arrow from "@/assets/arrow.png";
 
@@ -40,6 +41,9 @@ export default function ForgotPasswordForm({ onSubmitted }: ForgotPasswordFormPr
   return (
     <main className="w-full max-w-md bg-white rounded-xl border border-blue-100 shadow-xl shadow-blue-900/10 p-8 sm:p-12">
       <div className="text-center mb-10">
+        <div className="mb-8 flex justify-center">
+          <BrandLogo variant="compact" size={36} />
+        </div>
         <h1 className="text-3xl font-bold text-[#2d2d2d] mb-3">Reset Password</h1>
 
         <p className="text-gray-600 leading-relaxed">Enter your email address and we&apos;ll send you a link to reset your password.</p>

@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { UserProfileManagement } from "@/components/UserProfileManagement";
+
+export const metadata: Metadata = { title: "User profile" };
 
 /**
  * One person's record.

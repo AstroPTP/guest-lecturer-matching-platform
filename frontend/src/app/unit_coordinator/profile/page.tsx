@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import BasicInformationForm from "@/components/unit_coordinator/BasicInformationForm";
 import WizardGuard from "@/components/shared/WizardGuard";
+
+export const metadata: Metadata = { title: "Basic information" };
 
 export default function UnitCoordinatorProfilePage() {
   return (

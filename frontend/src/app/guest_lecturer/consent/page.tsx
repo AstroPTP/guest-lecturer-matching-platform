@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import ConsentPreferencesForm from "@/components/guest_lecturer/ConsentPreferencesForm";
 import WizardGuard from "@/components/shared/WizardGuard";
+
+export const metadata: Metadata = { title: "Consent" };
 
 export default function ConsentPage() {
   return (

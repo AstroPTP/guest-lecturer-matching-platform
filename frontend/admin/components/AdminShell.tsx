@@ -14,10 +14,10 @@ import historyIcon from "@/assets/history.png";
 import howToRegIcon from "@/assets/how_to_reg.png";
 import logoutIcon from "@/assets/log_out.png";
 import infoIcon from "@/assets/info.png";
-import schoolIcon from "@/assets/school.png";
 import settingsIcon from "@/assets/settings.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
 import visibilityIcon from "@/assets/visibility.png";
+import BrandLogo from "@/components/brand/BrandLogo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 
 interface NavigationItem {
@@ -101,10 +101,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     <div className="control-layout">
       <aside className="control-sidebar">
         <Link className="control-brand" href="/dashboard">
-          <Image alt="" aria-hidden="true" src={schoolIcon} />
-          <span>
-            Curtin University<small>Institutional Control</small>
-          </span>
+          <BrandLogo variant="compact" size={32} />
+          <small>Institutional Control</small>
         </Link>
 
         <nav className="control-nav" aria-label="Admin navigation">

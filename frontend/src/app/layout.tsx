@@ -4,7 +4,7 @@ import { SessionProvider } from "@/components/auth/SessionProvider";
 import { themeScript } from "@/components/theme/themeScript";
 
 export const metadata: Metadata = {
-  title: "CCAE Academic Engagement",
+  title: { default: "Curtin GLMP", template: "Curtin GLMP | %s" },
   description: "Connect guest lecturers with unit coordinators.",
 };
 
