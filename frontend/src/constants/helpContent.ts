@@ -188,9 +188,9 @@ const unitCoordinator: HelpContent = {
   suggestions: {
     title: "Suggested speakers",
     lines: [
-      "Suggested speakers is a ranked shortlist of guest lecturers for one session. You enter the date, the time and the topics you need, and it lists the lecturers who suit that session, best first.",
-      "A lecturer is listed only when four things are true: they are eligible (a finished profile, consent to be matched, and not someone you dismissed or unmatched), they are available for the whole session, they share at least one of your topics, and they have a good record of delivering the sessions they accepted.",
-      "Lecturers who pass are ranked by a score. How well their topics fit your session counts most, then how long it has been since their last session, then how few sessions they have had so far.",
+      "Suggested speakers is a ranked shortlist of guest lecturers. You can enter a date, a time and the topics you need, or leave any of them blank: with no topics it uses your own expertise, and with no date or time any time suits.",
+      "A lecturer is listed only when four things are true: they are eligible (a finished profile, consent to be matched, and not someone you dismissed or unmatched), they are available for the date and time you gave, they share at least one of your topics, and they pass the reliability check (not measured yet, so everyone passes for now).",
+      "Lecturers who pass are ranked by a score: fit counts most, then time since last session, then fewer sessions so far.",
       "Nobody is hidden for being popular. A lecturer with many sessions simply ranks lower, and moves back up as time passes.",
       "The line above the list shows how many lecturers passed each rule, so you can see where the list narrowed. If it is empty, try a different time, a nearby date or more topics.",
       "To act on a suggestion, choose Express interest. Once you are matched, invite the lecturer from Event.",
