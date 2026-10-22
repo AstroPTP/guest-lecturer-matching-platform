@@ -53,7 +53,9 @@ export type AuditAction =
   | "Settings Changed"
   | "Report Resolved"
   | "Signed In"
-  | "Retention Purge";
+  | "Retention Purge"
+  | "Account Held"
+  | "Account Released";
 export type AuditStatus = "Success" | "Failed" | "Pending";
 export type AuditActorRole =
   | "Administrator"

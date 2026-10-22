@@ -8,6 +8,7 @@ import { getUnreadNotificationCount } from "@/services/notifications/notificatio
 import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import type { UserRole } from "@/types/shared/userRole";
+import { startUnreadCountPolling, UNREAD_COUNT_CHANGED_EVENT } from "@/utils/unreadCountPoller";
 
 interface DashboardHeaderProps {
   role: UserRole;
@@ -38,23 +39,11 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
   }, [role, roleLabel]);
   const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
-    let cancelled = false;
-    async function loadUnreadCount() {
-      try {
-        const count = await getUnreadNotificationCount();
-        if (!cancelled) {
-          setUnreadCount(count);
-        }
-      } catch {
-        if (!cancelled) {
-          setUnreadCount(0);
-        }
-      }
-    }
-    void loadUnreadCount();
-    return () => {
-      cancelled = true;
-    };
+    return startUnreadCountPolling({
+      fetchCount: getUnreadNotificationCount,
+      onCount: setUnreadCount,
+      onChange: () => window.dispatchEvent(new Event(UNREAD_COUNT_CHANGED_EVENT)),
+    });
   }, []);
   return (
     <header
