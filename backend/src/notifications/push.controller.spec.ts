@@ -121,7 +121,7 @@ describe('POST /notifications/push/subscribe', () => {
   const body = { endpoint: FCM, keys };
 
   it('stores the device for the caller in the token', async () => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+    const create = jest.spyOn(prisma.push_subscriptions, 'create');
 
     await http()
       .post('/notifications/push/subscribe')
@@ -129,15 +129,29 @@ describe('POST /notifications/push/subscribe', () => {
       .send(body)
       .expect(201, { subscribed: true });
 
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { endpoint: FCM },
-        create: expect.objectContaining({
-          user_id: 1n,
-          user_agent: 'GlmpTest/1.0',
-        }) as unknown,
-      }),
-    );
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        user_id: 1n,
+        endpoint: FCM,
+        user_agent: 'GlmpTest/1.0',
+      }) as unknown,
+    });
+  });
+
+  it("answers 409 when the address is another person's and the keys differ", async () => {
+    const other = deviceKeys();
+    jest.spyOn(prisma.push_subscriptions, 'findUnique').mockResolvedValue({
+      subscription_id: 5n,
+      user_id: 2n,
+      ...other,
+    } as never);
+    const updateMany = jest.spyOn(prisma.push_subscriptions, 'updateMany');
+    const create = jest.spyOn(prisma.push_subscriptions, 'create');
+
+    await http().post('/notifications/push/subscribe').send(body).expect(409);
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -145,14 +159,14 @@ describe('POST /notifications/push/subscribe', () => {
     ['http to the cloud metadata address', 'http://169.254.169.254/latest/'],
     ['an unknown https host', 'https://push.example.com/abc'],
   ])('answers 400 for %s and stores nothing', async (_label, endpoint) => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+    const create = jest.spyOn(prisma.push_subscriptions, 'create');
 
     await http()
       .post('/notifications/push/subscribe')
       .send({ ...body, endpoint })
       .expect(400);
 
-    expect(upsert).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -167,23 +181,23 @@ describe('POST /notifications/push/subscribe', () => {
       { endpoint: 'https://fcm.googleapis.com/' + 'a'.repeat(3000), keys },
     ],
   ])('answers 400 for %s', async (_label, payload) => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+    const create = jest.spyOn(prisma.push_subscriptions, 'create');
 
     await http()
       .post('/notifications/push/subscribe')
       .send(payload)
       .expect(400);
 
-    expect(upsert).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('answers 404 while push is off', async () => {
     delete process.env.VAPID_SUBJECT;
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+    const create = jest.spyOn(prisma.push_subscriptions, 'create');
 
     await http().post('/notifications/push/subscribe').send(body).expect(404);
 
-    expect(upsert).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 });
 

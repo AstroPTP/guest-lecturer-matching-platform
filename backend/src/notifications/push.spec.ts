@@ -1,4 +1,9 @@
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { createECDH, randomBytes } from 'node:crypto';
 import * as webPush from 'web-push';
 import * as prismaDouble from '../prisma';
@@ -250,50 +255,226 @@ describe('buildPayload', () => {
   });
 });
 
+interface StoredDevice {
+  subscription_id: bigint;
+  user_id: bigint;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  user_agent: string | null;
+  last_used_at: Date;
+}
+
+/**
+ * An in-memory table that honours the lookups and writes the subscribe route
+ * makes, so a test can look at the rows afterwards instead of at the calls.
+ */
+function fakeDevices(rows: StoredDevice[]) {
+  const table = prisma.push_subscriptions;
+  let nextId = 100n;
+  jest
+    .spyOn(table, 'findUnique')
+    .mockImplementation(((args: { where: { endpoint: string } }) =>
+      Promise.resolve(
+        rows.find((row) => row.endpoint === args.where.endpoint) ?? null,
+      )) as never);
+  jest.spyOn(table, 'create').mockImplementation(((args: {
+    data: Omit<StoredDevice, 'subscription_id'>;
+  }) => {
+    const row = { subscription_id: nextId++, ...args.data };
+    rows.push(row);
+    return Promise.resolve(row);
+  }) as never);
+  jest.spyOn(table, 'updateMany').mockImplementation(((args: {
+    where: {
+      subscription_id: bigint;
+      OR: ({ user_id: bigint } | { p256dh: string; auth: string })[];
+    };
+    data: Partial<StoredDevice>;
+  }) => {
+    const row = rows.find(
+      (candidate) => candidate.subscription_id === args.where.subscription_id,
+    );
+    const allowed = args.where.OR.some((condition) =>
+      Object.entries(condition).every(
+        ([field, value]) => row?.[field as keyof StoredDevice] === value,
+      ),
+    );
+    if (!row || !allowed) return Promise.resolve({ count: 0 });
+    Object.assign(row, args.data);
+    return Promise.resolve({ count: 1 });
+  }) as never);
+  return rows;
+}
+
+function storedDevice(
+  userId: bigint,
+  overrides: Partial<StoredDevice> = {},
+): StoredDevice {
+  return {
+    subscription_id: 1n,
+    user_id: userId,
+    endpoint: FCM,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+    user_agent: 'Earlier/1.0',
+    last_used_at: new Date('2026-10-01T00:00:00.000Z'),
+    ...overrides,
+  };
+}
+
 describe('saveSubscription', () => {
   const input = { endpoint: FCM, ...keys };
+  const otherKeys = deviceKeys();
 
   it('is refused while push is off, and writes nothing', async () => {
     switchPushOff();
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+    const rows = fakeDevices([]);
 
     await expect(saveSubscription('auth0|a', input)).rejects.toBeInstanceOf(
       NotFoundException,
     );
-    expect(upsert).not.toHaveBeenCalled();
+    expect(rows).toEqual([]);
   });
 
-  it('stores the device for the caller', async () => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+  describe('when the address has not been seen before', () => {
+    it('creates the device for the caller', async () => {
+      const rows = fakeDevices([]);
 
-    await expect(
-      saveSubscription('auth0|a', input, 'Mozilla/5.0 (iPhone)'),
-    ).resolves.toEqual({ subscribed: true });
+      await expect(
+        saveSubscription('auth0|a', input, 'Mozilla/5.0 (iPhone)'),
+      ).resolves.toEqual({ subscribed: true });
 
-    expect(upsert).toHaveBeenCalledWith({
-      where: { endpoint: FCM },
-      create: expect.objectContaining({
-        user_id: 1n,
-        endpoint: FCM,
-        p256dh: keys.p256dh,
-        auth: keys.auth,
-        user_agent: 'Mozilla/5.0 (iPhone)',
-      }) as unknown,
-      update: expect.objectContaining({
-        user_id: 1n,
-        p256dh: keys.p256dh,
-        auth: keys.auth,
-      }) as unknown,
+      expect(rows).toEqual([
+        expect.objectContaining({
+          user_id: 1n,
+          endpoint: FCM,
+          p256dh: keys.p256dh,
+          auth: keys.auth,
+          user_agent: 'Mozilla/5.0 (iPhone)',
+        }),
+      ]);
+    });
+
+    it('stores the canonical form of the address', async () => {
+      const rows = fakeDevices([]);
+
+      await saveSubscription('auth0|a', {
+        ...input,
+        endpoint: 'HTTPS://FCM.GOOGLEAPIS.COM/fcm/send/abc',
+      });
+
+      expect(rows[0].endpoint).toBe('https://fcm.googleapis.com/fcm/send/abc');
+    });
+
+    it('keeps no more than 200 characters of the browser description', async () => {
+      const rows = fakeDevices([]);
+
+      await saveSubscription('auth0|a', input, 'A'.repeat(500));
+
+      expect(rows[0].user_agent).toHaveLength(200);
+    });
+
+    it('reads the row another request wrote at the same moment, and decides again', async () => {
+      const winner = storedDevice(2n, {
+        p256dh: otherKeys.p256dh,
+        auth: otherKeys.auth,
+      });
+      jest
+        .spyOn(prisma.push_subscriptions, 'findUnique')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winner as never);
+      jest
+        .spyOn(prisma.push_subscriptions, 'create')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('unique'), { code: 'P2002' }),
+        );
+      const updateMany = jest.spyOn(prisma.push_subscriptions, 'updateMany');
+
+      // The winner is another person's, with other keys: the caller is refused.
+      await expect(saveSubscription('auth0|a', input)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+      expect(updateMany).not.toHaveBeenCalled();
     });
   });
 
-  it('moves a device that was set up by someone else on the same browser to the caller', async () => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+  describe("when the address is already the caller's", () => {
+    it('refreshes the keys and the last-used time, and adds no second row', async () => {
+      const rows = fakeDevices([storedDevice(1n)]);
 
-    await saveSubscription('auth0|second-person', input);
+      await saveSubscription('auth0|a', {
+        endpoint: FCM,
+        ...otherKeys,
+      });
 
-    const call = upsert.mock.calls[0][0] as { update: { user_id: bigint } };
-    expect(call.update.user_id).toBe(1n);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        user_id: 1n,
+        p256dh: otherKeys.p256dh,
+        auth: otherKeys.auth,
+      });
+      expect(rows[0].last_used_at.getTime()).toBeGreaterThan(
+        new Date('2026-10-01T00:00:00.000Z').getTime(),
+      );
+    });
+  });
+
+  describe("when the address is someone else's", () => {
+    it('hands it to the caller when the keys are exactly the stored ones', async () => {
+      const rows = fakeDevices([storedDevice(2n)]);
+
+      await expect(saveSubscription('auth0|a', input)).resolves.toEqual({
+        subscribed: true,
+      });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].user_id).toBe(1n);
+    });
+
+    it.each([
+      ['the public key', { p256dh: otherKeys.p256dh }],
+      ['the secret', { auth: otherKeys.auth }],
+      ['both keys', { p256dh: otherKeys.p256dh, auth: otherKeys.auth }],
+    ])(
+      'answers 409 and changes nothing when %s differs',
+      async (_label, changed) => {
+        const before = storedDevice(2n);
+        const rows = fakeDevices([{ ...before }]);
+
+        await expect(
+          saveSubscription('auth0|a', { ...input, ...changed }),
+        ).rejects.toMatchObject({ status: 409 });
+
+        expect(rows).toEqual([before]);
+      },
+    );
+
+    it('never overwrites the stored keys, even though the caller presented a valid address', async () => {
+      const rows = fakeDevices([storedDevice(2n)]);
+
+      await expect(
+        saveSubscription('auth0|a', { endpoint: FCM, ...otherKeys }),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(rows[0]).toMatchObject({
+        user_id: 2n,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+      });
+    });
+
+    it('answers 409 when the row changed hands between the read and the write', async () => {
+      fakeDevices([storedDevice(2n)]);
+      // A write that finds the row no longer matches what was checked.
+      jest
+        .spyOn(prisma.push_subscriptions, 'updateMany')
+        .mockResolvedValue({ count: 0 });
+
+      await expect(saveSubscription('auth0|a', input)).rejects.toBeInstanceOf(
+        ConflictException,
+      );
+    });
   });
 
   it.each([
@@ -303,37 +484,16 @@ describe('saveSubscription', () => {
     ['an unknown host', 'https://push.example.com/abc'],
     ['not an address', 'nonsense'],
   ])('answers 400 and stores nothing for %s', async (_label, endpoint) => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
+    const rows = fakeDevices([]);
 
     await expect(
       saveSubscription('auth0|a', { ...input, endpoint }),
     ).rejects.toBeInstanceOf(BadRequestException);
-    expect(upsert).not.toHaveBeenCalled();
-  });
-
-  it('stores the canonical form of the address', async () => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
-
-    await saveSubscription('auth0|a', {
-      ...input,
-      endpoint: 'HTTPS://FCM.GOOGLEAPIS.COM/fcm/send/abc',
-    });
-
-    expect(upsert.mock.calls[0][0].where).toEqual({
-      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
-    });
-  });
-
-  it('keeps no more than 200 characters of the browser description', async () => {
-    const upsert = jest.spyOn(prisma.push_subscriptions, 'upsert');
-
-    await saveSubscription('auth0|a', input, 'A'.repeat(500));
-
-    const created = upsert.mock.calls[0][0].create as { user_agent: string };
-    expect(created.user_agent).toHaveLength(200);
+    expect(rows).toEqual([]);
   });
 
   it('keeps five devices: the sixth and any beyond replace the least recently used', async () => {
+    fakeDevices([]);
     const findMany = jest
       .spyOn(prisma.push_subscriptions, 'findMany')
       .mockResolvedValue([
@@ -358,6 +518,7 @@ describe('saveSubscription', () => {
   });
 
   it('removes nothing while the person is within the limit', async () => {
+    fakeDevices([]);
     const deleteMany = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
 
     await saveSubscription('auth0|a', input);

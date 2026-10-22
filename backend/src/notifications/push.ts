@@ -1,5 +1,12 @@
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import * as webPush from 'web-push';
+import { isUniqueViolation } from '../common/prisma-errors';
 import { prisma, resolveUserId } from '../prisma';
 
 /**
@@ -321,10 +328,91 @@ export interface SubscriptionInput {
   auth: string;
 }
 
+/** Whether two keys are the same, without the time taken telling how much of them matched. */
+function sameKey(stored: string, submitted: string): boolean {
+  const a = Buffer.from(stored);
+  const b = Buffer.from(submitted);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 /**
- * Stores a device for the caller. Subscribing again with the same address
- * updates it, and moves it to the caller if someone else had it: one browser
- * has one address, and the person signed in on it now is who it is for.
+ * Records the device against the caller, or refuses.
+ *
+ * - No row for the address: one is created for the caller.
+ * - A row of the caller's own: its keys and last-used time are refreshed.
+ * - A row of someone else's: it is handed over only when the submitted keys
+ *   are exactly the stored ones. That is the same browser subscription, which
+ *   happens when another person signs in on a shared computer. Different keys
+ *   mean the caller does not hold the subscription the row describes, so the
+ *   answer is 409 and the row is left as it is. Another person's keys are
+ *   never overwritten.
+ *
+ * The update repeats the conditions that were just checked, so a row that
+ * changed between the read and the write is not overwritten; the decision is
+ * then made again from what is there now.
+ */
+async function claimDevice(
+  endpoint: string,
+  userId: bigint,
+  input: SubscriptionInput,
+  userAgent: string | null,
+): Promise<void> {
+  const fields = {
+    p256dh: input.p256dh,
+    auth: input.auth,
+    user_agent: userAgent,
+    last_used_at: new Date(),
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const existing = await prisma.push_subscriptions.findUnique({
+      where: { endpoint },
+      select: {
+        subscription_id: true,
+        user_id: true,
+        p256dh: true,
+        auth: true,
+      },
+    });
+
+    if (!existing) {
+      try {
+        await prisma.push_subscriptions.create({
+          data: { user_id: userId, endpoint, ...fields },
+        });
+        return;
+      } catch (error) {
+        // Two requests for a new address arrived together and the other won.
+        // Read what it wrote and decide again.
+        if (isUniqueViolation(error)) continue;
+        throw error;
+      }
+    }
+
+    const sameBrowserSubscription =
+      sameKey(existing.p256dh, input.p256dh) &&
+      sameKey(existing.auth, input.auth);
+    if (existing.user_id !== userId && !sameBrowserSubscription) {
+      break;
+    }
+
+    const { count } = await prisma.push_subscriptions.updateMany({
+      where: {
+        subscription_id: existing.subscription_id,
+        OR: [{ user_id: userId }, { p256dh: input.p256dh, auth: input.auth }],
+      },
+      data: { user_id: userId, ...fields },
+    });
+    if (count === 1) return;
+  }
+
+  throw new ConflictException(
+    'That device is already set up for another account.',
+  );
+}
+
+/**
+ * Stores a device for the caller, under the rules in claimDevice.
  *
  * Keeps at most five devices per person by removing the least recently used.
  */
@@ -343,27 +431,12 @@ export async function saveSubscription(
   }
 
   const userId = await resolveUserId(callerId);
-  const now = new Date();
-  const agent = userAgent?.trim().slice(0, 200) || null;
-
-  await prisma.push_subscriptions.upsert({
-    where: { endpoint },
-    create: {
-      user_id: userId,
-      endpoint,
-      p256dh: input.p256dh,
-      auth: input.auth,
-      user_agent: agent,
-      last_used_at: now,
-    },
-    update: {
-      user_id: userId,
-      p256dh: input.p256dh,
-      auth: input.auth,
-      user_agent: agent,
-      last_used_at: now,
-    },
-  });
+  await claimDevice(
+    endpoint,
+    userId,
+    input,
+    userAgent?.trim().slice(0, 200) || null,
+  );
 
   const surplus = await prisma.push_subscriptions.findMany({
     where: { user_id: userId },
