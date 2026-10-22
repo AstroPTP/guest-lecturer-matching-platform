@@ -186,6 +186,12 @@ function fakeDatabase() {
       Promise.resolve(
         db.threads.find((t) => matches(t, args.where)) ?? null,
       )) as never);
+  jest
+    .spyOn(prisma.support_threads, 'findFirst')
+    .mockImplementation(((args: { where: Row }) =>
+      Promise.resolve(
+        db.threads.find((t) => matches(t, args.where)) ?? null,
+      )) as never);
   jest.spyOn(prisma.support_threads, 'findMany').mockImplementation(((args: {
     where?: Row;
     orderBy?: Row;
@@ -670,6 +676,65 @@ describe('SupportService.openThread', () => {
     ).not.toContain('staff card');
   });
 
+  describe('when the person already has an open request', () => {
+    const refusal = { response: { code: 'SUPPORT_REQUEST_ALREADY_OPEN' } };
+
+    it('refuses with a 409 that says where to go, and writes nothing more', async () => {
+      seedThread(db, { userId: 2n });
+      const audits = db.audits.length;
+
+      const attempt = service.openThread(ADMIN, dto());
+
+      await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+      await expect(attempt).rejects.toMatchObject(refusal);
+      await expect(attempt).rejects.toMatchObject({
+        response: {
+          message:
+            'This person already has an open request. Reply there or close it first.',
+        },
+      });
+      expect(db.threads).toHaveLength(1);
+      expect(db.messages).toHaveLength(1);
+      expect(db.audits).toHaveLength(audits);
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('opens a new one once the earlier request is closed', async () => {
+      seedThread(db, { userId: 2n, status: 'closed' });
+
+      await service.openThread(ADMIN, dto());
+
+      expect(db.threads.map((t) => t.status)).toEqual(['closed', 'open']);
+    });
+
+    it('is not held up by somebody else’s open request', async () => {
+      seedThread(db, { userId: 3n });
+
+      await service.openThread(ADMIN, dto({ userId: '2' }));
+
+      expect(db.threads).toHaveLength(2);
+    });
+
+    it('takes the person’s lock before it looks, so two opened together cannot both pass', async () => {
+      const lock = jest.spyOn(prisma, '$executeRaw');
+      const look = jest.spyOn(prisma.support_threads, 'findFirst');
+
+      await service.openThread(ADMIN, dto());
+
+      expect(lock).toHaveBeenCalledTimes(1);
+      const [, namespace, key] = lock.mock.calls[0] as unknown as [
+        unknown,
+        number,
+        number,
+      ];
+      expect(key).toBe(2);
+      expect(namespace).toBeGreaterThan(0);
+      expect(lock.mock.invocationCallOrder[0]).toBeLessThan(
+        look.mock.invocationCallOrder[0],
+      );
+    });
+  });
+
   it('refuses an unknown user and writes nothing', async () => {
     await expect(
       service.openThread(ADMIN, dto({ userId: '999' })),
@@ -901,6 +966,28 @@ describe('SupportService.setStatus', () => {
 
     expect(db.threads[0].status).toBe('open');
     expect(db.audits[0]).toMatchObject({ action: 'support.reopened' });
+  });
+
+  it('refuses to reopen a thread while the person has another one open', async () => {
+    const closed = seedThread(db, { userId: 2n, status: 'closed' });
+    seedThread(db, { userId: 2n });
+
+    const attempt = service.setStatus(ADMIN, closed, 'open');
+
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'SUPPORT_REQUEST_ALREADY_OPEN' },
+    });
+    expect(db.threads[0].status).toBe('closed');
+    expect(db.audits).toHaveLength(0);
+  });
+
+  it('reopens a thread when the other open one belongs to somebody else', async () => {
+    const closed = seedThread(db, { userId: 2n, status: 'closed' });
+    seedThread(db, { userId: 3n });
+
+    await service.setStatus(ADMIN, closed, 'open');
+
+    expect(db.threads[0].status).toBe('open');
   });
 
   it('records nothing when the thread already has that status', async () => {
