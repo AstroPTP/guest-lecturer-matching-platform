@@ -135,7 +135,13 @@ export default function SuggestionsPageContent() {
       );
     } catch (error) {
       console.error("Unable to express interest:", error);
-      setActionError("Unable to send your interest. Please try again.");
+      // A 409 is the API refusing for a reason it explains, such as the contact
+      // limit, so show its words rather than a generic failure.
+      setActionError(
+        error instanceof BackendError && error.status === 409
+          ? error.message
+          : "Unable to send your interest. Please try again.",
+      );
     } finally {
       setBusyId(null);
     }
@@ -377,10 +383,6 @@ function SuggestionCard({
         </div>
 
         <div className="flex shrink-0 flex-col items-stretch gap-2 md:w-44">
-          <p className="text-center text-sm text-gray-700">
-            Score <strong className="text-lg text-[#242424]">{Math.round(suggestion.score.total * 100)}</strong>
-            <span className="sr-only"> out of 100</span>
-          </p>
           <Action suggestion={suggestion} isBusy={isBusy} onExpressInterest={onExpressInterest} />
         </div>
       </div>

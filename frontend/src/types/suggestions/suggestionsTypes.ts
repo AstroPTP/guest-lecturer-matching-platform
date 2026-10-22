@@ -8,14 +8,12 @@ export type LastSessionBand = "never" | "within 30 days" | "1 to 3 months" | "ov
 export type SessionsBand = "none" | "1 to 2" | "3 to 5" | "6 or more";
 
 /**
- * The parts of a lecturer's score, each 0 to 1 and already rounded by the API:
- * fit to 2 decimals, rotation and exposure to 1, total to 2.
+ * The only part of the score the API sends: fit, 0 to 1, to 2 decimals. It comes
+ * from topics both sides have published. How recently and how often a lecturer
+ * has been matched stays on the server, so the order of the list is the ranking.
  */
 export interface SuggestionScore {
   fit: number;
-  rotation: number;
-  exposure: number;
-  total: number;
 }
 
 /** One suggested guest lecturer, as GET /suggestions returns it. */
