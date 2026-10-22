@@ -2,10 +2,10 @@
 
 import { useId, useState } from "react";
 import {
-  HALF_LIFE_OPTIONS,
+  DEFAULT_RANKING,
   MIN_FIT_WEIGHT,
-  SUGGESTED_SPEAKERS_DEFAULTS,
   WEIGHT_PRESETS,
+  halfLifeChoices,
   presetFor,
   validateSuggestedSpeakers,
   weightTotal,
@@ -18,6 +18,8 @@ interface SuggestedSpeakersCardProps {
   onChange: (changes: Partial<SuggestedSpeakersSettings>) => void;
   /** True while the settings form is being saved. */
   isSaving: boolean;
+  /** The half-life as last saved, so a stored value outside the list stays selectable. */
+  storedHalfLifeDays?: number;
 }
 
 type Weight = "suggestionsFitWeight" | "suggestionsRotationWeight" | "suggestionsExposureWeight";
@@ -48,7 +50,7 @@ const WEIGHTS: Array<{ key: Weight; label: string; explanation: string }> = [
  * It edits the page's draft and has no save of its own beyond a submit button,
  * so one Save writes every setting at once and one audit entry records the lot.
  */
-export default function SuggestedSpeakersCard({ value, onChange, isSaving }: SuggestedSpeakersCardProps) {
+export default function SuggestedSpeakersCard({ value, onChange, isSaving, storedHalfLifeDays }: SuggestedSpeakersCardProps) {
   const ids = useId();
   const matched = presetFor(value);
   // Custom is a choice in its own right, not just "no preset matches": picking
@@ -71,7 +73,8 @@ export default function SuggestedSpeakersCard({ value, onChange, isSaving }: Sug
 
   function reset() {
     setCustomChosen(false);
-    onChange({ ...SUGGESTED_SPEAKERS_DEFAULTS });
+    // The ranking only: whether the feature is on is a separate decision and is kept.
+    onChange({ ...DEFAULT_RANKING });
   }
 
   return (
@@ -181,7 +184,7 @@ export default function SuggestedSpeakersCard({ value, onChange, isSaving }: Sug
             onChange={(event) => onChange({ suggestionsHalfLifeDays: Number(event.target.value) })}
             value={value.suggestionsHalfLifeDays}
           >
-            {HALF_LIFE_OPTIONS.map((days) => (
+            {halfLifeChoices(value.suggestionsHalfLifeDays, storedHalfLifeDays ?? value.suggestionsHalfLifeDays).map((days) => (
               <option key={days} value={days}>
                 {days} days
               </option>

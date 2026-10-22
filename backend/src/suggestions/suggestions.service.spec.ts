@@ -188,7 +188,7 @@ function matches(row: Record<string, unknown>, where: Where): boolean {
       if ('not' in condition) {
         return value !== condition.not;
       }
-      // Other branches add these to the shared visibility rule.
+      // The visibility rule may also use in and notIn.
       if ('notIn' in condition) {
         return !(condition.notIn as unknown[]).includes(value);
       }

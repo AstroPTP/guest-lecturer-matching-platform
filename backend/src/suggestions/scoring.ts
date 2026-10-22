@@ -17,9 +17,11 @@
  * Whoever passes is ranked by `rankScore`: fit counts most, then the time
  * since the lecturer's last session, then how few sessions they have had.
  *
- * THE NUMBERS BELOW ARE STARTING VALUES. They are defensible, not measured:
- * there is no usage data behind the weights, the half-life or the threshold.
- * Change them here and nowhere else.
+ * THE NUMBERS BELOW ARE DEFAULTS, and they are starting values: defensible, not
+ * measured, with no usage data behind the weights, the half-life or the
+ * threshold. Administrators can change the weights and the half-life in
+ * Settings, and the service then passes the configured values in their place.
+ * The reliability threshold is only set here.
  */
 
 /** Weight of how well the lecturer's topics match the session's. */
@@ -133,7 +135,8 @@ export function fitScore(
  * How long it has been since the lecturer's last session, from 0 to 1.
  *
  * Grows with the gap: 0 for a session today, 0.5 after one half-life (90 days
- * unless an administrator changes it), and towards 1 after that. A lecturer who has never had a session scores 1.
+ * unless an administrator changes it), and towards 1 after that. A lecturer who
+ * has never had a session scores 1.
  *
  * It must grow with time. A version of this term that returned 1 for "engaged
  * today" rewarded repeat use and put the busiest lecturer first, which is the

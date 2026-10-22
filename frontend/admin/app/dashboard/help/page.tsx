@@ -56,7 +56,7 @@ const GUIDES: Guide[] = [
       "Pick a preset for how the list is ranked: Balanced (65/20/15, the default), Topic first (80/10/10) or Share the work (50/30/20). The three numbers are topic fit, time since last session and fewer sessions so far.",
       "Choose Custom to set your own three weights. They must add up to 100, and topic fit must be at least 50 so it always counts most.",
       "Set the half-life: after that many days without a session, the time-since-last-session score has risen halfway to its maximum. A shorter half-life brings lecturers back sooner.",
-      "Choose Save, or Reset to defaults to go back to Balanced with a 90-day half-life. The change applies straight away and is recorded in the Audit Log with the old and new values.",
+      "Choose Save, or Reset to defaults to put the weights back to Balanced and the half-life back to 90 days (the On/Off switch is left as it is). The change applies straight away and is recorded in the Audit Log with the old and new values.",
     ],
   },
   {

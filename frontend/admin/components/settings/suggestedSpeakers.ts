@@ -14,15 +14,38 @@ export interface SuggestedSpeakersSettings {
 }
 
 export const MIN_FIT_WEIGHT = 50;
+/** The half-lives offered in the list. The API accepts any whole number from MIN to MAX. */
 export const HALF_LIFE_OPTIONS = [30, 60, 90, 180, 365] as const;
+export const MIN_HALF_LIFE_DAYS = 30;
+export const MAX_HALF_LIFE_DAYS = 365;
 
-/** What the feature does until someone changes it. */
-export const SUGGESTED_SPEAKERS_DEFAULTS: SuggestedSpeakersSettings = {
-  suggestionsEnabled: true,
+/**
+ * The half-lives to show in the select: the listed ones, plus any others that
+ * are in use, in order. A value stored from outside this page, such as 45, is
+ * shown as an extra option so the select never claims a value it cannot hold.
+ */
+export function halfLifeChoices(...inUse: number[]): number[] {
+  const choices = new Set<number>(HALF_LIFE_OPTIONS);
+  for (const days of inUse) {
+    if (Number.isInteger(days) && days >= MIN_HALF_LIFE_DAYS && days <= MAX_HALF_LIFE_DAYS) {
+      choices.add(days);
+    }
+  }
+  return [...choices].sort((a, b) => a - b);
+}
+
+/** The settings that "Reset to defaults" puts back. The on/off switch is not one of them. */
+export const DEFAULT_RANKING: Omit<SuggestedSpeakersSettings, "suggestionsEnabled"> = {
   suggestionsFitWeight: 65,
   suggestionsRotationWeight: 20,
   suggestionsExposureWeight: 15,
   suggestionsHalfLifeDays: 90,
+};
+
+/** What the feature does until someone changes it. */
+export const SUGGESTED_SPEAKERS_DEFAULTS: SuggestedSpeakersSettings = {
+  suggestionsEnabled: true,
+  ...DEFAULT_RANKING,
 };
 
 export interface WeightPreset {
@@ -99,8 +122,9 @@ export function validateSuggestedSpeakers(settings: SuggestedSpeakersSettings): 
   if (Number.isInteger(settings.suggestionsFitWeight) && settings.suggestionsFitWeight < MIN_FIT_WEIGHT) {
     problems.push(`Topic fit must be at least ${MIN_FIT_WEIGHT}, so it always counts most.`);
   }
-  if (!HALF_LIFE_OPTIONS.some((days) => days === settings.suggestionsHalfLifeDays)) {
-    problems.push("Choose a half-life from the list.");
+  const halfLife = settings.suggestionsHalfLifeDays;
+  if (!Number.isInteger(halfLife) || halfLife < MIN_HALF_LIFE_DAYS || halfLife > MAX_HALF_LIFE_DAYS) {
+    problems.push(`The half-life must be a whole number of days from ${MIN_HALF_LIFE_DAYS} to ${MAX_HALF_LIFE_DAYS}.`);
   }
   return problems;
 }

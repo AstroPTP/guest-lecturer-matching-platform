@@ -8,12 +8,21 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import {
   MAX_HALF_LIFE_DAYS,
   MIN_FIT_WEIGHT_PERCENT,
   MIN_HALF_LIFE_DAYS,
 } from '../../suggestions/matching-settings';
+
+/**
+ * Skips validation only for a field that was left out. IsOptional also skips
+ * null, which for a column that cannot be null would get past the DTO and fail
+ * in the database as a 500; with this, null reaches IsInt or IsBoolean and is a
+ * 400. Used for the Suggested speakers fields.
+ */
+const skipWhenOmitted = (_: unknown, value: unknown) => value !== undefined;
 
 /** Every field optional: a patch changes what it names and nothing else. */
 export class UpdateSettingsDto {
@@ -39,7 +48,7 @@ export class UpdateSettingsDto {
   contactLimitDays?: number;
 
   /** Suggested speakers on or off. Off makes the route answer 404. */
-  @IsOptional()
+  @ValidateIf(skipWhenOmitted)
   @IsBoolean()
   suggestionsEnabled?: boolean;
 
@@ -48,26 +57,26 @@ export class UpdateSettingsDto {
    * the service checks the sum, because it depends on all three. Fit is at
    * least 50 so topic fit always counts most.
    */
-  @IsOptional()
+  @ValidateIf(skipWhenOmitted)
   @IsInt()
   @Min(MIN_FIT_WEIGHT_PERCENT)
   @Max(100)
   suggestionsFitWeight?: number;
 
-  @IsOptional()
+  @ValidateIf(skipWhenOmitted)
   @IsInt()
   @Min(0)
   @Max(100)
   suggestionsRotationWeight?: number;
 
-  @IsOptional()
+  @ValidateIf(skipWhenOmitted)
   @IsInt()
   @Min(0)
   @Max(100)
   suggestionsExposureWeight?: number;
 
   /** Days until the time since a lecturer's last session counts half. */
-  @IsOptional()
+  @ValidateIf(skipWhenOmitted)
   @IsInt()
   @Min(MIN_HALF_LIFE_DAYS)
   @Max(MAX_HALF_LIFE_DAYS)

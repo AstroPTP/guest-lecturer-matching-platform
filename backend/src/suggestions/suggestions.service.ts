@@ -135,8 +135,8 @@ const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
 /**
  * Ranks the guest lecturers who could give one session, for one coordinator.
  *
- * Nothing is stored. There is no migration, no ranking table and no counter
- * to keep in step. How many sessions a lecturer has had, and when they last
+ * No ranking is stored: there is no ranking table and no counter to keep in
+ * step. Only the administrator's settings are. How many sessions a lecturer has had, and when they last
  * had one, are read from the ACCEPTED rows of `match_requests` each time. That
  * is the same table the Matches page shows, so the list cannot disagree with it
  * or drift away from it.
@@ -163,8 +163,9 @@ const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
  * Whoever passes is ranked by fit, then time since their last session, then
  * fewer sessions so far. The weights (65/20/15 by default) and the half-life of
  * the time-since term (90 days) are the administrator's, read from Settings on
- * each request; fit is held at 50 or more, so topic fit always counts most. Nobody is removed for being popular: a lecturer with
- * many sessions only ranks lower.
+ * each request; fit is held at 50 or more, so topic fit always counts most.
+ * Nobody is removed for being popular: a lecturer with many sessions only ranks
+ * lower.
  *
  * The ranking uses exact values. The response does not: it carries bands and
  * the fit only, because the exact numbers would show one coordinator when

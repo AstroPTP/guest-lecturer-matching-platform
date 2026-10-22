@@ -106,6 +106,24 @@ describe('UpdateSettingsDto, Suggested speakers fields', () => {
     expect(await errorsFor(body)).toContain(field);
   });
 
+  it.each([
+    'suggestionsEnabled',
+    'suggestionsFitWeight',
+    'suggestionsRotationWeight',
+    'suggestionsExposureWeight',
+    'suggestionsHalfLifeDays',
+  ])(
+    'rejects null for %s, which would otherwise fail in the database as a 500',
+    async (field) => {
+      expect(await errorsFor({ [field]: null })).toContain(field);
+    },
+  );
+
+  it('still lets a field be left out entirely', async () => {
+    expect(await errorsFor({})).toEqual([]);
+    expect(await errorsFor({ suggestionsHalfLifeDays: undefined })).toEqual([]);
+  });
+
   it('accepts the edges: fit 50, fit 100, half-life 30 and 365', async () => {
     expect(await errorsFor({ suggestionsFitWeight: 50 })).toEqual([]);
     expect(await errorsFor({ suggestionsFitWeight: 100 })).toEqual([]);
@@ -115,8 +133,8 @@ describe('UpdateSettingsDto, Suggested speakers fields', () => {
 });
 
 describe('GovernanceService, Suggested speakers settings', () => {
-  // Built through a loose constructor type: other branches give the service more
-  // constructor arguments, and updateSettings uses none of them.
+  // Built through a loose constructor type: the constructor may take more
+  // dependencies, and updateSettings uses none of them.
   const service = new (GovernanceService as unknown as new (
     ...dependencies: unknown[]
   ) => GovernanceService)(new AdminService());
@@ -388,6 +406,20 @@ describe('PATCH /admin/settings, who may change the Suggested speakers settings'
       expect.objectContaining(body),
       'auth0|the-admin',
     );
+  });
+
+  it('refuses null for any Suggested speakers setting with a 400, not a 500, before the service runs', async () => {
+    const admin = auth.tokenFor(['ccae_admin']);
+    for (const field of [
+      'suggestionsEnabled',
+      'suggestionsFitWeight',
+      'suggestionsRotationWeight',
+      'suggestionsExposureWeight',
+      'suggestionsHalfLifeDays',
+    ]) {
+      await patch(admin, { [field]: null }).expect(400);
+    }
+    expect(governance.updateSettings).not.toHaveBeenCalled();
   });
 
   it('refuses a fit of 40, half-life of 10 or a non-integer with a 400 before the service runs', async () => {

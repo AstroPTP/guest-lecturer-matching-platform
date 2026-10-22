@@ -16,7 +16,7 @@ ALTER TABLE "admin_settings"
 -- are what stop a bad value reaching the table by any other route.
 --
 -- Fit must be at least 50 so that how well a lecturer's topics fit the session
--- always counts for more than the other two terms together.
+-- always counts at least as much as the other two terms together.
 ALTER TABLE "admin_settings"
     ADD CONSTRAINT "admin_settings_suggestions_weights_range" CHECK (
         "suggestions_fit_weight" BETWEEN 0 AND 100

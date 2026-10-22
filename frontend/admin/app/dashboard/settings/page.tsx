@@ -177,6 +177,7 @@ export default function SettingsPage() {
 
           <SuggestedSpeakersCard
             isSaving={isSaving}
+            storedHalfLifeDays={saved.suggestionsHalfLifeDays}
             onChange={(changes) => setDraft((current) => (current ? { ...current, ...changes } : current))}
             value={draft}
           />
