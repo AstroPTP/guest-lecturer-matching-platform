@@ -293,6 +293,7 @@ export class MatchRequestsService {
         end_time: true,
         coordinator_name: true,
         guest_lecturer_name: true,
+        responded_at: true,
       },
     });
     await this.notifyAdminsOfCancellations(cancelled);
@@ -300,24 +301,26 @@ export class MatchRequestsService {
   }
 
   /**
-   * Tells every active administrator about each session an unmatch cancelled.
+   * Tells every active administrator about the sessions an unmatch cancelled.
+   * The administrators are looked up once and every notice goes in together.
    * The cancellation is already saved, so a notice that cannot be saved is
-   * logged and dropped, and the other notices and the unmatch carry on.
+   * logged and dropped rather than undoing the unmatch.
    */
   private async notifyAdminsOfCancellations(
     sessions: NoticedSession[],
   ): Promise<void> {
-    for (const session of sessions) {
-      try {
-        await this.notificationsService.createForAdmins(
-          adminSessionNotice(session, 'cancelled'),
-        );
-      } catch (error) {
-        this.logger.error(
-          'Could not notify administrators of a session cancelled by an unmatch',
-          error instanceof Error ? error.stack : undefined,
-        );
-      }
+    if (sessions.length === 0) {
+      return;
+    }
+    try {
+      await this.notificationsService.createForAdmins(
+        sessions.map((session) => adminSessionNotice(session, 'cancelled')),
+      );
+    } catch (error) {
+      this.logger.error(
+        'Could not notify administrators of sessions cancelled by an unmatch',
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 

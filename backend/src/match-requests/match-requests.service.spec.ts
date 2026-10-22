@@ -974,6 +974,7 @@ describe('MatchRequestsService', () => {
         end_time: '11:00',
         coordinator_name: 'Ada Lee',
         guest_lecturer_name: 'Sam Tran',
+        responded_at: new Date('2026-10-02T03:00:00.000Z'),
       };
       const invited = {
         title: 'Follow-up Q&A',
@@ -982,6 +983,7 @@ describe('MatchRequestsService', () => {
         end_time: '14:00',
         coordinator_name: 'Ada Lee',
         guest_lecturer_name: 'Sam Tran',
+        responded_at: null,
       };
 
       /** An accepted match the guest ends, with `cancelled` the events the write returns. */
@@ -1015,28 +1017,31 @@ describe('MatchRequestsService', () => {
         };
       }
 
-      it('are told once for each confirmed or invited event the unmatch cancelled', async () => {
+      it('are told about each confirmed or invited event the unmatch cancelled, in one call', async () => {
         const { tellAdmins } = endMatch([confirmed, invited]);
 
         await service.remove(userId, '2001');
 
-        expect(tellAdmins).toHaveBeenCalledTimes(2);
-        expect(tellAdmins).toHaveBeenNthCalledWith(1, {
-          type: 'event',
-          title: 'Guest lecture cancelled',
-          description:
-            'Cloud Security Talk, 2026-10-15 10:00 to 11:00, Ada Lee with Sam Tran',
-          actionLabel: 'View events',
-          href: '/dashboard/events',
-        });
-        expect(tellAdmins).toHaveBeenNthCalledWith(
-          2,
-          expect.objectContaining({
+        // One call for the lot, so the administrators are looked up once.
+        expect(tellAdmins).toHaveBeenCalledTimes(1);
+        expect(tellAdmins).toHaveBeenCalledWith([
+          {
+            type: 'event',
             title: 'Guest lecture cancelled',
             description:
+              'Cloud Security Talk, 2026-10-15 10:00 to 11:00, Ada Lee with Sam Tran',
+            actionLabel: 'View events',
+            href: '/dashboard/events',
+          },
+          {
+            type: 'event',
+            title: 'Guest lecture invitation withdrawn',
+            description:
               'Follow-up Q&A, 2026-10-22 13:00 to 14:00, Ada Lee with Sam Tran',
-          }),
-        );
+            actionLabel: 'View events',
+            href: '/dashboard/events',
+          },
+        ]);
       });
 
       it('are told only after the cancellation has been written', async () => {
@@ -1081,8 +1086,8 @@ describe('MatchRequestsService', () => {
 
         await expect(service.remove(userId, '2001')).resolves.toBeUndefined();
 
-        // Each event was tried, and the other person was still told.
-        expect(tellAdmins).toHaveBeenCalledTimes(2);
+        // The other person was still told.
+        expect(tellAdmins).toHaveBeenCalledTimes(1);
         expect(notify).toHaveBeenCalledWith(
           expect.objectContaining({
             recipientId: 'auth0|coordinator',

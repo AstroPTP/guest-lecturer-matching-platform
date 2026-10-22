@@ -16,6 +16,7 @@ export class CreateEventDto {
   @IsNotEmpty()
   matchId: string;
 
+  /** Accepted for older clients and ignored: the names are read from the two profiles. */
   @IsString()
   @IsNotEmpty()
   coordinatorName: string;
@@ -24,6 +25,7 @@ export class CreateEventDto {
   @IsNotEmpty()
   guestLecturerId: string;
 
+  /** Accepted for older clients and ignored: the names are read from the two profiles. */
   @IsString()
   @IsNotEmpty()
   guestLecturerName: string;

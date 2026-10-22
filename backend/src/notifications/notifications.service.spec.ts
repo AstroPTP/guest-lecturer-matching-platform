@@ -215,8 +215,44 @@ describe('NotificationsService', () => {
     await expect(service.findByRecipient(recipientId)).resolves.toHaveLength(1);
     expect(findMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ created_at: 'desc' }, { notification_id: 'desc' }],
+      take: 100,
     });
+  });
+
+  it('lists at most 100 notifications, the newest of them', async () => {
+    const many = Array.from({ length: 100 }, (_, index) => ({
+      ...row,
+      notification_id: BigInt(500 - index),
+    }));
+    const findMany = jest
+      .spyOn(prisma.notifications, 'findMany')
+      .mockResolvedValue(many);
+
+    const listed = await service.findByRecipient(recipientId);
+
+    expect(listed).toHaveLength(100);
+    expect(listed[0].id).toBe('500');
+    // The limit is applied by the query, not after fetching everything.
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ take: 100 }),
+    );
+  });
+
+  it('breaks a tie in time by id, so rows written together come back newest first', async () => {
+    const findMany = jest
+      .spyOn(prisma.notifications, 'findMany')
+      .mockResolvedValue([] as never);
+
+    await service.findByRecipient(recipientId);
+
+    const { orderBy } = findMany.mock.calls[0][0] as {
+      orderBy: Record<string, string>[];
+    };
+    expect(orderBy).toEqual([
+      { created_at: 'desc' },
+      { notification_id: 'desc' },
+    ]);
   });
 
   it('marks a notification as read when the caller is the recipient', async () => {
@@ -370,6 +406,43 @@ describe('NotificationsService', () => {
         data: { user_id: bigint }[];
       };
       expect(data.map((row) => row.user_id)).toEqual([7n, 9n]);
+    });
+
+    it('writes every notice for every administrator after looking them up once', async () => {
+      const findMany = jest
+        .spyOn(prisma.users, 'findMany')
+        .mockResolvedValue([{ userid: 7n }, { userid: 8n }] as never);
+      const createMany = jest
+        .spyOn(prisma.notifications, 'createMany')
+        .mockResolvedValue({ count: 4 });
+
+      await expect(
+        service.createForAdmins([
+          notice,
+          { ...notice, title: 'Guest lecture cancelled' },
+        ]),
+      ).resolves.toBe(4);
+
+      expect(findMany).toHaveBeenCalledTimes(1);
+      expect(createMany).toHaveBeenCalledTimes(1);
+      const { data } = createMany.mock.calls[0][0] as {
+        data: { user_id: bigint; title: string }[];
+      };
+      expect(data.map((row) => [row.user_id, row.title])).toEqual([
+        [7n, 'Guest lecture confirmed'],
+        [7n, 'Guest lecture cancelled'],
+        [8n, 'Guest lecture confirmed'],
+        [8n, 'Guest lecture cancelled'],
+      ]);
+    });
+
+    it('does not even look for administrators when it has no notices', async () => {
+      const findMany = jest.spyOn(prisma.users, 'findMany');
+      const createMany = jest.spyOn(prisma.notifications, 'createMany');
+
+      await expect(service.createForAdmins([])).resolves.toBe(0);
+      expect(findMany).not.toHaveBeenCalled();
+      expect(createMany).not.toHaveBeenCalled();
     });
 
     it('writes nothing when there is no administrator to tell', async () => {
