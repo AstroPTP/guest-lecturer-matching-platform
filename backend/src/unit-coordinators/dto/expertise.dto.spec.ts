@@ -3,7 +3,8 @@ import {
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
-import { ExpertiseDto, MAX_EXPERTISE_TEXT_LENGTH } from './expertise.dto';
+import { ExpertiseDto } from './expertise.dto';
+import { MAX_EXPERTISE_TEXT_LENGTH } from './expertise-text-limit';
 
 describe('ExpertiseDto', () => {
   // The same options the application applies to every request body.
