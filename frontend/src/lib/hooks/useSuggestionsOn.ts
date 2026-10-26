@@ -6,6 +6,8 @@ import { getSuggestionsStatus } from "@/services/suggestions/suggestionsService"
 /** How long an answer is reused, so moving between pages does not ask again each time. */
 const REUSE_MS = 5 * 60 * 1000;
 
+// Kept in module memory only. Signing out and in is a full page load, which
+// starts both of these afresh, so one person's answer never reaches another's.
 let answer: { on: boolean; at: number } | null = null;
 let request: Promise<boolean> | null = null;
 
@@ -39,12 +41,6 @@ export function fetchSuggestionsOn(): Promise<boolean> {
       request = null;
     });
   return request;
-}
-
-/** Forgets the remembered answer. Used by tests and after a sign-out. */
-export function resetSuggestionsOn() {
-  answer = null;
-  request = null;
 }
 
 /**
