@@ -51,12 +51,18 @@ function guestRow(id: number, first: string) {
 
 const VIEWER_USER = 50n;
 
+const SIGNED_IN = {
+  bea: daysAgo(60),
+  cy: daysAgo(20),
+  abe: daysAgo(2),
+};
+
 /**
  * Four guests, listed by id as the database gives them:
- *   1 Ada  Marketing only          never signed in
- *   2 Bea  Economics and Taxation  signed in 1 Sep, six sessions this week
- *   3 Cy   Economics               signed in 20 Oct
- *   4 Abe  Economics and Taxation  signed in 25 Oct
+ *   1 Ada  Marketing only          never signed in                 (band 4)
+ *   2 Bea  Economics and Taxation  signed in 60 days ago, six sessions this week (band 3)
+ *   3 Cy   Economics               signed in 20 days ago           (band 2)
+ *   4 Abe  Economics and Taxation  signed in 2 days ago            (band 1)
  * The coordinator needs Economics and Taxation Law.
  */
 function seed(on: boolean) {
@@ -106,9 +112,9 @@ function seed(on: boolean) {
   );
   const signIns = jest.spyOn(prisma.users, 'findMany').mockResolvedValue([
     { userid: 101n, lastloginat: null },
-    { userid: 102n, lastloginat: new Date('2026-09-01T00:00:00Z') },
-    { userid: 103n, lastloginat: new Date('2026-10-20T00:00:00Z') },
-    { userid: 104n, lastloginat: new Date('2026-10-25T00:00:00Z') },
+    { userid: 102n, lastloginat: SIGNED_IN.bea },
+    { userid: 103n, lastloginat: SIGNED_IN.cy },
+    { userid: 104n, lastloginat: SIGNED_IN.abe },
   ] as never);
   return { listing, signIns, accepted };
 }
@@ -177,6 +183,31 @@ describe('GuestSpeakersService.findAll sort', () => {
     process.env.MATCHING_SUGGESTIONS_ENABLED = 'false';
     seed(true);
     expect(names(await service.findAll('auth0|coord', 'best'))).toEqual(
+      EXPECTED.joined,
+    );
+  });
+
+  it('keeps the order people joined in for people who signed in at different times within the same week', async () => {
+    const { signIns } = seed(true);
+    // Abe signed in a minute ago and Bea six days ago: the same band, so the
+    // order they joined in decides and the exact time cannot be read from it.
+    signIns.mockResolvedValue([
+      { userid: 101n, lastloginat: daysAgo(3) },
+      { userid: 102n, lastloginat: daysAgo(6) },
+      { userid: 103n, lastloginat: daysAgo(1) },
+      { userid: 104n, lastloginat: new Date(Date.now() - 60_000) },
+    ] as never);
+    expect(names(await service.findAll('auth0|coord', 'active'))).toEqual(
+      EXPECTED.joined,
+    );
+
+    signIns.mockResolvedValue([
+      { userid: 101n, lastloginat: new Date(Date.now() - 60_000) },
+      { userid: 102n, lastloginat: daysAgo(1) },
+      { userid: 103n, lastloginat: daysAgo(6) },
+      { userid: 104n, lastloginat: daysAgo(3) },
+    ] as never);
+    expect(names(await service.findAll('auth0|coord', 'active'))).toEqual(
       EXPECTED.joined,
     );
   });
@@ -254,9 +285,9 @@ describe('GuestSpeakersService.findAll sort', () => {
         'sharedTopics',
         'createdAt',
         'created_at',
-        '2026-09-01',
-        '2026-10-20',
-        '2026-10-25',
+        ...Object.values(SIGNED_IN).map((when) =>
+          when.toISOString().slice(0, 10),
+        ),
       ]) {
         expect(text).not.toContain(banned);
       }
