@@ -12,26 +12,24 @@ const facultyLabels: Record<string, string> = {
   other: "Other Faculty of Business and Law area",
 };
 
-/** Lower-case words joined by hyphens, which is how a stored code looks. */
-const codePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Two or more lower-case words joined by hyphens, which is how an unlisted code looks. */
+const codePattern = /^[a-z]+(?:-[a-z]+)+$/;
 
 /**
  * A stored school code as the name people read.
  *
- * A code with no entry becomes its words in title case; a value that is not
- * shaped like a code is already written for people and is returned as stored.
+ * Only an exact code is replaced. A code with no entry becomes its words in
+ * title case; anything else is free text already written for people and is
+ * returned as stored.
  */
 export function facultyLabel(stored: string): string {
-  const value = stored.trim();
-  const key = value.toLowerCase().replace(/\s+/g, "-");
-
-  if (Object.prototype.hasOwnProperty.call(facultyLabels, key)) {
-    return facultyLabels[key];
+  if (Object.prototype.hasOwnProperty.call(facultyLabels, stored)) {
+    return facultyLabels[stored];
   }
-  if (!codePattern.test(value)) {
-    return value;
+  if (!codePattern.test(stored)) {
+    return stored;
   }
-  return value
+  return stored
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
