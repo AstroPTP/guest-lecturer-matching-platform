@@ -78,9 +78,16 @@ describe('SuggestionsEnabledGuard', () => {
     }
   });
 
-  it('lets a request through by default', async () => {
+  it('answers 404 by default: ranked matching is off until an administrator switches it on', async () => {
     delete process.env[FLAG];
-    await expect(guard.canActivate()).resolves.toBe(true);
+    // Nothing stored: the settings row has never been changed.
+    jest.spyOn(prisma.admin_settings, 'upsert').mockResolvedValue({} as never);
+    const failure = await guard.canActivate().catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(NotFoundException);
+    expect((failure as NotFoundException).getResponse()).toEqual({
+      code: 'SUGGESTIONS_DISABLED',
+      message: 'Suggested speakers is turned off by an administrator.',
+    });
   });
 
   it('lets a request through when the administrator has it on', async () => {
@@ -173,6 +180,11 @@ describe('SuggestionsController over HTTP', () => {
     await app.init();
     service = module.get(SuggestionsService);
     delete process.env[FLAG];
+    // Ranked matching is off until an administrator switches it on, so these
+    // tests start from the switch being on and say so when they want it off.
+    jest
+      .spyOn(prisma.admin_settings, 'upsert')
+      .mockResolvedValue({ suggestions_enabled: true } as never);
   });
 
   afterEach(async () => {
@@ -358,6 +370,36 @@ describe('SuggestionsController over HTTP', () => {
     process.env[FLAG] = 'true';
     await api.get(good).expect(200);
   });
+  describe('off by default', () => {
+    beforeEach(() => {
+      // A settings row nobody has changed.
+      jest
+        .spyOn(prisma.admin_settings, 'upsert')
+        .mockResolvedValue({} as never);
+    });
+
+    it('answers 404 on the list and on the status until the administrator switches it on', async () => {
+      const suggest = jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+      const list = await api.get(good).expect(404);
+      expect(list.body).toMatchObject({ code: 'SUGGESTIONS_DISABLED' });
+      await api.get('/suggestions/status').expect(404);
+      await api
+        .get('/suggestions/status', tokenFor(['guest_speaker']))
+        .expect(404);
+      expect(suggest).not.toHaveBeenCalled();
+    });
+
+    it('answers once the administrator has switched it on', async () => {
+      jest.spyOn(service, 'suggest').mockResolvedValue(answer);
+      await api.get(good).expect(404);
+      jest
+        .spyOn(prisma.admin_settings, 'upsert')
+        .mockResolvedValue({ suggestions_enabled: true } as never);
+      await api.get(good).expect(200);
+      await api.get('/suggestions/status').expect(200);
+    });
+  });
+
   describe("the administrator's switch", () => {
     const off = () =>
       jest
@@ -413,11 +455,19 @@ describe('SuggestionsController over HTTP', () => {
       await api.get('/suggestions/status').expect(404);
     });
 
-    it('needs a token and the coordinator role: 401 with none, 403 for a guest', async () => {
+    it('says it is on for a guest speaker too, so Discovery and Help can match it', async () => {
+      const res = await api
+        .get('/suggestions/status', tokenFor(['guest_speaker']))
+        .expect(200);
+      expect(res.body).toEqual({ enabled: true });
+    });
+
+    it('needs a token and a coordinator or guest role: 401 with none, 403 for an administrator', async () => {
       await api.get('/suggestions/status', null).expect(401);
       await api
-        .get('/suggestions/status', tokenFor(['guest_speaker']))
+        .get('/suggestions/status', tokenFor(['ccae_admin']))
         .expect(403);
+      await api.get('/suggestions/status', tokenFor([])).expect(403);
     });
   });
 });

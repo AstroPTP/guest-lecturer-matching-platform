@@ -30,7 +30,7 @@ const settingsRow = (overrides: Record<string, unknown> = {}) =>
     support_email: 'ccae@curtin.edu.au',
     require_admin_approval: false,
     contact_limit_days: 90,
-    suggestions_enabled: true,
+    suggestions_enabled: false,
     suggestions_fit_weight: 65,
     suggestions_rotation_weight: 20,
     suggestions_exposure_weight: 15,
@@ -145,7 +145,7 @@ describe('GovernanceService, Suggested speakers settings', () => {
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValue(settingsRow());
     expect(await service.settings()).toMatchObject({
-      suggestionsEnabled: true,
+      suggestionsEnabled: false,
       suggestionsFitWeight: 65,
       suggestionsRotationWeight: 20,
       suggestionsExposureWeight: 15,
@@ -258,11 +258,11 @@ describe('GovernanceService, Suggested speakers settings', () => {
     jest
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValueOnce(settingsRow())
-      .mockResolvedValueOnce(settingsRow({ suggestions_enabled: false }));
+      .mockResolvedValueOnce(settingsRow({ suggestions_enabled: true }));
     jest.spyOn(prisma.admin_settings, 'update').mockResolvedValue({} as never);
     await expect(
-      service.updateSettings({ suggestionsEnabled: false }, admin),
-    ).resolves.toMatchObject({ suggestionsEnabled: false });
+      service.updateSettings({ suggestionsEnabled: true }, admin),
+    ).resolves.toMatchObject({ suggestionsEnabled: true });
   });
 
   describe('the audit entry', () => {
@@ -272,7 +272,7 @@ describe('GovernanceService, Suggested speakers settings', () => {
         .mockResolvedValueOnce(settingsRow())
         .mockResolvedValueOnce(
           settingsRow({
-            suggestions_enabled: false,
+            suggestions_enabled: true,
             suggestions_fit_weight: 50,
             suggestions_rotation_weight: 30,
             suggestions_exposure_weight: 20,
@@ -286,7 +286,7 @@ describe('GovernanceService, Suggested speakers settings', () => {
 
       await service.updateSettings(
         {
-          suggestionsEnabled: false,
+          suggestionsEnabled: true,
           suggestionsFitWeight: 50,
           suggestionsRotationWeight: 30,
           suggestionsExposureWeight: 20,
@@ -301,7 +301,7 @@ describe('GovernanceService, Suggested speakers settings', () => {
           action: 'settings.updated',
           target_type: 'settings',
           detail: {
-            suggestionsEnabled: { from: true, to: false },
+            suggestionsEnabled: { from: false, to: true },
             suggestionsFitWeight: { from: 65, to: 50 },
             suggestionsRotationWeight: { from: 20, to: 30 },
             suggestionsExposureWeight: { from: 15, to: 20 },
@@ -321,7 +321,7 @@ describe('GovernanceService, Suggested speakers settings', () => {
       const audit = jest.spyOn(prisma.audit_entries, 'create');
 
       await service.updateSettings(
-        { suggestionsHalfLifeDays: 90, suggestionsEnabled: true },
+        { suggestionsHalfLifeDays: 90, suggestionsEnabled: false },
         admin,
       );
       expect(audit).not.toHaveBeenCalled();

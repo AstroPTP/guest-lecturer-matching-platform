@@ -4,11 +4,13 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DiscoveryCard from "./DiscoveryCard";
+import DiscoverySortControl from "./DiscoverySortControl";
 import MatchModal from "./MatchModal";
 import infoIcon from "@/assets/info.png";
 import undoIcon from "@/assets/undo.png";
 import arrowIcon from "@/assets/arrow.png";
 import arrowBackIcon from "@/assets/arrow_back.png";
+import type { DiscoverySort, DiscoverySortOption } from "@/types/discovery/discoverySortTypes";
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { MatchModalData } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
@@ -48,6 +50,15 @@ interface DiscoveryPageContentProps {
   currentUserPhoto?: string;
   messagesHref: string;
   filterHref: string;
+  /**
+   * The Sort by choice. The page asks the API for the order, so changing it
+   * arrives here as a new `initialItems`. Left out, no control is shown.
+   */
+  sort?: {
+    value: DiscoverySort;
+    options: DiscoverySortOption[];
+    onChange: (sort: DiscoverySort) => void;
+  };
 }
 
 export default function DiscoveryPageContent({
@@ -59,6 +70,7 @@ export default function DiscoveryPageContent({
   currentUserPhoto,
   messagesHref,
   filterHref,
+  sort,
 }: DiscoveryPageContentProps) {
   const router = useRouter();
   const [items, setItems] = useState<DiscoveryItem[]>([]);
@@ -67,6 +79,9 @@ export default function DiscoveryPageContent({
   const [isReviewingDismissed, setIsReviewingDismissed] = useState(false);
   const [dismissedProfilesExist, setDismissedProfilesExist] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // After the first load the heading and the Sort by choice stay on screen
+  // while the list reloads, so picking another order does not lose focus.
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [activeFilterCount, setActiveFilterCount] = useState(0);
@@ -144,6 +159,7 @@ export default function DiscoveryPageContent({
       } finally {
         if (!cancelled) {
           setIsLoading(false);
+          setHasLoaded(true);
         }
       }
     }
@@ -292,7 +308,7 @@ export default function DiscoveryPageContent({
     }
     setFilterVersion((version) => version + 1);
   }
-  if (isLoading) {
+  if (isLoading && !hasLoaded) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
         <p className="text-gray-500">Loading opportunities...</p>
@@ -320,7 +336,8 @@ export default function DiscoveryPageContent({
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            {sort && <DiscoverySortControl value={sort.value} options={sort.options} onChange={sort.onChange} />}
             {isReviewingDismissed ? (
               <button
                 type="button"
@@ -366,7 +383,11 @@ export default function DiscoveryPageContent({
           </div>
         )}
 
-        {currentItem ? (
+        {isLoading ? (
+          <div className="flex min-h-[300px] items-center justify-center" role="status">
+            <p className="text-gray-500">Loading opportunities...</p>
+          </div>
+        ) : currentItem ? (
           <>
             {/* Sits above the card rather than beside it, so the buttons stay put however tall the card is. */}
             {/* The count stays visible with a single card; the buttons are just disabled. */}

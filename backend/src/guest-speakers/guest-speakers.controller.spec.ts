@@ -33,7 +33,18 @@ describe('GuestSpeakersController', () => {
 
     await controller.findAll({ id: 'auth0|viewer', roles: [] });
 
-    expect(findAll).toHaveBeenCalledWith('auth0|viewer');
+    expect(findAll).toHaveBeenCalledWith('auth0|viewer', undefined);
+  });
+
+  it('passes the chosen sort on, and none when none was chosen', async () => {
+    const findAll = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+    const viewer = { id: 'auth0|viewer', roles: [] };
+
+    await controller.findAll(viewer, { sort: 'name' });
+    await controller.findAll(viewer, {});
+
+    expect(findAll).toHaveBeenNthCalledWith(1, 'auth0|viewer', 'name');
+    expect(findAll).toHaveBeenNthCalledWith(2, 'auth0|viewer', undefined);
   });
 });
 
@@ -72,7 +83,7 @@ describe('GuestSpeakersController behaviour', () => {
     expect(expertise).toHaveBeenCalledWith('auth0|jane', dto);
     expect(engagement).toHaveBeenCalledWith('auth0|jane', dto);
     expect(consent).toHaveBeenCalledWith('auth0|jane', dto);
-    expect(list).toHaveBeenCalledWith('auth0|jane');
+    expect(list).toHaveBeenCalledWith('auth0|jane', undefined);
   });
 
   describe('request validation', () => {

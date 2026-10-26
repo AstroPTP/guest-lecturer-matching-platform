@@ -20,7 +20,7 @@ export default function AboutPage() {
       <InfoSection heading="How it works">
         <ol className="list-decimal space-y-2 pl-6">
           <li>Guest lecturers create a profile with their expertise, availability and how they like to teach.</li>
-          <li>Unit coordinators describe what their unit needs and browse guest lecturers, using filters they choose.</li>
+          <li>Unit coordinators describe what their unit needs and browse guest lecturers, using the filters and sort order they choose.</li>
           <li>
             When both sides express interest they are matched and continue in the platform&apos;s messages, without
             either side&apos;s email address or phone number being shown.
@@ -36,10 +36,17 @@ export default function AboutPage() {
         </ul>
       </InfoSection>
 
-      <InfoSection heading="You choose, the platform does not rank">
+      <InfoSection heading="You choose the order">
         <p>
-          The platform does not score people or recommend matches with an algorithm. Coordinators sort and filter
-          the list themselves, so every match is a person&apos;s own choice.
+          Discovery lists profiles in the order each person chooses. Use Sort by to list people by when
+          they joined, newest first, name, most shared topics or most recently active, and use Filters to narrow the
+          list. Every match is a person&apos;s own choice.
+        </p>
+        <p>
+          Ranked matching is an option that CCAE can switch on, and it is off by default. While it is on, Discovery
+          can also list the best match first and coordinators get a Suggested speakers page. It ranks by topic fit,
+          time since a lecturer&apos;s last session and sessions so far, never by personal characteristics. Nobody is
+          hidden, and you can always choose another order.
         </p>
       </InfoSection>
     </InfoPage>

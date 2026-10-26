@@ -42,9 +42,9 @@ export const DEFAULT_RANKING: Omit<SuggestedSpeakersSettings, "suggestionsEnable
   suggestionsHalfLifeDays: 90,
 };
 
-/** What the feature does until someone changes it. */
+/** What the feature does until someone changes it: ranked matching is off. */
 export const SUGGESTED_SPEAKERS_DEFAULTS: SuggestedSpeakersSettings = {
-  suggestionsEnabled: true,
+  suggestionsEnabled: false,
   ...DEFAULT_RANKING,
 };
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import DiscoveryPageContent from "@/components/discovery/DiscoveryPageContent";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
+import { useDiscoverySort } from "@/lib/hooks/useDiscoverySort";
 import { getPublicUnitCoordinatorProfiles } from "@/services/discovery/guestLecturerDiscoveryService";
 import { getGuestLecturerProfile } from "@/services/profile/guestLecturerProfileService";
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
@@ -15,27 +16,58 @@ export default function GuestLecturerDiscoveryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Asked for from the server, so the order is the same one the API gives
+  // everyone and no time or count about anyone reaches this page.
+  const discoverySort = useDiscoverySort("guestLecturer");
+
   useEffect(() => {
-    async function loadDiscovery() {
-      setErrorMessage(null);
-      try {
-        const currentProfile = await getGuestLecturerProfile();
-        if (currentProfile) {
+    let active = true;
+    void getGuestLecturerProfile()
+      .then((currentProfile) => {
+        if (active && currentProfile) {
           setCurrentUserName(currentProfile.basicInformation.fullName);
           setCurrentUserPhoto(currentProfile.basicInformation.photoPreview);
         }
-        const profiles = await getPublicUnitCoordinatorProfiles();
-        const discoveryItems: DiscoveryItem[] = profiles.map((profile) => ({profileType: "unitCoordinator", profile}));
+      })
+      .catch((error: unknown) => console.error("Unable to load your profile:", error));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const { ready, sort } = discoverySort;
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    let active = true;
+    async function loadDiscovery() {
+      setErrorMessage(null);
+      try {
+        const profiles = await getPublicUnitCoordinatorProfiles(sort);
+        if (!active) {
+          return;
+        }
+        const discoveryItems: DiscoveryItem[] = profiles.map((profile) => ({ profileType: "unitCoordinator", profile }));
         setItems(discoveryItems);
       } catch (error) {
+        if (!active) {
+          return;
+        }
         console.error("Unable to load unit coordinator profiles:", error);
         setErrorMessage("Unable to load data. Please try again.");
       } finally {
-        setIsLoading(false);
+        if (active) {
+          setIsLoading(false);
+        }
       }
     }
-    loadDiscovery();
-  }, []);
+    void loadDiscovery();
+    // A newer choice replaces this one, so a slow answer never lands after it.
+    return () => {
+      active = false;
+    };
+  }, [ready, sort]);
 
   return (
     <DashboardShell
@@ -61,6 +93,7 @@ export default function GuestLecturerDiscoveryPage() {
           currentUserPhoto={currentUserPhoto}
           messagesHref="/guest_lecturer/messages"
           filterHref="/guest_lecturer/filter"
+          sort={{ value: discoverySort.sort, options: discoverySort.options, onChange: discoverySort.choose }}
         />
       )}
     </DashboardShell>

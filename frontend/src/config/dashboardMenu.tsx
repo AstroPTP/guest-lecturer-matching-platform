@@ -11,6 +11,11 @@ import type { UserRole } from "@/types/shared/userRole";
 import { MATCHING_SUGGESTIONS_ENABLED } from "@/config/features";
 import { getDashboardRoutes } from "@/config/routes";
 
+/**
+ * The sidebar for a role. The Suggestions item is here only while the app is
+ * built with the feature available; the shell then shows it only once the API
+ * says an administrator has switched ranked matching on.
+ */
 export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
   const routes = getDashboardRoutes(role);
   return [
@@ -30,6 +35,7 @@ export function buildDashboardMenu(role: UserRole): DashboardMenuItem[] {
             label: "Suggestions",
             href: routes.suggestions,
             icon: <SuggestionsIcon />,
+            feature: "suggestions" as const,
           },
         ]
       : []),

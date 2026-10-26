@@ -98,6 +98,7 @@ const guestLecturer: HelpContent = {
         "Open Discovery to see unit coordinators and the units they teach.",
         "Express interest in a coordinator you would like to work with, or dismiss one that is not a fit.",
         "Use Filters to narrow the list by field, expertise topics, delivery format, available days or location, then choose Apply Filters.",
+        "Use Sort by to change the order: oldest or newest first, name, most shared topics or most recently active. If CCAE has switched on ranked matching, Best match is offered too.",
         "Changed your mind? Open Dismissed Profiles to restore a coordinator or express interest after all.",
       ],
     },
@@ -133,7 +134,7 @@ const guestLecturer: HelpContent = {
     {
       question: "How do coordinators find me?",
       answer:
-        "They can browse Discovery, or ask Suggested speakers for lecturers who suit a session. Your topics, availability and profile decide whether you appear.",
+        "They can browse Discovery, or, while CCAE has ranked matching switched on (it is off by default), ask Suggested speakers for lecturers who suit a session. Your topics, availability and profile decide whether you appear.",
       feature: "suggestions",
     },
     {
@@ -158,6 +159,11 @@ const guestLecturer: HelpContent = {
       answer:
         "A unit coordinator who needs a topic you speak on has just joined. Choose the notice to open Discovery and see who is looking. You get at most one of these a day.",
       feature: "suggestions",
+    },
+    {
+      question: "How do I change the order of the coordinators in Discovery?",
+      answer:
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the coordinator both name, or Recently active, which puts people who signed in most recently first. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "I dismissed a coordinator by mistake.",
@@ -203,6 +209,7 @@ const unitCoordinator: HelpContent = {
         "Open Discovery to see guest lecturers and their expertise.",
         "Express interest in a lecturer who suits your unit, or dismiss one that is not a fit.",
         "Use Filters to narrow the list by expertise topics, delivery format, session duration, audience size, available days or location, then choose Apply Filters.",
+        "Use Sort by to change the order: oldest or newest first, name, most shared topics or most recently active. If CCAE has switched on ranked matching, Best match is offered too.",
         "Changed your mind? Open Dismissed Profiles to restore a lecturer or express interest after all.",
       ],
     },
@@ -234,7 +241,7 @@ const unitCoordinator: HelpContent = {
   suggestions: {
     title: "Suggested speakers",
     lines: [
-      "Suggested speakers is a ranked shortlist of guest lecturers. You can enter a date, a time and the topics you need, or leave any of them blank: with no topics it uses your own expertise, and with no date or time any time suits.",
+      "Suggested speakers is an option CCAE can turn on, and it is off by default. You are seeing this because it is on. It is a ranked shortlist of guest lecturers. You can enter a date, a time and the topics you need, or leave any of them blank: with no topics it uses your own expertise, and with no date or time any time suits.",
       "A lecturer is listed only when four things are true: they are eligible (a finished profile, consent to be matched, and not someone you dismissed or unmatched), they are available for the date and time you gave, they share at least one of your topics, and they pass the reliability check (not measured yet, so everyone passes for now).",
       "Lecturers who pass are ranked by a score: fit counts most, then time since last session, then fewer sessions so far.",
       "Nobody is hidden for being popular. A lecturer with many sessions simply ranks lower, and moves back up as time passes.",
@@ -251,7 +258,7 @@ const unitCoordinator: HelpContent = {
     {
       question: "What is Suggested speakers?",
       answer:
-        "A shortlist of guest lecturers who could suit one of your sessions, best match first. Give it a date, time and topics, or leave them blank to use your own expertise.",
+        "An option CCAE can turn on, off by default. While it is on, it gives you a shortlist of guest lecturers who could suit one of your sessions, best match first. Give it a date, time and topics, or leave them blank to use your own expertise.",
       feature: "suggestions",
     },
     {
@@ -263,8 +270,13 @@ const unitCoordinator: HelpContent = {
     {
       question: "Why does Discovery show some people first?",
       answer:
-        "Discovery puts the best match first. Lecturers whose topics fit yours come first, and lecturers who have waited longer or been invited less often get a small lift so everyone gets a turn. Only the order changes: nobody is hidden and your filters work as before. If an administrator switches Suggested speakers off, Discovery goes back to the order people joined.",
+        "While ranked matching is on, Discovery starts with Best match. Lecturers whose topics fit yours come first, and lecturers who have waited longer or been invited less often get a small lift so everyone gets a turn. You can choose another order from Sort by at any time. Only the order changes: nobody is hidden and your filters work as before. If an administrator switches ranked matching off, Best match is no longer offered and Discovery starts in the order people joined.",
       feature: "suggestions",
+    },
+    {
+      question: "How do I change the order of the lecturers in Discovery?",
+      answer:
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the lecturer both name, or Recently active, which puts people who signed in most recently first. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "Why can't I see a speaker I know?",
@@ -274,7 +286,8 @@ const unitCoordinator: HelpContent = {
     },
     {
       question: "Do I have to use it?",
-      answer: "No. Discovery works as it always has, and Suggested speakers is just another way to find people.",
+      answer:
+        "No. Discovery works as it always has, and Suggested speakers is just another way to find people while CCAE has it on.",
       feature: "suggestions",
     },
     {

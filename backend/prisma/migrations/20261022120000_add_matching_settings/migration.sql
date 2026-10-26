@@ -1,12 +1,13 @@
--- Suggested speakers controls, kept on the existing single-row admin_settings
--- table. Additive: every column has a default equal to the value the feature
--- used before it was configurable, so existing rows keep behaving the same.
+-- Ranked matching (Suggested speakers) controls, kept on the existing
+-- single-row admin_settings table. Additive, and off by default: until an
+-- administrator switches it on, nothing is scored and existing rows keep
+-- behaving as they did. The weights default to the standard ranking.
 --
 -- The three weights are whole percentages of the ranking score. The time since
 -- a lecturer's last session is worth `rotation`, how few sessions they have had
 -- is worth `exposure`, and how well their topics fit the session is worth `fit`.
 ALTER TABLE "admin_settings"
-    ADD COLUMN "suggestions_enabled" BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN "suggestions_enabled" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN "suggestions_fit_weight" INTEGER NOT NULL DEFAULT 65,
     ADD COLUMN "suggestions_rotation_weight" INTEGER NOT NULL DEFAULT 20,
     ADD COLUMN "suggestions_exposure_weight" INTEGER NOT NULL DEFAULT 15,

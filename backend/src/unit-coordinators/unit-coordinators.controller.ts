@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AppRole } from '../auth/roles';
@@ -8,6 +8,7 @@ import { BasicInformationDto } from './dto/basic-information.dto';
 import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
+import { DiscoveryQueryDto } from '../suggestions/dto/discovery-query.dto';
 
 /**
  * Saving a profile is limited to the unit coordinator role, so a guest speaker
@@ -58,8 +59,15 @@ export class UnitCoordinatorsController {
     return this.unitCoordinatorsService.saveConsent(user.id, dto);
   }
 
+  /**
+   * The Discovery list. `?sort=` is optional and one of joined, newest, name,
+   * topics, active or best; anything else is a 400.
+   */
   @Get()
-  findAll(@CurrentUser() user: AuthenticatedUser) {
-    return this.unitCoordinatorsService.findAll(user.id);
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: DiscoveryQueryDto = {},
+  ) {
+    return this.unitCoordinatorsService.findAll(user.id, query.sort);
   }
 }
