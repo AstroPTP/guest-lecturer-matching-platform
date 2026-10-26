@@ -7,6 +7,11 @@ import { prisma, resolveUserId, splitName } from '../prisma';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { profileImageUrl } from '../images/images.service';
 import { orderGuestsForViewer } from '../suggestions/discovery-ranking';
+import {
+  isManualSort,
+  sortDiscovery,
+  type DiscoverySort,
+} from '../suggestions/discovery-sort';
 import { noticeCoordinatorsOfNewGuest } from '../suggestions/new-profile-notices';
 
 type GuestRow = NonNullable<
@@ -201,10 +206,14 @@ export class GuestSpeakersService {
    * an administrator requires approval, anyone on hold after reports, and
    * anyone the viewer has an open report with.
    *
-   * While Suggested speakers is on, a coordinator sees the best match first.
-   * Only the order changes: nobody is added or removed, and no score is returned.
+   * The order is the viewer's choice (`sort`, see ../suggestions/discovery-sort.ts).
+   * Left out, a coordinator sees the best match first while ranked matching is
+   * on and the order people joined while it is off. `best` while it is off
+   * gives the order people joined too, so a choice remembered from when it was
+   * on never fails. Only the order changes: nobody is added or removed, and no
+   * score, count or sign-in time is returned.
    */
-  async findAll(viewerAuth0Id?: string) {
+  async findAll(viewerAuth0Id?: string, sort?: DiscoverySort) {
     const guests = await prisma.guests.findMany({
       where: await visibleGuestsWhere(viewerAuth0Id),
       orderBy: { guest_id: 'asc' },
@@ -219,11 +228,20 @@ export class GuestSpeakersService {
       prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
     ]);
 
-    const ordered = await orderGuestsForViewer(
-      guests,
-      expertiseRows,
-      viewerAuth0Id,
-    );
+    const ordered = isManualSort(sort)
+      ? await sortDiscovery(
+          guests,
+          sort,
+          (guest) => ({
+            id: guest.guest_id,
+            userId: guest.user_id,
+            firstName: guest.first_name,
+            lastName: guest.last_name,
+          }),
+          expertiseRows,
+          viewerAuth0Id,
+        )
+      : await orderGuestsForViewer(guests, expertiseRows, viewerAuth0Id);
 
     return ordered.map((guest) => {
       const hasUser = guest.user_id !== null;

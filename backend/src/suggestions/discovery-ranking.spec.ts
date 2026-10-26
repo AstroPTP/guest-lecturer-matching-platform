@@ -611,8 +611,8 @@ describe('orderGuestsForViewer', () => {
     expect(ids(ordered)).toEqual([3, 2, 1]);
   });
 
-  it('treats a missing setting as on, as Suggested speakers does', async () => {
-    stub();
+  it('treats a missing setting as off, as ranked matching is off until an administrator switches it on', async () => {
+    const { profile, topics, accepted } = stub();
     jest
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValue({ id: 1 } as never);
@@ -622,7 +622,11 @@ describe('orderGuestsForViewer', () => {
       'auth0|coord',
       NOW,
     );
-    expect(ids(ordered)).toEqual([3, 2, 1]);
+    expect(ordered).toBe(guests);
+    expect(ids(ordered)).toEqual([1, 2, 3]);
+    expect(profile).not.toHaveBeenCalled();
+    expect(topics).not.toHaveBeenCalled();
+    expect(accepted).not.toHaveBeenCalled();
   });
 
   it('leaves the order alone for a viewer who is not a coordinator', async () => {

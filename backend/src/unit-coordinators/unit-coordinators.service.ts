@@ -6,6 +6,11 @@ import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { profileImageUrl } from '../images/images.service';
 import { orderCoordinatorsForViewer } from '../suggestions/discovery-ranking';
+import {
+  isManualSort,
+  sortDiscovery,
+  type DiscoverySort,
+} from '../suggestions/discovery-sort';
 import { noticeGuestsOfNewCoordinator } from '../suggestions/new-profile-notices';
 import { visibleCoordinatorsWhere } from './coordinator-visibility';
 
@@ -198,10 +203,14 @@ export class UnitCoordinatorsService {
    * Deactivated accounts, anyone on hold after reports, and anyone the viewer
    * has an open report with are left out.
    *
-   * While Suggested speakers is on, a guest sees the best match first. Only the
-   * order changes: nobody is added or removed, and no score is returned.
+   * The order is the viewer's choice (`sort`, see ../suggestions/discovery-sort.ts).
+   * Left out, a guest sees the best match first while ranked matching is on and
+   * the order people joined while it is off. `best` while it is off gives the
+   * order people joined too, so a choice remembered from when it was on never
+   * fails. Only the order changes: nobody is added or removed, and no score,
+   * count or sign-in time is returned.
    */
-  async findAll(viewerAuth0Id?: string) {
+  async findAll(viewerAuth0Id?: string, sort?: DiscoverySort) {
     const coordinators = await prisma.coordinators.findMany({
       where: await visibleCoordinatorsWhere(viewerAuth0Id),
       orderBy: { coordinator_id: 'asc' },
@@ -216,12 +225,25 @@ export class UnitCoordinatorsService {
       prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
     ]);
 
-    const ordered = await orderCoordinatorsForViewer(
-      coordinators,
-      expertiseRows,
-      availabilityRows,
-      viewerAuth0Id,
-    );
+    const ordered = isManualSort(sort)
+      ? await sortDiscovery(
+          coordinators,
+          sort,
+          (coordinator) => ({
+            id: coordinator.coordinator_id,
+            userId: coordinator.user_id,
+            firstName: coordinator.first_name,
+            lastName: coordinator.last_name,
+          }),
+          expertiseRows,
+          viewerAuth0Id,
+        )
+      : await orderCoordinatorsForViewer(
+          coordinators,
+          expertiseRows,
+          availabilityRows,
+          viewerAuth0Id,
+        );
 
     return ordered.map((coordinator) => {
       const hasUser = coordinator.user_id !== null;
