@@ -5,6 +5,7 @@ import {
   isManualSort,
   sortDiscovery,
   sortRows,
+  startOfToday,
   type Placeable,
 } from './discovery-sort';
 
@@ -32,15 +33,13 @@ const place = (r: Row): Placeable => ({
 });
 
 const ids = (rows: Row[]) => rows.map((r) => r.id);
+/** An instant given as Australia/Perth wall-clock time, which is UTC+8. */
+const perth = (local: string) => new Date(`${local}:00+08:00`);
+
+const DAY = 86_400_000;
+
 const topicsOf = (entries: [number, string[]][]) =>
   new Map(entries.map(([user, topics]) => [BigInt(user), topics]));
-const signedInAt = (entries: [number, string | null][]) =>
-  new Map(
-    entries.map(([user, when]) => [
-      BigInt(user),
-      when === null ? null : new Date(when),
-    ]),
-  );
 
 describe('the list of sorts', () => {
   it('has the five manual sorts and best, in that order', () => {
@@ -65,47 +64,69 @@ describe('the list of sorts', () => {
   });
 });
 
-describe('activityBand', () => {
-  const NOW = new Date('2026-10-26T15:00:00Z');
-  const at = (iso: string) => new Date(iso);
+describe('startOfToday', () => {
+  it('is midnight at the start of the day in Perth, which is 16:00 UTC the day before', () => {
+    expect(startOfToday(new Date('2026-10-26T15:00:00Z')).toISOString()).toBe(
+      '2026-10-25T16:00:00.000Z',
+    );
+    expect(startOfToday(new Date('2026-10-25T16:00:00Z')).toISOString()).toBe(
+      '2026-10-25T16:00:00.000Z',
+    );
+  });
 
-  it('is 1 for a sign-in within the last 7 days, today included', () => {
-    expect(activityBand(at('2026-10-26T14:59:00Z'), NOW)).toBe(1);
-    expect(activityBand(at('2026-10-20T00:00:00Z'), NOW)).toBe(1);
-    expect(activityBand(at('2026-10-19T23:59:59Z'), NOW)).toBe(1);
+  it('stays the same all day and moves on at Perth midnight', () => {
+    const first = startOfToday(perth('2026-10-26T00:00')).toISOString();
+    expect(startOfToday(perth('2026-10-26T12:30')).toISOString()).toBe(first);
+    expect(startOfToday(perth('2026-10-26T23:59')).toISOString()).toBe(first);
+    expect(startOfToday(perth('2026-10-27T00:00')).toISOString()).not.toBe(
+      first,
+    );
+  });
+});
+
+describe('activityBand', () => {
+  // Counted from the start of Monday 26 October in Perth.
+  const REF = startOfToday(perth('2026-10-26T23:00'));
+
+  it('is 1 for a sign-in in the last 7 days, before today', () => {
+    expect(activityBand(perth('2026-10-25T23:59'), REF)).toBe(1);
+    expect(activityBand(perth('2026-10-19T23:59'), REF)).toBe(1);
+    expect(activityBand(perth('2026-10-19T00:00'), REF)).toBe(1);
   });
 
   it('is 2 from 8 to 30 days, 3 from 31 to 90 days, and 4 beyond that', () => {
-    expect(activityBand(at('2026-10-18T23:59:59Z'), NOW)).toBe(2);
-    expect(activityBand(at('2026-09-26T00:00:00Z'), NOW)).toBe(2);
-    expect(activityBand(at('2026-09-25T23:59:59Z'), NOW)).toBe(3);
-    expect(activityBand(at('2026-07-28T00:00:00Z'), NOW)).toBe(3);
-    expect(activityBand(at('2026-07-27T23:59:59Z'), NOW)).toBe(4);
-    expect(activityBand(at('2020-01-01T00:00:00Z'), NOW)).toBe(4);
+    expect(activityBand(perth('2026-10-18T23:59'), REF)).toBe(2);
+    expect(activityBand(perth('2026-09-26T00:00'), REF)).toBe(2);
+    expect(activityBand(perth('2026-09-25T23:59'), REF)).toBe(3);
+    expect(activityBand(perth('2026-07-28T00:00'), REF)).toBe(3);
+    expect(activityBand(perth('2026-07-27T23:59'), REF)).toBe(4);
+    expect(activityBand(perth('2020-01-01T00:00'), REF)).toBe(4);
   });
 
   it('is 4 for someone who has never signed in, and for a date it cannot read', () => {
-    expect(activityBand(null, NOW)).toBe(4);
-    expect(activityBand(undefined, NOW)).toBe(4);
-    expect(activityBand(new Date('not a date'), NOW)).toBe(4);
+    expect(activityBand(null, REF)).toBe(4);
+    expect(activityBand(undefined, REF)).toBe(4);
+    expect(activityBand(new Date('not a date'), REF)).toBe(4);
   });
 
-  it('puts a time in the future, from clock skew, in the best band rather than the worst', () => {
-    expect(activityBand(at('2026-10-27T01:00:00Z'), NOW)).toBe(1);
+  it('does not count a sign-in from today: it is the last band until tomorrow', () => {
+    expect(activityBand(perth('2026-10-26T00:00'), REF)).toBe(4);
+    expect(activityBand(perth('2026-10-26T22:59'), REF)).toBe(4);
+    // Nor one in the future, from clock skew.
+    expect(activityBand(perth('2026-10-28T09:00'), REF)).toBe(4);
   });
 
-  it('counts whole calendar days, so the band cannot change in the middle of a day', () => {
-    // Someone who signed in at 00:01 and someone at 23:59 on the same day are
-    // always in the same band, whichever minute the list is read in.
-    const early = at('2026-10-19T00:01:00Z');
-    const late = at('2026-10-19T23:59:00Z');
-    for (const minute of ['00:00:00', '06:30:00', '12:00:00', '23:59:59']) {
-      const reading = new Date(`2026-10-26T${minute}Z`);
-      expect(activityBand(early, reading)).toBe(activityBand(late, reading));
+  it('counts whole Perth days, so the band cannot change in the middle of a day', () => {
+    const early = perth('2026-10-19T00:01');
+    const late = perth('2026-10-19T23:59');
+    for (const reading of ['00:00', '06:30', '12:00', '23:59']) {
+      const reference = startOfToday(perth(`2026-10-26T${reading}`));
+      expect(activityBand(early, reference)).toBe(1);
+      expect(activityBand(late, reference)).toBe(1);
     }
-    // And it moves on at midnight, not 7 days after the minute of the sign-in.
-    expect(activityBand(late, new Date('2026-10-26T23:59:59Z'))).toBe(1);
-    expect(activityBand(late, new Date('2026-10-27T00:00:00Z'))).toBe(2);
+    // It moves on at Perth midnight, 7 days after that day.
+    expect(activityBand(late, startOfToday(perth('2026-10-26T23:59')))).toBe(1);
+    expect(activityBand(late, startOfToday(perth('2026-10-27T00:00')))).toBe(2);
   });
 });
 
@@ -212,11 +233,11 @@ describe('sortRows', () => {
   });
 
   describe('active', () => {
-    // Counted from a fixed moment, so every case below is the same on any day.
-    const NOW = new Date('2026-10-26T15:00:00Z');
-    const ago = (days: number, time = '12:00:00') => {
-      const day = new Date(NOW.getTime() - days * 86_400_000);
-      return `${day.toISOString().slice(0, 10)}T${time}Z`;
+    // Counted from the start of Monday 26 October in Perth.
+    const REF = startOfToday(perth('2026-10-26T23:00'));
+    const ago = (days: number, time = '12:00') => {
+      const day = new Date(REF.getTime() - days * DAY + 8 * 3_600_000);
+      return perth(`${day.toISOString().slice(0, 10)}T${time}`);
     };
 
     const activeRows = [
@@ -229,50 +250,58 @@ describe('sortRows', () => {
       row(7, 'G'), // 20 days ago: band 2
       row(8, 'H'), // 200 days ago: band 4
     ];
-    const lastSignIn = signedInAt([
-      [101, null],
-      [102, ago(60)],
-      [103, ago(2)],
-      [104, ago(61)],
-      [106, null],
-      [107, ago(20)],
-      [108, ago(200)],
+    const lastSignIn = new Map<bigint, Date | null>([
+      [101n, null],
+      [102n, ago(60)],
+      [103n, ago(2)],
+      [104n, ago(61)],
+      [106n, null],
+      [107n, ago(20)],
+      [108n, ago(200)],
     ]);
 
     it('puts the most recent band first, and the longest ago or never last', () => {
       expect(
-        ids(sortRows(activeRows, 'active', place, { lastSignIn, now: NOW })),
+        ids(
+          sortRows(activeRows, 'active', place, {
+            lastSignIn,
+            reference: REF,
+          }),
+        ),
       ).toEqual([3, 7, 2, 4, 1, 5, 6, 8]);
     });
 
     it('keeps the order people joined in inside a band, so the exact time cannot be read from the order', () => {
-      // All signed in within the same week, at different times. The one who
-      // signed in last (row 3, a minute ago) is not placed first.
+      // All signed in within the same week, at different times of different
+      // days. Whoever signed in last is not placed first.
       const sameWeek = [row(1, 'A'), row(2, 'B'), row(3, 'C'), row(4, 'D')];
-      const times = signedInAt([
-        [101, ago(6, '09:00:00')],
-        [102, ago(0, '14:59:00')],
-        [103, ago(3, '23:59:59')],
-        [104, ago(1, '00:00:00')],
+      const times = new Map<bigint, Date | null>([
+        [101n, ago(6, '09:00')],
+        [102n, ago(1, '23:59')],
+        [103n, ago(3, '23:59')],
+        [104n, ago(1, '00:00')],
       ]);
       expect(
         ids(
-          sortRows(sameWeek, 'active', place, { lastSignIn: times, now: NOW }),
+          sortRows(sameWeek, 'active', place, {
+            lastSignIn: times,
+            reference: REF,
+          }),
         ),
       ).toEqual([1, 2, 3, 4]);
 
       // Reversing who signed in when changes nothing.
-      const reversed = signedInAt([
-        [101, ago(0, '14:59:00')],
-        [102, ago(6, '09:00:00')],
-        [103, ago(1, '00:00:00')],
-        [104, ago(3, '23:59:59')],
+      const reversed = new Map<bigint, Date | null>([
+        [101n, ago(1, '23:59')],
+        [102n, ago(6, '09:00')],
+        [103n, ago(1, '00:00')],
+        [104n, ago(3, '23:59')],
       ]);
       expect(
         ids(
           sortRows(sameWeek, 'active', place, {
             lastSignIn: reversed,
-            now: NOW,
+            reference: REF,
           }),
         ),
       ).toEqual([1, 2, 3, 4]);
@@ -280,27 +309,27 @@ describe('sortRows', () => {
 
     it('does the same inside the month and the three-month bands', () => {
       const rowsInBands = [row(1, 'A'), row(2, 'B'), row(3, 'C'), row(4, 'D')];
-      const times = signedInAt([
-        [101, ago(29)],
-        [102, ago(10)],
-        [103, ago(89)],
-        [104, ago(31)],
+      const times = new Map<bigint, Date | null>([
+        [101n, ago(29)],
+        [102n, ago(10)],
+        [103n, ago(89)],
+        [104n, ago(31)],
       ]);
       // 2 and 1 are in the month band (join order 1, 2); 4 and 3 are in the three-month band (join order 3, 4).
       expect(
         ids(
           sortRows(rowsInBands, 'active', place, {
             lastSignIn: times,
-            now: NOW,
+            reference: REF,
           }),
         ),
       ).toEqual([1, 2, 3, 4]);
     });
 
     it('is plain joined order when nobody has a sign-in time', () => {
-      expect(ids(sortRows(activeRows, 'active', place, { now: NOW }))).toEqual([
-        1, 2, 3, 4, 5, 6, 7, 8,
-      ]);
+      expect(
+        ids(sortRows(activeRows, 'active', place, { reference: REF })),
+      ).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
     });
   });
 
@@ -319,33 +348,84 @@ describe('sortRows', () => {
 });
 
 describe('sortDiscovery', () => {
-  const NOW = new Date('2026-10-26T15:00:00Z');
-  const DAY = 86_400_000;
+  // Monday 26 October, 23:00 in Perth. Today started at 00:00 that day.
+  const NOW = perth('2026-10-26T23:00');
+  const REF = startOfToday(NOW);
   const rows = [row(1, 'Ada'), row(2, 'Bea'), row(3, 'Cy')];
 
-  function stubReads() {
+  /** The viewer's topics, and the stored last sign-in of each of the three people. */
+  function stubReads(
+    lastLogin: [bigint, Date | null][] = [
+      [101n, new Date(REF.getTime() - 2 * DAY)],
+      [102n, null],
+      [103n, new Date(REF.getTime() - 10 * DAY)],
+    ],
+  ) {
     const own = jest
       .spyOn(prisma.user_expertise, 'findMany')
       .mockResolvedValue([{ user_id: 50n, expertise: 'Economics' }] as never);
-    const people = jest.spyOn(prisma.users, 'findMany').mockResolvedValue([
-      { userid: 101n, lastloginat: new Date(NOW.getTime() - 2 * DAY) },
-      { userid: 102n, lastloginat: null },
-      { userid: 103n, lastloginat: new Date(NOW.getTime() - 10 * DAY) },
-    ] as never);
-    return { own, people };
+    const people = jest.spyOn(prisma.users, 'findMany').mockResolvedValue(
+      lastLogin.map(([userid, lastloginat]) => ({
+        userid,
+        lastloginat,
+      })) as never,
+    );
+    const audit = jest.spyOn(prisma.audit_entries, 'groupBy');
+    return { own, people, audit };
+  }
+
+  /**
+   * Stands in for the database's grouped query over a list of sign-in entries:
+   * it honours the action, the people asked about and the time window, so a
+   * test can see what the query leaves out.
+   */
+  function auditEntries(entries: [bigint, Date][]) {
+    type Args = {
+      where: {
+        action: string;
+        actor_user_id: { in: bigint[] };
+        occurred_at: { gte: Date; lt: Date };
+      };
+    };
+    return jest.spyOn(prisma.audit_entries, 'groupBy').mockImplementation(((
+      args: Args,
+    ) => {
+      const { where } = args;
+      const latest = new Map<bigint, Date>();
+      for (const [actor, at] of entries) {
+        const inWindow =
+          at.getTime() >= where.occurred_at.gte.getTime() &&
+          at.getTime() < where.occurred_at.lt.getTime();
+        if (
+          where.action === 'user.signed_in' &&
+          where.actor_user_id.in.includes(actor) &&
+          inWindow &&
+          (latest.get(actor)?.getTime() ?? -Infinity) < at.getTime()
+        ) {
+          latest.set(actor, at);
+        }
+      }
+      return Promise.resolve(
+        [...latest].map(([actor_user_id, occurred_at]) => ({
+          actor_user_id,
+          _max: { occurred_at },
+        })),
+      );
+    }) as never);
   }
 
   it('reads nothing for joined, newest and name', async () => {
-    const { own, people } = stubReads();
+    const { own, people, audit } = stubReads();
     for (const sort of ['joined', 'newest', 'name'] as const) {
       await sortDiscovery(rows, sort, place, [], 'auth0|viewer');
     }
     expect(own).not.toHaveBeenCalled();
     expect(people).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
   });
 
   it('reads the viewer’s own topics, and only those, for topics', async () => {
-    const { own, people } = stubReads();
+    const { own, people, audit } = stubReads();
     const sorted = await sortDiscovery(
       rows,
       'topics',
@@ -362,6 +442,7 @@ describe('sortDiscovery', () => {
       where: { users: { is: { auth0Id: 'auth0|viewer' } } },
     });
     expect(people).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
   });
 
   it('is joined order for topics when nobody is signed in to ask', async () => {
@@ -377,33 +458,132 @@ describe('sortDiscovery', () => {
     expect(own).not.toHaveBeenCalled();
   });
 
-  it('reads the sign-in times in one query for active, and asks only about the people listed', async () => {
-    const { own, people } = stubReads();
-    const sorted = await sortDiscovery(
-      [...rows, row(4, 'No account', null, null)],
-      'active',
-      place,
-      [],
-      'auth0|viewer',
-      NOW,
-    );
-    // Cy signed in 10 days ago and Ada 2 days ago, so Ada's band is the better one;
-    // Bea never signed in, and the one with no account goes after.
-    expect(ids(sorted)).toEqual([1, 3, 2, 4]);
-    expect(people).toHaveBeenCalledTimes(1);
-    expect(people.mock.calls[0][0]).toEqual({
-      where: { userid: { in: [101n, 102n, 103n] } },
-      select: { userid: true, lastloginat: true },
+  describe('active', () => {
+    it('asks for the recorded sign-ins in one grouped query, bounded to the days that matter and to before today, and only about the people listed', async () => {
+      const { own, people, audit } = stubReads();
+      await sortDiscovery(
+        [...rows, row(4, 'No account', null, null)],
+        'active',
+        place,
+        [],
+        'auth0|viewer',
+        NOW,
+      );
+      expect(audit).toHaveBeenCalledTimes(1);
+      expect(audit.mock.calls[0][0]).toEqual({
+        by: ['actor_user_id'],
+        where: {
+          action: 'user.signed_in',
+          actor_user_id: { in: [101n, 102n, 103n] },
+          occurred_at: {
+            gte: new Date(REF.getTime() - 90 * DAY),
+            lt: REF,
+          },
+        },
+        _max: { occurred_at: true },
+      });
+      expect(people).toHaveBeenCalledTimes(1);
+      expect(people.mock.calls[0][0]).toEqual({
+        where: { userid: { in: [101n, 102n, 103n] } },
+        select: { userid: true, lastloginat: true },
+      });
+      expect(own).not.toHaveBeenCalled();
     });
-    expect(own).not.toHaveBeenCalled();
+
+    it('falls back to the stored last sign-in for someone with no recorded one', async () => {
+      stubReads();
+      const sorted = await sortDiscovery(
+        [...rows, row(4, 'No account', null, null)],
+        'active',
+        place,
+        [],
+        'auth0|viewer',
+        NOW,
+      );
+      // Ada 2 days ago is band 1, Cy 10 days ago band 2, Bea never signed in, and no account goes after.
+      expect(ids(sorted)).toEqual([1, 3, 2, 4]);
+    });
+
+    it('lets a recorded sign-in win over the stored one', async () => {
+      // Cy's stored time is 10 days ago, but the trail says 60 days ago.
+      stubReads();
+      auditEntries([[103n, new Date(REF.getTime() - 60 * DAY)]]);
+      const sorted = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
+      // Ada band 1, Cy band 3, Bea never.
+      expect(ids(sorted)).toEqual([1, 3, 2]);
+    });
+
+    it('does not use a stored last sign-in from today: that person is in the last band until tomorrow', async () => {
+      stubReads([
+        [101n, new Date(REF.getTime() + 3 * 3_600_000)],
+        [102n, new Date(REF.getTime() - 10 * DAY)],
+        [103n, null],
+      ]);
+      const sorted = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
+      // Bea 10 days ago is band 2; Ada (today) and Cy (never) are band 4, in join order.
+      expect(ids(sorted)).toEqual([2, 1, 3]);
+    });
+
+    it('does not move anyone when they sign in today, and moves them the next day', async () => {
+      // Before today: Ada last signed in 3 days ago (band 1), Bea 60 days ago
+      // (band 3), Cy 20 days ago (band 2).
+      const before: [bigint, Date][] = [
+        [101n, new Date(REF.getTime() - 3 * DAY)],
+        [102n, new Date(REF.getTime() - 60 * DAY)],
+        [103n, new Date(REF.getTime() - 20 * DAY)],
+      ];
+      stubReads([
+        [101n, before[0][1]],
+        [102n, before[1][1]],
+        [103n, before[2][1]],
+      ]);
+      auditEntries(before);
+      const quietDay = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
+      expect(ids(quietDay)).toEqual([1, 3, 2]);
+
+      // Today the dormant Bea signs in, and so does Ada. The stored time
+      // moves to now and a new entry is written, and neither changes a position.
+      const signedInToday = new Date(REF.getTime() + 20 * 3_600_000);
+      jest.restoreAllMocks();
+      stubReads([
+        [101n, signedInToday],
+        [102n, signedInToday],
+        [103n, before[2][1]],
+      ]);
+      auditEntries([...before, [101n, signedInToday], [102n, signedInToday]]);
+      const lateToday = new Date(REF.getTime() + 23 * 3_600_000);
+      const sameDay = await sortDiscovery(
+        rows,
+        'active',
+        place,
+        [],
+        'a',
+        lateToday,
+      );
+      expect(ids(sameDay)).toEqual(ids(quietDay));
+
+      // From the next day it counts: Bea is now in band 1, with Ada, and moves
+      // ahead of Cy.
+      const tomorrow = new Date(REF.getTime() + DAY + 3_600_000);
+      const nextDay = await sortDiscovery(
+        rows,
+        'active',
+        place,
+        [],
+        'a',
+        tomorrow,
+      );
+      expect(ids(nextDay)).toEqual([1, 2, 3]);
+    });
   });
 
   it('returns the rows untouched, and reads nothing, for fewer than two', async () => {
-    const { own, people } = stubReads();
+    const { own, people, audit } = stubReads();
     const one = [row(1, 'Ada')];
     expect(await sortDiscovery(one, 'active', place, [], 'a')).toBe(one);
     expect(await sortDiscovery(one, 'topics', place, [], 'a')).toBe(one);
     expect(own).not.toHaveBeenCalled();
     expect(people).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
   });
 });

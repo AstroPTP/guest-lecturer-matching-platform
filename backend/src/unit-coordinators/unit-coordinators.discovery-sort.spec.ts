@@ -201,13 +201,13 @@ describe('UnitCoordinatorsService.findAll sort', () => {
     );
   });
 
-  it('keeps the order people joined in for people who signed in at different times within the same week', async () => {
+  it('keeps the order people joined in for people who signed in on different days within the same week', async () => {
     const { signIns } = seed(true);
-    // Bea signed in a minute ago and Cy six days ago: the same band, so the
+    // Bea signed in yesterday and Cy six days ago: the same band, so the
     // order they joined in decides and the exact time cannot be read from it.
     signIns.mockResolvedValue([
       { userid: 201n, lastloginat: daysAgo(3) },
-      { userid: 202n, lastloginat: new Date(Date.now() - 60_000) },
+      { userid: 202n, lastloginat: daysAgo(1) },
       { userid: 203n, lastloginat: daysAgo(6) },
       { userid: 204n, lastloginat: daysAgo(1) },
     ] as never);
@@ -216,7 +216,7 @@ describe('UnitCoordinatorsService.findAll sort', () => {
     );
 
     signIns.mockResolvedValue([
-      { userid: 201n, lastloginat: new Date(Date.now() - 60_000) },
+      { userid: 201n, lastloginat: daysAgo(1) },
       { userid: 202n, lastloginat: daysAgo(6) },
       { userid: 203n, lastloginat: daysAgo(1) },
       { userid: 204n, lastloginat: daysAgo(3) },
@@ -226,8 +226,30 @@ describe('UnitCoordinatorsService.findAll sort', () => {
     );
   });
 
+  it('does not move anyone for a sign-in today: it counts from the next day', async () => {
+    const { signIns } = seed(true);
+    const before = names(await service.findAll('auth0|guest', 'active'));
+    // Dot, who had never signed in, signs in now, and so does Bea, who
+    // signed in a few days ago. The trail still holds Bea's earlier sign-in.
+    signIns.mockResolvedValue([
+      { userid: 201n, lastloginat: new Date() },
+      { userid: 202n, lastloginat: new Date() },
+      { userid: 203n, lastloginat: SIGNED_IN.cy },
+      { userid: 204n, lastloginat: SIGNED_IN.abe },
+    ] as never);
+    jest
+      .spyOn(prisma.audit_entries, 'groupBy')
+      .mockResolvedValue([
+        { actor_user_id: 202n, _max: { occurred_at: SIGNED_IN.bea } },
+      ] as never);
+    expect(names(await service.findAll('auth0|guest', 'active'))).toEqual(
+      before,
+    );
+  });
+
   it('reads sign-in times only for the active sort', async () => {
     const { signIns } = seed(true);
+    const trail = jest.spyOn(prisma.audit_entries, 'groupBy');
     for (const sort of [
       'joined',
       'newest',
@@ -238,8 +260,10 @@ describe('UnitCoordinatorsService.findAll sort', () => {
       await service.findAll('auth0|guest', sort);
     }
     expect(signIns).not.toHaveBeenCalled();
+    expect(trail).not.toHaveBeenCalled();
     await service.findAll('auth0|guest', 'active');
     expect(signIns).toHaveBeenCalledTimes(1);
+    expect(trail).toHaveBeenCalledTimes(1);
   });
 
   it('asks the database for the same people whichever sort is chosen', async () => {
