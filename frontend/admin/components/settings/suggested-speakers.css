@@ -1,6 +1,7 @@
 /* The Suggested speakers card on Settings. Colours come from the same tokens the
    rest of the portal uses, so the card follows the light and dark themes. */
 .suggested-block { margin-top: 23px; }
+.suggested-card > header + .suggested-block { margin-top: 0; }
 .suggested-label { color: var(--c-44444a); font-size: 10px; font-weight: 800; letter-spacing: .1em; margin: 0 0 9px; text-transform: uppercase; }
 .suggested-presets { display: grid; gap: 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .suggested-preset {
@@ -50,8 +51,6 @@
 }
 .suggested-actions { align-items: center; border-top: 1px solid var(--c-ececee); display: flex; gap: 10px; justify-content: flex-end; margin-top: 23px; padding-top: 17px; }
 .suggested-actions button { background: transparent; border: 0; color: var(--c-65656b); font-size: 12px; font-weight: 750; padding: 11px 18px; text-transform: uppercase; }
-.suggested-actions button.save-settings { background: var(--c-303030); border-radius: 4px; color: var(--c-ffffff); min-width: 110px; }
-.suggested-actions button:disabled { cursor: not-allowed; opacity: .5; }
 @media (max-width: 900px) {
   .suggested-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

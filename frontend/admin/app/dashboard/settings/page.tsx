@@ -11,15 +11,24 @@ import { getSettings, saveSettings, type PlatformSettings } from "@/services/adm
 const settingsNav: Array<{ label: string; href: string; icon: StaticImageData }> = [
   { label: "General", href: "#general", icon: ruleIcon },
   { label: "Matching rules", href: "#rules", icon: groupIcon },
-  { label: "Suggested speakers", href: "#suggestions", icon: groupIcon },
 ];
+
+/** The sub-navigation entry for the ranking settings, listed only while ranked matching is on. */
+const rankingNav = { label: "Ranking settings", href: "#suggestions", icon: groupIcon };
+
+const RANKED_MATCHING_OFF =
+  "Off (default): coordinators and guest lecturers filter Discovery and choose the sort order themselves. No scores are used.";
+const RANKED_MATCHING_ON =
+  "On: coordinators get a Suggested speakers page, Discovery can show the best match first, and people are told when a new profile shares their topics. Ranking uses topic fit, time since the last session and sessions so far, never personal characteristics. Adjust the weights below.";
 
 type Editable = Omit<PlatformSettings, "updatedAt">;
 
 /**
  * Platform settings. Only settings the server enforces are shown: approval
- * decides who coordinators can see, and the contact limit is checked whenever
- * a coordinator sends a request. Every change is written to the audit log.
+ * decides who coordinators can see, the contact limit is checked whenever a
+ * coordinator sends a request, and ranked matching, which is off until it is
+ * switched on here, adds the ranking settings below the rules. Every change is
+ * written to the audit log.
  */
 export default function SettingsPage() {
   const [saved, setSaved] = useState<PlatformSettings | null>(null);
@@ -50,8 +59,11 @@ export default function SettingsPage() {
     event.preventDefault();
     if (!draft) return;
     // The API and the database refuse the same values; this saves the trip.
+    // The ranking settings are hidden while ranked matching is off, so a bad
+    // value left in them then is not sent, and the stored ones stay as they are.
     const problems = validateSuggestedSpeakers(draft);
-    if (problems.length > 0) {
+    const sendRanking = problems.length === 0;
+    if (!sendRanking && draft.suggestionsEnabled) {
       setNotice("");
       setErrorMessage(problems[0]);
       return;
@@ -66,10 +78,14 @@ export default function SettingsPage() {
         requireAdminApproval: draft.requireAdminApproval,
         contactLimitDays: draft.contactLimitDays,
         suggestionsEnabled: draft.suggestionsEnabled,
-        suggestionsFitWeight: draft.suggestionsFitWeight,
-        suggestionsRotationWeight: draft.suggestionsRotationWeight,
-        suggestionsExposureWeight: draft.suggestionsExposureWeight,
-        suggestionsHalfLifeDays: draft.suggestionsHalfLifeDays,
+        ...(sendRanking
+          ? {
+              suggestionsFitWeight: draft.suggestionsFitWeight,
+              suggestionsRotationWeight: draft.suggestionsRotationWeight,
+              suggestionsExposureWeight: draft.suggestionsExposureWeight,
+              suggestionsHalfLifeDays: draft.suggestionsHalfLifeDays,
+            }
+          : {}),
       });
       setSaved(next);
       setDraft(next);
@@ -101,7 +117,7 @@ export default function SettingsPage() {
 
       <div className="settings-layout">
         <nav className="settings-local-nav" aria-label="Settings sections">
-          {settingsNav.map((item) => (
+          {(draft.suggestionsEnabled ? [...settingsNav, rankingNav] : settingsNav).map((item) => (
             <a href={item.href} key={item.href}>
               <Image alt="" aria-hidden="true" src={item.icon} />
               {item.label}
@@ -173,14 +189,23 @@ export default function SettingsPage() {
                 </small>
               </div>
             </div>
+            <div className="protocol-list">
+              <Protocol
+                checked={draft.suggestionsEnabled}
+                description={draft.suggestionsEnabled ? RANKED_MATCHING_ON : RANKED_MATCHING_OFF}
+                label="Ranked matching (Suggested speakers)"
+                onChange={() => update("suggestionsEnabled", !draft.suggestionsEnabled)}
+              />
+            </div>
           </section>
 
-          <SuggestedSpeakersCard
-            isSaving={isSaving}
-            storedHalfLifeDays={saved.suggestionsHalfLifeDays}
-            onChange={(changes) => setDraft((current) => (current ? { ...current, ...changes } : current))}
-            value={draft}
-          />
+          {draft.suggestionsEnabled && (
+            <SuggestedSpeakersCard
+              storedHalfLifeDays={saved.suggestionsHalfLifeDays}
+              onChange={(changes) => setDraft((current) => (current ? { ...current, ...changes } : current))}
+              value={draft}
+            />
+          )}
 
           <footer className="settings-actions">
             {notice && <span role="status">{notice}</span>}

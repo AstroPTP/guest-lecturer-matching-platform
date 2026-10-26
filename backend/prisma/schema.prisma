@@ -294,12 +294,12 @@ model admin_settings {
   require_admin_approval Boolean  @default(false)
   /// Minimum days between contact requests to the same guest lecturer. 0 turns the limit off.
   contact_limit_days     Int      @default(90)
-  /// Suggested speakers. Off hides the feature (404). The three weights are
+  /// Ranked matching (Suggested speakers). Off by default; off hides the feature (404). The three weights are
   /// whole percentages of the ranking score; they sum to 100 and fit is at least
   /// 50, so topic fit always counts most. The half-life, in days, is how fast
   /// the time since a lecturer's last session stops counting. Checked by
   /// constraints in the migration, which Prisma does not model.
-  suggestions_enabled         Boolean  @default(true)
+  suggestions_enabled         Boolean  @default(false)
   suggestions_fit_weight      Int      @default(65)
   suggestions_rotation_weight Int      @default(20)
   suggestions_exposure_weight Int      @default(15)

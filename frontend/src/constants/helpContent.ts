@@ -133,7 +133,7 @@ const guestLecturer: HelpContent = {
     {
       question: "How do coordinators find me?",
       answer:
-        "They can browse Discovery, or ask Suggested speakers for lecturers who suit a session. Your topics, availability and profile decide whether you appear.",
+        "They can browse Discovery, or, while CCAE has ranked matching switched on (it is off by default), ask Suggested speakers for lecturers who suit a session. Your topics, availability and profile decide whether you appear.",
       feature: "suggestions",
     },
     {
@@ -234,7 +234,7 @@ const unitCoordinator: HelpContent = {
   suggestions: {
     title: "Suggested speakers",
     lines: [
-      "Suggested speakers is a ranked shortlist of guest lecturers. You can enter a date, a time and the topics you need, or leave any of them blank: with no topics it uses your own expertise, and with no date or time any time suits.",
+      "Suggested speakers is an option CCAE can turn on, and it is off by default. You are seeing this because it is on. It is a ranked shortlist of guest lecturers. You can enter a date, a time and the topics you need, or leave any of them blank: with no topics it uses your own expertise, and with no date or time any time suits.",
       "A lecturer is listed only when four things are true: they are eligible (a finished profile, consent to be matched, and not someone you dismissed or unmatched), they are available for the date and time you gave, they share at least one of your topics, and they pass the reliability check (not measured yet, so everyone passes for now).",
       "Lecturers who pass are ranked by a score: fit counts most, then time since last session, then fewer sessions so far.",
       "Nobody is hidden for being popular. A lecturer with many sessions simply ranks lower, and moves back up as time passes.",
@@ -251,7 +251,7 @@ const unitCoordinator: HelpContent = {
     {
       question: "What is Suggested speakers?",
       answer:
-        "A shortlist of guest lecturers who could suit one of your sessions, best match first. Give it a date, time and topics, or leave them blank to use your own expertise.",
+        "An option CCAE can turn on, off by default. While it is on, it gives you a shortlist of guest lecturers who could suit one of your sessions, best match first. Give it a date, time and topics, or leave them blank to use your own expertise.",
       feature: "suggestions",
     },
     {
@@ -274,7 +274,8 @@ const unitCoordinator: HelpContent = {
     },
     {
       question: "Do I have to use it?",
-      answer: "No. Discovery works as it always has, and Suggested speakers is just another way to find people.",
+      answer:
+        "No. Discovery works as it always has, and Suggested speakers is just another way to find people while CCAE has it on.",
       feature: "suggestions",
     },
     {
