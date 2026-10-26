@@ -40,7 +40,7 @@ export default function AboutPage() {
         <p>
           Discovery lists profiles in the order each person chooses. Use Sort by to list people by when
           they joined, newest first, name, most shared topics or recently active (grouped by week, month or longer,
-          and updated once a day), and use Filters to narrow the list. Every match is a person&apos;s own choice.
+          updated once a day and counted from the day after someone signs in), and use Filters to narrow the list. Every match is a person&apos;s own choice.
         </p>
         <p>
           Ranked matching is an option that CCAE can switch on, and it is off by default. While it is on, Discovery

@@ -24,8 +24,9 @@ import { sharedTopics } from './scoring';
  * `active` is deliberately coarse, so that reloading the list cannot show who
  * signed in moments ago. It orders by a band (see activityBand) and, inside a
  * band, by the order people joined; the time itself never decides a position.
- * It also moves only once a day: a sign-in today is not counted until tomorrow
- * (see lastSignInBefore), so nobody's position changes the moment they sign in.
+ * It also moves only once a day: it counts recorded sign-ins up to the start of
+ * today (see lastSignInBefore), so a sign-in counts from the day after it and
+ * nobody's position changes the moment they sign in.
  */
 export const DISCOVERY_SORTS = [
   'joined',
@@ -141,8 +142,8 @@ function byJoined(a: Placeable, b: Placeable): number {
  *
  * @param topicsByUser the topics each account names, for `topics`
  * @param viewerTopics the topics the person looking has named, for `topics`
- * @param lastSignIn when each account last signed in before today, for
- *   `active`; only its band (see activityBand) is used
+ * @param lastSignIn when each account last signed in before today, from the
+ *   record of sign-ins, for `active`; only its band (see activityBand) is used
  * @param reference the start of today, which the bands are counted from, for
  *   `active`
  */
@@ -216,15 +217,17 @@ function groupTopics(rows: readonly TopicRow[]): Map<bigint, string[]> {
 }
 
 /**
- * When each person last signed in, counting only sign-ins before `reference`
- * (the start of today). A sign-in today is left out, so signing in does not
- * move anyone until the next day.
+ * When each person last signed in, counting only the recorded sign-ins before
+ * `reference` (the start of today). Nothing from today is counted, so signing
+ * in does not move anyone until the next day.
  *
- * The latest `user.signed_in` audit entry before `reference` wins, found with
+ * It is the latest `user.signed_in` audit entry before `reference`, found with
  * one grouped query for all the people listed and bounded to the days that can
- * still change a band. Someone with no such entry falls back to their stored
- * last sign-in, but only when that is also before `reference`; otherwise they
- * are left out, which counts as the last band until tomorrow.
+ * still change a band. Someone with no such entry is left out, which counts as
+ * the last band. Nothing else stands in for a missing entry: the stored
+ * last-sign-in column is never read, because it moves the moment someone signs
+ * in, and a person who dropped to the last band when it changed would show
+ * that they had just signed in.
  */
 async function lastSignInBefore(
   userIds: readonly bigint[],
@@ -235,29 +238,15 @@ async function lastSignInBefore(
     return found;
   }
   const since = new Date(reference.getTime() - LAST_BAND_AFTER_DAYS * DAY_MS);
-  const [audited, people] = await Promise.all([
-    prisma.audit_entries.groupBy({
-      by: ['actor_user_id'],
-      where: {
-        action: 'user.signed_in',
-        actor_user_id: { in: [...userIds] },
-        occurred_at: { gte: since, lt: reference },
-      },
-      _max: { occurred_at: true },
-    }),
-    prisma.users.findMany({
-      where: { userid: { in: [...userIds] } },
-      select: { userid: true, lastloginat: true },
-    }),
-  ]);
-  for (const person of people) {
-    if (
-      person.lastloginat &&
-      person.lastloginat.getTime() < reference.getTime()
-    ) {
-      found.set(person.userid, person.lastloginat);
-    }
-  }
+  const audited = await prisma.audit_entries.groupBy({
+    by: ['actor_user_id'],
+    where: {
+      action: 'user.signed_in',
+      actor_user_id: { in: [...userIds] },
+      occurred_at: { gte: since, lt: reference },
+    },
+    _max: { occurred_at: true },
+  });
   for (const entry of audited) {
     if (entry.actor_user_id !== null && entry._max.occurred_at) {
       found.set(entry.actor_user_id, entry._max.occurred_at);
@@ -269,8 +258,7 @@ async function lastSignInBefore(
 /**
  * Orders a Discovery list by a manual sort, reading only what that sort needs:
  * nothing for joined, newest and name; the viewer's own topics for topics; and
- * for active, one grouped read of the people's recorded sign-ins and one of
- * their last sign-in time.
+ * for active, one grouped read of the people's recorded sign-ins.
  *
  * `expertiseRows` is the topics of the people listed, already read for the
  * cards. The sign-in times are turned into bands to place a row and thrown
