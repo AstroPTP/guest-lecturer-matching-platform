@@ -25,6 +25,7 @@ function model(): Record<string, AnyFn> {
     createMany: () => Promise.resolve({ count: 0 }),
     deleteMany: () => Promise.resolve({ count: 0 }),
     count: () => Promise.resolve(0),
+    groupBy: () => Promise.resolve([]),
   };
 }
 
