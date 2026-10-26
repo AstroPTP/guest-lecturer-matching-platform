@@ -22,9 +22,9 @@ import {
 afterEach(() => jest.restoreAllMocks());
 
 describe('the defaults', () => {
-  it('are the constants the feature shipped with: 65/20/15 and 90 days, on', () => {
+  it('are the constants the feature shipped with: 65/20/15 and 90 days, off', () => {
     expect(DEFAULT_MATCHING_SETTINGS).toEqual({
-      enabled: true,
+      enabled: false,
       fitWeight: 65,
       rotationWeight: 20,
       exposureWeight: 15,
@@ -100,7 +100,7 @@ describe('readMatchingSettings', () => {
   it('turns the stored percentages into weights and passes the half-life through', async () => {
     jest.spyOn(prisma.admin_settings, 'upsert').mockResolvedValue(
       row({
-        suggestions_enabled: false,
+        suggestions_enabled: true,
         suggestions_fit_weight: 50,
         suggestions_rotation_weight: 30,
         suggestions_exposure_weight: 20,
@@ -108,7 +108,7 @@ describe('readMatchingSettings', () => {
       }),
     );
     expect(await readMatchingSettings()).toEqual({
-      enabled: false,
+      enabled: true,
       weights: { fit: 0.5, rotation: 0.3, exposure: 0.2 },
       halfLifeDays: 180,
     });
@@ -119,10 +119,17 @@ describe('readMatchingSettings', () => {
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValue({ id: 1 } as never);
     expect(await readMatchingSettings()).toEqual({
-      enabled: true,
+      enabled: false,
       weights: DEFAULT_WEIGHTS,
       halfLifeDays: 90,
     });
+  });
+
+  it('is off for a stored row that has the switch unset, so ranking never runs by accident', async () => {
+    jest
+      .spyOn(prisma.admin_settings, 'upsert')
+      .mockResolvedValue({ id: 1, suggestions_enabled: null } as never);
+    expect((await readMatchingSettings()).enabled).toBe(false);
   });
 });
 
@@ -140,8 +147,8 @@ describe('the 20261022120000_add_matching_settings migration', () => {
     'utf8',
   );
 
-  it('adds the five columns with the defaults the feature already used', () => {
-    expect(sql).toMatch(/"suggestions_enabled" BOOLEAN NOT NULL DEFAULT true/);
+  it('adds the five columns: ranked matching off, the standard weights and half-life', () => {
+    expect(sql).toMatch(/"suggestions_enabled" BOOLEAN NOT NULL DEFAULT false/);
     expect(sql).toMatch(/"suggestions_fit_weight" INTEGER NOT NULL DEFAULT 65/);
     expect(sql).toMatch(
       /"suggestions_rotation_weight" INTEGER NOT NULL DEFAULT 20/,

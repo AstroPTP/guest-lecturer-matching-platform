@@ -1,6 +1,9 @@
+"use client";
+
 import Image, { type StaticImageData } from "next/image";
 import { MATCHING_SUGGESTIONS_ENABLED } from "@/config/features";
 import { HELP_CONTENT, type HelpStep } from "@/constants/helpContent";
+import { useSuggestionsOn } from "@/lib/hooks/useSuggestionsOn";
 
 interface HelpPageContentProps {
   role: "guestLecturer" | "unitCoordinator";
@@ -22,6 +25,10 @@ const ROLE_TITLES = {
  */
 export default function HelpPageContent({ role, heroImage }: HelpPageContentProps) {
   const content = HELP_CONTENT[role];
+  // Ranked matching is off until an administrator switches it on, so its
+  // section and questions appear only once the API says it is on.
+  const suggestionsOn = useSuggestionsOn();
+  const showSuggestions = MATCHING_SUGGESTIONS_ENABLED && suggestionsOn === true;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8 pb-10">
@@ -70,7 +77,7 @@ export default function HelpPageContent({ role, heroImage }: HelpPageContentProp
         </div>
       </section>
 
-      {MATCHING_SUGGESTIONS_ENABLED && content.suggestions ? (
+      {showSuggestions && content.suggestions ? (
         <section
           id="suggested-speakers"
           aria-labelledby="suggested-speakers-heading"
@@ -93,7 +100,7 @@ export default function HelpPageContent({ role, heroImage }: HelpPageContentProp
         </h2>
         <div className="mt-4 divide-y divide-gray-200">
           {content.faqs
-            .filter((faq) => faq.feature !== "suggestions" || MATCHING_SUGGESTIONS_ENABLED)
+            .filter((faq) => faq.feature !== "suggestions" || showSuggestions)
             .map((faq) => (
             <details key={faq.question} className="group py-3">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-4 rounded-md py-1 text-base font-medium text-[#242424] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700">

@@ -16,8 +16,6 @@ import "./suggested-speakers.css";
 interface SuggestedSpeakersCardProps {
   value: SuggestedSpeakersSettings;
   onChange: (changes: Partial<SuggestedSpeakersSettings>) => void;
-  /** True while the settings form is being saved. */
-  isSaving: boolean;
   /** The half-life as last saved, so a stored value outside the list stays selectable. */
   storedHalfLifeDays?: number;
 }
@@ -43,14 +41,16 @@ const WEIGHTS: Array<{ key: Weight; label: string; explanation: string }> = [
 ];
 
 /**
- * The Suggested speakers card on the Settings page: an on/off switch, the three
- * weights that decide the order of the list, and the half-life of the time since
- * a lecturer's last session.
+ * The ranking settings that appear on the Settings page once ranked matching is
+ * switched on in Matching rules: a preset or custom weights for the three
+ * things that decide the order, and the half-life of the time since a
+ * lecturer's last session.
  *
- * It edits the page's draft and has no save of its own beyond a submit button,
- * so one Save writes every setting at once and one audit entry records the lot.
+ * It edits the page's draft and has no save of its own: the page's Save
+ * settings writes every setting at once and one audit entry records the lot.
+ * The page renders it only while ranked matching is on.
  */
-export default function SuggestedSpeakersCard({ value, onChange, isSaving, storedHalfLifeDays }: SuggestedSpeakersCardProps) {
+export default function SuggestedSpeakersCard({ value, onChange, storedHalfLifeDays }: SuggestedSpeakersCardProps) {
   const ids = useId();
   const matched = presetFor(value);
   // Custom is a choice in its own right, not just "no preset matches": picking
@@ -80,34 +80,12 @@ export default function SuggestedSpeakersCard({ value, onChange, isSaving, store
   return (
     <section className="settings-card suggested-card" id="suggestions" aria-labelledby={`${ids}-title`}>
       <header>
-        <h2 id={`${ids}-title`}>Suggested speakers</h2>
+        <h2 id={`${ids}-title`}>Ranking settings</h2>
         <p>
-          A ranked shortlist of guest lecturers for a session. Choose how the order balances topic fit against sharing
-          sessions around.
+          How ranked matching orders guest lecturers. Choose how the order balances topic fit against sharing sessions
+          around.
         </p>
       </header>
-
-      <div className="protocol-list">
-        <div className="protocol-row">
-          <p>
-            <strong>Suggested speakers</strong>
-            <small>
-              When off, coordinators see a message that an administrator turned it off. If the server sets
-              MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever this says.
-            </small>
-          </p>
-          <button
-            aria-checked={value.suggestionsEnabled}
-            aria-label={"Suggested speakers: " + (value.suggestionsEnabled ? "on" : "off")}
-            className={"settings-toggle " + (value.suggestionsEnabled ? "enabled" : "")}
-            onClick={() => onChange({ suggestionsEnabled: !value.suggestionsEnabled })}
-            role="switch"
-            type="button"
-          >
-            <span />
-          </button>
-        </div>
-      </div>
 
       <div className="suggested-block">
         <p className="suggested-label" id={`${ids}-preset`}>
@@ -208,9 +186,6 @@ export default function SuggestedSpeakersCard({ value, onChange, isSaving, store
       <div className="suggested-actions">
         <button className="suggested-reset" onClick={reset} type="button">
           Reset to defaults
-        </button>
-        <button className="save-settings suggested-save" disabled={isSaving || problems.length > 0} type="submit">
-          {isSaving ? "Saving…" : "Save"}
         </button>
       </div>
     </section>

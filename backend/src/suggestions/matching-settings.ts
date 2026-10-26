@@ -16,9 +16,12 @@ export const MIN_FIT_WEIGHT_PERCENT = 50;
 export const MIN_HALF_LIFE_DAYS = 30;
 export const MAX_HALF_LIFE_DAYS = 365;
 
-/** What the settings hold when nothing has been changed. */
+/**
+ * What the settings hold when nothing has been changed. Ranked matching is off
+ * until an administrator switches it on.
+ */
 export const DEFAULT_MATCHING_SETTINGS = {
-  enabled: true,
+  enabled: false,
   fitWeight: Math.round(DEFAULT_WEIGHTS.fit * 100),
   rotationWeight: Math.round(DEFAULT_WEIGHTS.rotation * 100),
   exposureWeight: Math.round(DEFAULT_WEIGHTS.exposure * 100),
@@ -26,7 +29,7 @@ export const DEFAULT_MATCHING_SETTINGS = {
 } as const;
 
 export interface MatchingSettings {
-  /** False when an administrator has turned Suggested speakers off. */
+  /** True only once an administrator has switched ranked matching on. */
   enabled: boolean;
   weights: ScoreWeights;
   halfLifeDays: number;
