@@ -163,7 +163,7 @@ const guestLecturer: HelpContent = {
     {
       question: "How do I change the order of the coordinators in Discovery?",
       answer:
-        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the coordinator both name, or Recently active, which groups people by when they last signed in (this week, this month, within three months, or longer ago or never) and keeps the order they joined in inside each group. It updates once a day and counts from the day after someone signs in, so signing in does not move anyone until then. Only the order changes, and your choice is remembered on this browser.",
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the coordinator both name, or Recently active, which groups people by when they last signed in (in the last 7 days, in the last 30 days, in the last 90 days, or longer ago or never) and keeps the order they joined in inside each group. It updates once a day and counts from the day after someone signs in, so signing in does not move anyone until then. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "I dismissed a coordinator by mistake.",
@@ -276,7 +276,7 @@ const unitCoordinator: HelpContent = {
     {
       question: "How do I change the order of the lecturers in Discovery?",
       answer:
-        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the lecturer both name, or Recently active, which groups people by when they last signed in (this week, this month, within three months, or longer ago or never) and keeps the order they joined in inside each group. It updates once a day and counts from the day after someone signs in, so signing in does not move anyone until then. Only the order changes, and your choice is remembered on this browser.",
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the lecturer both name, or Recently active, which groups people by when they last signed in (in the last 7 days, in the last 30 days, in the last 90 days, or longer ago or never) and keeps the order they joined in inside each group. It updates once a day and counts from the day after someone signs in, so signing in does not move anyone until then. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "Why can't I see a speaker I know?",
