@@ -1798,9 +1798,11 @@ a { color: inherit; text-decoration: none; }
   cursor: pointer;
 }
 
+/* A fixed red, not the theme's: white text on the lighter red the dark theme uses
+   for text on dark would fall just under the 4.5:1 contrast the label needs. */
 .confirm-actions button.danger {
-  border-color: var(--c-b91c1c);
-  background: var(--c-b91c1c);
+  border-color: #b91c1c;
+  background: #b91c1c;
   color: #fff;
 }
 

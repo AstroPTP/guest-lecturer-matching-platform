@@ -84,6 +84,11 @@ export default function ConfirmDialog({
         event.preventDefault();
         onCancel();
       }}
+      onClose={() => {
+        // Closed from outside this component, for example by a script, while the
+        // parent still says it is open: tell the parent so the two agree again.
+        if (open) onCancel();
+      }}
       onKeyDown={keepFocusInside}
       ref={dialog}
     >
