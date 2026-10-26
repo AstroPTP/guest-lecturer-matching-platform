@@ -15,8 +15,51 @@ interface ConfirmDialogProps {
   /** "danger" colours Confirm red, for an action that cannot easily be taken back. */
   tone?: "danger" | "neutral";
   confirmDisabled?: boolean;
+  /**
+   * Where focus goes if the action removes the control that opened the dialog,
+   * as a CSS selector for a stable element such as a list heading. The first
+   * heading on the page when left out.
+   */
+  fallbackFocus?: string;
   onConfirm: () => void;
   onCancel: () => void;
+}
+
+const DEFAULT_FALLBACK = "main h1, h1, main h2, h2";
+
+/**
+ * Keeps focus from falling to the page body when the action just confirmed
+ * removes the control that opened the dialog (a chat that is deleted, a panel
+ * that closes). Watches the page for a short while and, if the opener is gone
+ * and nothing has focus, focuses `selector` instead.
+ */
+function watchForLostFocus(opener: Element | null, selector: string) {
+  if (!opener) {
+    return;
+  }
+  const observer = new MutationObserver(() => {
+    if (opener.isConnected) {
+      return;
+    }
+    stop();
+    if (document.activeElement && document.activeElement !== document.body) {
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(selector);
+    if (!target) {
+      return;
+    }
+    if (!target.hasAttribute("tabindex")) {
+      target.setAttribute("tabindex", "-1");
+    }
+    target.focus();
+  });
+  const timer = window.setTimeout(stop, 15000);
+  function stop() {
+    observer.disconnect();
+    window.clearTimeout(timer);
+  }
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 const FOCUSABLE = [
@@ -35,7 +78,8 @@ const FOCUSABLE = [
  * Escape cancels it. Tab and Shift+Tab are kept inside it by hand as well, so
  * focus never leaves it for the browser's own controls. Focus starts on the
  * first field or button (a text field when there is one, otherwise Cancel) and
- * goes back to the control that opened it when it closes. The colours are the
+ * goes back to the control that opened it when it closes, or to a stable heading
+ * when the action removes that control. The colours are the
  * same classes the rest of the app uses, so it follows light and dark.
  */
 export default function ConfirmDialog({
@@ -47,10 +91,14 @@ export default function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "neutral",
   confirmDisabled = false,
+  fallbackFocus = DEFAULT_FALLBACK,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null);
+  // The control that had focus when the dialog opened, which the browser returns
+  // focus to on close, unless the action removes it.
+  const opener = useRef<Element | null>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -60,6 +108,7 @@ export default function ConfirmDialog({
       return;
     }
     if (open && !node.open) {
+      opener.current = document.activeElement;
       node.showModal();
     }
     if (!open && node.open) {
@@ -89,6 +138,8 @@ export default function ConfirmDialog({
   return (
     <dialog
       ref={dialog}
+      // A dialog that asks about something hard to take back is an alert dialog.
+      role={tone === "danger" ? "alertdialog" : undefined}
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
       onCancel={(event) => {
@@ -123,7 +174,10 @@ export default function ConfirmDialog({
         </button>
         <button
           type="button"
-          onClick={onConfirm}
+          onClick={() => {
+            watchForLostFocus(opener.current, fallbackFocus);
+            onConfirm();
+          }}
           disabled={confirmDisabled}
           className={
             "rounded-full px-6 py-2.5 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 disabled:cursor-not-allowed disabled:opacity-40 " +

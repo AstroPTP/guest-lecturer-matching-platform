@@ -919,6 +919,7 @@ function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, 
         confirmLabel={isUnmatching ? "Deleting..." : "Delete"}
         confirmDisabled={isUnmatching}
         tone="danger"
+        fallbackFocus="aside h2"
         onCancel={() => setShowDeleteConfirmation(false)}
         onConfirm={onUnmatch}
       />
