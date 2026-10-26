@@ -353,14 +353,12 @@ describe('sortDiscovery', () => {
   const REF = startOfToday(NOW);
   const rows = [row(1, 'Ada'), row(2, 'Bea'), row(3, 'Cy')];
 
-  /** The viewer's topics, and the stored last sign-in of each of the three people. */
-  function stubReads(
-    lastLogin: [bigint, Date | null][] = [
-      [101n, new Date(REF.getTime() - 2 * DAY)],
-      [102n, null],
-      [103n, new Date(REF.getTime() - 10 * DAY)],
-    ],
-  ) {
+  /**
+   * The viewer's topics, the stored last sign-in column (which the active sort
+   * must never read, so every test can see that it did not), and the grouped
+   * query over recorded sign-ins.
+   */
+  function stubReads(lastLogin: [bigint, Date | null][] = []) {
     const own = jest
       .spyOn(prisma.user_expertise, 'findMany')
       .mockResolvedValue([{ user_id: 50n, expertise: 'Economics' }] as never);
@@ -460,7 +458,7 @@ describe('sortDiscovery', () => {
 
   describe('active', () => {
     it('asks for the recorded sign-ins in one grouped query, bounded to the days that matter and to before today, and only about the people listed', async () => {
-      const { own, people, audit } = stubReads();
+      const { own, audit } = stubReads();
       await sortDiscovery(
         [...rows, row(4, 'No account', null, null)],
         'active',
@@ -482,46 +480,87 @@ describe('sortDiscovery', () => {
         },
         _max: { occurred_at: true },
       });
-      expect(people).toHaveBeenCalledTimes(1);
-      expect(people.mock.calls[0][0]).toEqual({
-        where: { userid: { in: [101n, 102n, 103n] } },
-        select: { userid: true, lastloginat: true },
-      });
       expect(own).not.toHaveBeenCalled();
     });
 
-    it('falls back to the stored last sign-in for someone with no recorded one', async () => {
+    it('never reads the stored last sign-in', async () => {
+      const { people } = stubReads([
+        [101n, new Date(REF.getTime() - 2 * DAY)],
+        [102n, new Date(REF.getTime() + 3_600_000)],
+        [103n, null],
+      ]);
+      await sortDiscovery(rows, 'active', place, [], 'auth0|viewer', NOW);
+      expect(people).not.toHaveBeenCalled();
+    });
+
+    it('bands people by their latest recorded sign-in before today', async () => {
       stubReads();
+      auditEntries([
+        [101n, new Date(REF.getTime() - 2 * DAY)],
+        [101n, new Date(REF.getTime() - 40 * DAY)],
+        [103n, new Date(REF.getTime() - 10 * DAY)],
+      ]);
       const sorted = await sortDiscovery(
         [...rows, row(4, 'No account', null, null)],
         'active',
         place,
         [],
-        'auth0|viewer',
+        'a',
         NOW,
       );
-      // Ada 2 days ago is band 1, Cy 10 days ago band 2, Bea never signed in, and no account goes after.
+      // Ada 2 days ago is band 1, Cy 10 days ago band 2, Bea has no record, and no account goes after.
       expect(ids(sorted)).toEqual([1, 3, 2, 4]);
     });
 
-    it('lets a recorded sign-in win over the stored one', async () => {
-      // Cy's stored time is 10 days ago, but the trail says 60 days ago.
-      stubReads();
-      auditEntries([[103n, new Date(REF.getTime() - 60 * DAY)]]);
+    it('puts someone with no recorded sign-in in the last band, whatever the stored last sign-in says', async () => {
+      // Ada's stored time is 3 days ago, but the trail holds nothing for her.
+      const { people } = stubReads([[101n, new Date(REF.getTime() - 3 * DAY)]]);
+      auditEntries([[103n, new Date(REF.getTime() - 10 * DAY)]]);
       const sorted = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
-      // Ada band 1, Cy band 3, Bea never.
-      expect(ids(sorted)).toEqual([1, 3, 2]);
+      // Cy is band 2, ahead of Ada and Bea, who are band 4 and keep join order.
+      expect(ids(sorted)).toEqual([3, 1, 2]);
+      expect(people).not.toHaveBeenCalled();
     });
 
-    it('does not use a stored last sign-in from today: that person is in the last band until tomorrow', async () => {
+    it('keeps someone whose only sign-in is today in the last band, and does not move them', async () => {
+      // Ada's stored last sign-in is today and nothing is recorded before today.
       stubReads([
-        [101n, new Date(REF.getTime() + 3 * 3_600_000)],
-        [102n, new Date(REF.getTime() - 10 * DAY)],
+        [101n, new Date(REF.getTime() + 3_600_000)],
+        [102n, null],
         [103n, null],
       ]);
+      const trail: [bigint, Date][] = [
+        [103n, new Date(REF.getTime() - 5 * DAY)],
+      ];
+      auditEntries([...trail, [101n, new Date(REF.getTime() + 3_600_000)]]);
       const sorted = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
-      // Bea 10 days ago is band 2; Ada (today) and Cy (never) are band 4, in join order.
-      expect(ids(sorted)).toEqual([2, 1, 3]);
+      expect(ids(sorted)).toEqual([3, 1, 2]);
+
+      // The same list before Ada signed in today: nothing changes.
+      jest.restoreAllMocks();
+      stubReads([
+        [101n, null],
+        [102n, null],
+        [103n, null],
+      ]);
+      auditEntries(trail);
+      const before = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
+      expect(ids(before)).toEqual(ids(sorted));
+
+      // The next day it counts, and she moves into the first band beside Cy.
+      jest.restoreAllMocks();
+      stubReads();
+      auditEntries([...trail, [101n, new Date(REF.getTime() + 3_600_000)]]);
+      const tomorrow = new Date(REF.getTime() + DAY + 3_600_000);
+      const next = await sortDiscovery(
+        rows,
+        'active',
+        place,
+        [],
+        'a',
+        tomorrow,
+      );
+      expect(ids(next)).toEqual([1, 3, 2]);
     });
 
     it('does not move anyone when they sign in today, and moves them the next day', async () => {
@@ -532,24 +571,16 @@ describe('sortDiscovery', () => {
         [102n, new Date(REF.getTime() - 60 * DAY)],
         [103n, new Date(REF.getTime() - 20 * DAY)],
       ];
-      stubReads([
-        [101n, before[0][1]],
-        [102n, before[1][1]],
-        [103n, before[2][1]],
-      ]);
+      stubReads();
       auditEntries(before);
       const quietDay = await sortDiscovery(rows, 'active', place, [], 'a', NOW);
       expect(ids(quietDay)).toEqual([1, 3, 2]);
 
-      // Today the dormant Bea signs in, and so does Ada. The stored time
-      // moves to now and a new entry is written, and neither changes a position.
+      // Today the dormant Bea signs in, and so does Ada: a new entry is written
+      // for each, and neither changes a position.
       const signedInToday = new Date(REF.getTime() + 20 * 3_600_000);
       jest.restoreAllMocks();
-      stubReads([
-        [101n, signedInToday],
-        [102n, signedInToday],
-        [103n, before[2][1]],
-      ]);
+      stubReads();
       auditEntries([...before, [101n, signedInToday], [102n, signedInToday]]);
       const lateToday = new Date(REF.getTime() + 23 * 3_600_000);
       const sameDay = await sortDiscovery(

@@ -124,13 +124,23 @@ function seed(on: boolean) {
       week(202n, [2], '09:00', '12:00'),
       week(204n, [1, 3], '10:00', '13:00'),
     ] as never);
-  const signIns = jest.spyOn(prisma.users, 'findMany').mockResolvedValue([
-    { userid: 201n, lastloginat: null },
-    { userid: 202n, lastloginat: SIGNED_IN.bea },
-    { userid: 203n, lastloginat: SIGNED_IN.cy },
-    { userid: 204n, lastloginat: SIGNED_IN.abe },
-  ] as never);
-  return { listing, signIns, own };
+  // The record of sign-ins, which the active sort reads...
+  const signIns = jest
+    .spyOn(prisma.audit_entries, 'groupBy')
+    .mockResolvedValue([
+      { actor_user_id: 202n, _max: { occurred_at: SIGNED_IN.bea } },
+      { actor_user_id: 203n, _max: { occurred_at: SIGNED_IN.cy } },
+      { actor_user_id: 204n, _max: { occurred_at: SIGNED_IN.abe } },
+    ] as never);
+  // ...and the stored last sign-in column, which it must never read. It says
+  // everyone signed in today, so a sort that used it would show.
+  const stored = jest.spyOn(prisma.users, 'findMany').mockResolvedValue(
+    [201n, 202n, 203n, 204n].map((userid) => ({
+      userid,
+      lastloginat: new Date(),
+    })) as never,
+  );
+  return { listing, signIns, stored, own };
 }
 
 const names = (cards: { basicInformation: { fullName: string } }[]) =>
@@ -203,23 +213,23 @@ describe('UnitCoordinatorsService.findAll sort', () => {
 
   it('keeps the order people joined in for people who signed in on different days within the same week', async () => {
     const { signIns } = seed(true);
-    // Bea signed in yesterday and Cy six days ago: the same band, so the
-    // order they joined in decides and the exact time cannot be read from it.
+    // Everyone signed in within the last week, on different days: the same
+    // band, so the order they joined in decides and the day cannot be read from it.
     signIns.mockResolvedValue([
-      { userid: 201n, lastloginat: daysAgo(3) },
-      { userid: 202n, lastloginat: daysAgo(1) },
-      { userid: 203n, lastloginat: daysAgo(6) },
-      { userid: 204n, lastloginat: daysAgo(1) },
+      { actor_user_id: 201n, _max: { occurred_at: daysAgo(3) } },
+      { actor_user_id: 202n, _max: { occurred_at: daysAgo(1) } },
+      { actor_user_id: 203n, _max: { occurred_at: daysAgo(6) } },
+      { actor_user_id: 204n, _max: { occurred_at: daysAgo(1) } },
     ] as never);
     expect(names(await service.findAll('auth0|guest', 'active'))).toEqual(
       EXPECTED.joined,
     );
 
     signIns.mockResolvedValue([
-      { userid: 201n, lastloginat: daysAgo(1) },
-      { userid: 202n, lastloginat: daysAgo(6) },
-      { userid: 203n, lastloginat: daysAgo(1) },
-      { userid: 204n, lastloginat: daysAgo(3) },
+      { actor_user_id: 201n, _max: { occurred_at: daysAgo(1) } },
+      { actor_user_id: 202n, _max: { occurred_at: daysAgo(6) } },
+      { actor_user_id: 203n, _max: { occurred_at: daysAgo(1) } },
+      { actor_user_id: 204n, _max: { occurred_at: daysAgo(3) } },
     ] as never);
     expect(names(await service.findAll('auth0|guest', 'active'))).toEqual(
       EXPECTED.joined,
@@ -227,29 +237,39 @@ describe('UnitCoordinatorsService.findAll sort', () => {
   });
 
   it('does not move anyone for a sign-in today: it counts from the next day', async () => {
-    const { signIns } = seed(true);
+    const { signIns, stored } = seed(true);
     const before = names(await service.findAll('auth0|guest', 'active'));
-    // Dot, who had never signed in, signs in now, and so does Bea, who
-    // signed in a few days ago. The trail still holds Bea's earlier sign-in.
-    signIns.mockResolvedValue([
+    // Dot, who had never signed in, signs in now, and so does Bea, who signed
+    // in a couple of days ago. The stored last sign-in moves to now for both,
+    // and the record of sign-ins before today is what it was.
+    expect(stored).not.toHaveBeenCalled();
+    stored.mockResolvedValue([
       { userid: 201n, lastloginat: new Date() },
       { userid: 202n, lastloginat: new Date() },
-      { userid: 203n, lastloginat: SIGNED_IN.cy },
-      { userid: 204n, lastloginat: SIGNED_IN.abe },
     ] as never);
-    jest
-      .spyOn(prisma.audit_entries, 'groupBy')
-      .mockResolvedValue([
-        { actor_user_id: 202n, _max: { occurred_at: SIGNED_IN.bea } },
-      ] as never);
     expect(names(await service.findAll('auth0|guest', 'active'))).toEqual(
       before,
     );
+    expect(signIns).toHaveBeenCalledTimes(2);
   });
 
-  it('reads sign-in times only for the active sort', async () => {
+  it('keeps someone who has only signed in today, with nothing recorded before today, in the last band', async () => {
     const { signIns } = seed(true);
-    const trail = jest.spyOn(prisma.audit_entries, 'groupBy');
+    // Only Cy has a recorded sign-in before today. Everyone else, including
+    // Bea whose stored last sign-in is today, has none and is in the last band.
+    signIns.mockResolvedValue([
+      { actor_user_id: 203n, _max: { occurred_at: daysAgo(40) } },
+    ] as never);
+    expect(names(await service.findAll('auth0|guest', 'active'))).toEqual([
+      'Cy',
+      'Dot',
+      'Bea',
+      'Abe',
+    ]);
+  });
+
+  it('reads the record of sign-ins only for the active sort, and never the stored last sign-in', async () => {
+    const { signIns, stored } = seed(true);
     for (const sort of [
       'joined',
       'newest',
@@ -260,10 +280,9 @@ describe('UnitCoordinatorsService.findAll sort', () => {
       await service.findAll('auth0|guest', sort);
     }
     expect(signIns).not.toHaveBeenCalled();
-    expect(trail).not.toHaveBeenCalled();
     await service.findAll('auth0|guest', 'active');
     expect(signIns).toHaveBeenCalledTimes(1);
-    expect(trail).toHaveBeenCalledTimes(1);
+    expect(stored).not.toHaveBeenCalled();
   });
 
   it('asks the database for the same people whichever sort is chosen', async () => {
