@@ -27,32 +27,51 @@ interface ConfirmDialogProps {
 
 const DEFAULT_FALLBACK = "main h1, h1, main h2, h2";
 
+/** True when nothing useful has focus: the page body, or a control that has been removed. */
+function focusIsLost(): boolean {
+  // The browser may still report a removed control as the active element for a
+  // moment, so one that is no longer on the page counts as lost too.
+  const active = document.activeElement;
+  // A control inside a dialog that has just closed is still reported as active
+  // until the browser next updates the page, but nothing there can be used.
+  return !active || active === document.body || !active.isConnected || active.closest("dialog:not([open])") !== null;
+}
+
+/** Runs `check` once the browser has finished moving focus after a change to the page. */
+function afterFocusSettles(check: () => void) {
+  window.requestAnimationFrame(() => window.setTimeout(check, 50));
+}
+
+function focusFallback(selector: string) {
+  const target = document.querySelector<HTMLElement>(selector);
+  if (!target) {
+    return;
+  }
+  if (!target.hasAttribute("tabindex")) {
+    target.setAttribute("tabindex", "-1");
+  }
+  target.focus();
+}
+
 /**
  * Keeps focus from falling to the page body when the action just confirmed
  * removes the control that opened the dialog (a chat that is deleted, a panel
- * that closes). Watches the page for a short while and, if the opener is gone
- * and nothing has focus, focuses `selector` instead.
+ * that closes). Watches the page for a short while and, once the opener is gone
+ * and the dialog has closed, focuses `selector` if nothing has focus. The
+ * closing of the dialog does the same check itself, for an opener that goes
+ * before the dialog does.
  */
-function watchForLostFocus(opener: Element | null, selector: string) {
+function watchForLostFocus(opener: Element | null, dialog: HTMLDialogElement | null, selector: string) {
   if (!opener) {
     return;
   }
   const observer = new MutationObserver(() => {
-    if (opener.isConnected) {
+    // A dialog taken off the page with its parent no longer counts as open.
+    if (opener.isConnected || (dialog?.isConnected && dialog.open)) {
       return;
     }
     stop();
-    if (document.activeElement && document.activeElement !== document.body) {
-      return;
-    }
-    const target = document.querySelector<HTMLElement>(selector);
-    if (!target) {
-      return;
-    }
-    if (!target.hasAttribute("tabindex")) {
-      target.setAttribute("tabindex", "-1");
-    }
-    target.focus();
+    afterFocusSettles(() => focusIsLost() && focusFallback(selector));
   });
   const timer = window.setTimeout(stop, 15000);
   function stop() {
@@ -113,8 +132,13 @@ export default function ConfirmDialog({
     }
     if (!open && node.open) {
       node.close();
+      // An opener already removed by the action cannot be given focus back.
+      const gone = opener.current && !opener.current.isConnected;
+      if (gone) {
+        afterFocusSettles(() => focusIsLost() && focusFallback(fallbackFocus));
+      }
     }
-  }, [open]);
+  }, [open, fallbackFocus]);
 
   function keepFocusInside(event: KeyboardEvent<HTMLDialogElement>) {
     if (event.key !== "Tab") {
@@ -175,7 +199,7 @@ export default function ConfirmDialog({
         <button
           type="button"
           onClick={() => {
-            watchForLostFocus(opener.current, fallbackFocus);
+            watchForLostFocus(opener.current, dialog.current, fallbackFocus);
             onConfirm();
           }}
           disabled={confirmDisabled}
