@@ -114,6 +114,31 @@ describe('GET /guest-speakers and GET /unit-coordinators with ?sort=', () => {
       },
     );
 
+    it.each([
+      ['an administrator', 'ccae_admin'],
+      ['the same role as the list is about', ''],
+      ['a token with no roles', null],
+    ])(
+      'refuses %s with a 403 and never reaches the service',
+      async (_who, other) => {
+        const list = jest.spyOn(service(), 'findAll').mockResolvedValue([]);
+        // The other side's role: a guest speaker for the coordinator list, and the reverse.
+        const wrong =
+          other === ''
+            ? role === 'unit_coordinator'
+              ? 'guest_speaker'
+              : 'unit_coordinator'
+            : other;
+        const token = auth.tokenFor(wrong === null ? [] : [wrong], subject);
+        const res = await request(app.getHttpServer() as Server)
+          .get(`${path}?sort=name`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(403);
+        expect(res.body).toMatchObject({ code: 'AUTHZ_INSUFFICIENT_ROLE' });
+        expect(list).not.toHaveBeenCalled();
+      },
+    );
+
     it('still needs a signed-in user', async () => {
       const list = jest.spyOn(service(), 'findAll').mockResolvedValue([]);
       await request(app.getHttpServer() as Server)

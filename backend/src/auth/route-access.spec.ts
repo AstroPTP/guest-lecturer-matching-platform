@@ -42,13 +42,15 @@ interface Row {
 }
 
 /**
- * The routes both profile controllers share: reads open to any signed-in role,
- * the four setup steps limited to the role that owns the profile.
+ * The routes both profile controllers share: reading your own profile open to
+ * any signed-in role, the Discovery list limited to the role on the other side,
+ * and the four setup steps limited to the role that owns the profile.
  */
 function profileRoutes(
   controller: Type<object>,
   path: string,
   owner: readonly AppRole[],
+  browser: readonly AppRole[],
 ): Row[] {
   const steps = [
     ['saveBasicInformation', 'basic-information'],
@@ -67,7 +69,7 @@ function profileRoutes(
       controller,
       handler: 'findAll',
       route: `GET /${path}`,
-      access: ANY_SIGNED_IN,
+      access: browser,
     },
     ...steps.map(([handler, step]) => ({
       controller,
@@ -109,11 +111,17 @@ const matrix: Row[] = [
     route: 'POST /ccae-administrators',
     access: ADMIN,
   },
-  ...profileRoutes(GuestSpeakersController, 'guest-speakers', GUEST),
+  ...profileRoutes(
+    GuestSpeakersController,
+    'guest-speakers',
+    GUEST,
+    COORDINATOR,
+  ),
   ...profileRoutes(
     UnitCoordinatorsController,
     'unit-coordinators',
     COORDINATOR,
+    GUEST,
   ),
   {
     controller: ImagesController,

@@ -12,8 +12,9 @@ import { DiscoveryQueryDto } from '../suggestions/dto/discovery-query.dto';
 
 /**
  * Saving a profile is limited to the guest speaker role, so a coordinator or
- * administrator cannot create a guest profile. Reads stay open to any signed-in
- * role: coordinators browse guest speakers.
+ * administrator cannot create a guest profile. Reading your own profile stays
+ * open to any signed-in role, and the Discovery list is for the other side only:
+ * unit coordinators browse guest speakers.
  */
 @Controller('guest-speakers')
 export class GuestSpeakersController {
@@ -58,10 +59,11 @@ export class GuestSpeakersController {
   }
 
   /**
-   * The Discovery list. `?sort=` is optional and one of joined, newest, name,
-   * topics, active or best; anything else is a 400.
+   * The Discovery list, for unit coordinators. `?sort=` is optional and one of
+   * joined, newest, name, topics, active or best; anything else is a 400.
    */
   @Get()
+  @Roles(AppRole.UnitCoordinator)
   findAll(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: DiscoveryQueryDto = {},
