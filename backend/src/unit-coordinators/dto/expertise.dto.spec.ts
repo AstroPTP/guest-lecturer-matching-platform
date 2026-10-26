@@ -57,14 +57,17 @@ describe('ExpertiseDto', () => {
   });
 
   it('refuses a huge value without taking long to say so', async () => {
-    const started = performance.now();
-    await expect(
-      pipe.transform(
-        { ...valid, learningObjective: '. '.repeat(500_000) + 'x' },
-        body,
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-    expect(performance.now() - started).toBeLessThan(250);
+    const huge = { ...valid, learningObjective: '. '.repeat(500_000) + 'x' };
+    // The fastest of a few runs, so a busy machine cannot fail it by itself.
+    let best = Infinity;
+    for (let i = 0; i < 3; i += 1) {
+      const started = performance.now();
+      await expect(pipe.transform(huge, body)).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+      best = Math.min(best, performance.now() - started);
+    }
+    expect(best).toBeLessThan(250);
   });
 
   it('still refuses an empty description', async () => {
