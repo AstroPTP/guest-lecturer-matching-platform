@@ -63,12 +63,20 @@ const week = (
 
 const VIEWER_USER = 60n;
 
+const DAY = 24 * 60 * 60 * 1000;
+const daysAgo = (days: number) => new Date(Date.now() - days * DAY);
+const SIGNED_IN = {
+  bea: daysAgo(2),
+  cy: daysAgo(20),
+  abe: daysAgo(60),
+};
+
 /**
  * Four coordinators, listed by id as the database gives them:
- *   1 Dot  needs Marketing Strategy           never signed in
- *   2 Bea  needs Accounting, free Tuesday     signed in 25 Oct
- *   3 Cy   needs Accounting and Banking       signed in 20 Oct
- *   4 Abe  needs Accounting, free Mon and Wed signed in 1 Sep
+ *   1 Dot  needs Marketing Strategy           never signed in       (band 4)
+ *   2 Bea  needs Accounting, free Tuesday     signed in 2 days ago  (band 1)
+ *   3 Cy   needs Accounting and Banking       signed in 20 days ago (band 2)
+ *   4 Abe  needs Accounting, free Mon and Wed signed in 60 days ago (band 3)
  * The guest knows Accounting and Banking & Finance and is free Monday and
  * Wednesday, 09:00 to 12:00.
  */
@@ -118,9 +126,9 @@ function seed(on: boolean) {
     ] as never);
   const signIns = jest.spyOn(prisma.users, 'findMany').mockResolvedValue([
     { userid: 201n, lastloginat: null },
-    { userid: 202n, lastloginat: new Date('2026-10-25T00:00:00Z') },
-    { userid: 203n, lastloginat: new Date('2026-10-20T00:00:00Z') },
-    { userid: 204n, lastloginat: new Date('2026-09-01T00:00:00Z') },
+    { userid: 202n, lastloginat: SIGNED_IN.bea },
+    { userid: 203n, lastloginat: SIGNED_IN.cy },
+    { userid: 204n, lastloginat: SIGNED_IN.abe },
   ] as never);
   return { listing, signIns, own };
 }
@@ -189,6 +197,31 @@ describe('UnitCoordinatorsService.findAll sort', () => {
     process.env.MATCHING_SUGGESTIONS_ENABLED = 'false';
     seed(true);
     expect(names(await service.findAll('auth0|guest', 'best'))).toEqual(
+      EXPECTED.joined,
+    );
+  });
+
+  it('keeps the order people joined in for people who signed in at different times within the same week', async () => {
+    const { signIns } = seed(true);
+    // Bea signed in a minute ago and Cy six days ago: the same band, so the
+    // order they joined in decides and the exact time cannot be read from it.
+    signIns.mockResolvedValue([
+      { userid: 201n, lastloginat: daysAgo(3) },
+      { userid: 202n, lastloginat: new Date(Date.now() - 60_000) },
+      { userid: 203n, lastloginat: daysAgo(6) },
+      { userid: 204n, lastloginat: daysAgo(1) },
+    ] as never);
+    expect(names(await service.findAll('auth0|guest', 'active'))).toEqual(
+      EXPECTED.joined,
+    );
+
+    signIns.mockResolvedValue([
+      { userid: 201n, lastloginat: new Date(Date.now() - 60_000) },
+      { userid: 202n, lastloginat: daysAgo(6) },
+      { userid: 203n, lastloginat: daysAgo(1) },
+      { userid: 204n, lastloginat: daysAgo(3) },
+    ] as never);
+    expect(names(await service.findAll('auth0|guest', 'active'))).toEqual(
       EXPECTED.joined,
     );
   });
@@ -266,9 +299,9 @@ describe('UnitCoordinatorsService.findAll sort', () => {
         'sharedTopics',
         'createdAt',
         'created_at',
-        '2026-09-01',
-        '2026-10-20',
-        '2026-10-25',
+        ...Object.values(SIGNED_IN).map((when) =>
+          when.toISOString().slice(0, 10),
+        ),
       ]) {
         expect(text).not.toContain(banned);
       }

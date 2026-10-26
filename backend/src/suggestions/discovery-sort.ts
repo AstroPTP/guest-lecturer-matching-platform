@@ -12,13 +12,19 @@ import { sharedTopics } from './scoring';
  *   newest  newest profile first
  *   name    A to Z by full name, people with no name last
  *   topics  the most topics shared with the viewer's own first
- *   active  the most recent sign-in first, people who never signed in last
+ *   active  grouped by how recently people signed in (see activityBand), the
+ *           most recent group first, people who never signed in in the last
  *   best    the ranked order, only while ranked matching is on
  *
  * Every sort breaks a tie by the order people joined (their id order), so a
  * list is always in one fixed order. Only the order changes: who is listed is
  * decided before any of this runs, and neither a sign-in time nor a count is
  * ever put in what a card carries.
+ *
+ * `active` is deliberately coarse. Ordering by the exact sign-in time would let
+ * anyone who reloads the list see who signed in moments ago, so it orders by a
+ * band instead and, inside a band, by the order people joined. The time itself
+ * never decides a position.
  */
 export const DISCOVERY_SORTS = [
   'joined',
@@ -59,6 +65,46 @@ interface TopicRow {
 
 const collator = new Intl.Collator('en', { sensitivity: 'base' });
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How recently someone signed in, as one of four bands. The first is best.
+ *
+ *   1  within the last 7 days
+ *   2  within the last 30 days
+ *   3  within the last 90 days
+ *   4  longer ago, or never
+ *
+ * The days are whole calendar days (UTC), not a count from the minute of the
+ * sign-in. A person then moves from one band to the next at midnight, so
+ * watching the order over time shows the date of a sign-in at most, never the
+ * hour or minute, and a sign-in later the same day changes nothing.
+ */
+export type ActivityBand = 1 | 2 | 3 | 4;
+
+export function activityBand(
+  lastSignIn: Date | null | undefined,
+  now: Date,
+): ActivityBand {
+  if (!lastSignIn) {
+    return 4;
+  }
+  const days =
+    Math.floor(now.getTime() / DAY_MS) -
+    Math.floor(lastSignIn.getTime() / DAY_MS);
+  if (days <= 7) {
+    return 1;
+  }
+  if (days <= 30) {
+    return 2;
+  }
+  if (days <= 90) {
+    return 3;
+  }
+  // Also what an unreadable date gives, so it can never claim a better band.
+  return 4;
+}
+
 function fullName(row: Placeable): string {
   return [row.firstName, row.lastName].filter(Boolean).join(' ').trim();
 }
@@ -76,7 +122,9 @@ function byJoined(a: Placeable, b: Placeable): number {
  *
  * @param topicsByUser the topics each account names, for `topics`
  * @param viewerTopics the topics the person looking has named, for `topics`
- * @param lastSignIn when each account last signed in, for `active`
+ * @param lastSignIn when each account last signed in, for `active`; only its
+ *   band (see activityBand) is used
+ * @param now the moment the bands are counted from, for `active`
  */
 export function sortRows<T>(
   rows: readonly T[],
@@ -86,8 +134,10 @@ export function sortRows<T>(
     topicsByUser?: ReadonlyMap<bigint, readonly string[]>;
     viewerTopics?: readonly string[];
     lastSignIn?: ReadonlyMap<bigint, Date | null>;
+    now?: Date;
   } = {},
 ): T[] {
+  const now = context.now ?? new Date();
   const placed = rows.map((row) => {
     const at = place(row);
     const offered =
@@ -99,7 +149,7 @@ export function sortRows<T>(
       at,
       // Only the sort asked for reads these, and an absent input counts as none.
       shared: sharedTopics(context.viewerTopics ?? [], offered).length,
-      signedInAt: signedIn === null ? null : signedIn.getTime(),
+      band: activityBand(signedIn, now),
     };
   });
   type Item = (typeof placed)[number];
@@ -127,16 +177,8 @@ export function sortRows<T>(
       placed.sort((a, b) => b.shared - a.shared || joined(a, b));
       break;
     case 'active':
-      placed.sort((a, b) => {
-        if (a.signedInAt === null || b.signedInAt === null) {
-          if (a.signedInAt === b.signedInAt) {
-            return joined(a, b);
-          }
-          // Someone who never signed in goes last, not first.
-          return a.signedInAt === null ? 1 : -1;
-        }
-        return b.signedInAt - a.signedInAt || joined(a, b);
-      });
+      // By band, then the order people joined: never by the exact time.
+      placed.sort((a, b) => a.band - b.band || joined(a, b));
       break;
   }
   return placed.map((item) => item.row);
@@ -159,8 +201,8 @@ function groupTopics(rows: readonly TopicRow[]): Map<bigint, string[]> {
  * one read of the sign-in times of the people listed for active.
  *
  * `expertiseRows` is the topics of the people listed, already read for the
- * cards. The sign-in times are used to place a row and thrown away; they are
- * never copied onto it.
+ * cards. The sign-in times are turned into bands to place a row and thrown
+ * away; they are never copied onto it.
  */
 export async function sortDiscovery<T>(
   rows: T[],
@@ -168,6 +210,7 @@ export async function sortDiscovery<T>(
   place: (row: T) => Placeable,
   expertiseRows: readonly TopicRow[],
   viewerAuth0Id?: string,
+  now: Date = new Date(),
 ): Promise<T[]> {
   if (rows.length < 2) {
     return rows;
@@ -196,6 +239,7 @@ export async function sortDiscovery<T>(
     });
     return sortRows(rows, sort, place, {
       lastSignIn: new Map(people.map((p) => [p.userid, p.lastloginat])),
+      now,
     });
   }
 

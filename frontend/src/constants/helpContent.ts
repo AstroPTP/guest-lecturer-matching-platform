@@ -98,7 +98,7 @@ const guestLecturer: HelpContent = {
         "Open Discovery to see unit coordinators and the units they teach.",
         "Express interest in a coordinator you would like to work with, or dismiss one that is not a fit.",
         "Use Filters to narrow the list by field, expertise topics, delivery format, available days or location, then choose Apply Filters.",
-        "Use Sort by to change the order: oldest or newest first, name, most shared topics or most recently active. If CCAE has switched on ranked matching, Best match is offered too.",
+        "Use Sort by to change the order: oldest or newest first, name, most shared topics or recently active, grouped by week, month or longer. If CCAE has switched on ranked matching, Best match is offered too.",
         "Changed your mind? Open Dismissed Profiles to restore a coordinator or express interest after all.",
       ],
     },
@@ -163,7 +163,7 @@ const guestLecturer: HelpContent = {
     {
       question: "How do I change the order of the coordinators in Discovery?",
       answer:
-        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the coordinator both name, or Recently active, which puts people who signed in most recently first. Only the order changes, and your choice is remembered on this browser.",
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the coordinator both name, or Recently active, which groups people by when they last signed in (this week, this month, within three months, or longer ago or never) and keeps the order they joined in inside each group. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "I dismissed a coordinator by mistake.",
@@ -209,7 +209,7 @@ const unitCoordinator: HelpContent = {
         "Open Discovery to see guest lecturers and their expertise.",
         "Express interest in a lecturer who suits your unit, or dismiss one that is not a fit.",
         "Use Filters to narrow the list by expertise topics, delivery format, session duration, audience size, available days or location, then choose Apply Filters.",
-        "Use Sort by to change the order: oldest or newest first, name, most shared topics or most recently active. If CCAE has switched on ranked matching, Best match is offered too.",
+        "Use Sort by to change the order: oldest or newest first, name, most shared topics or recently active, grouped by week, month or longer. If CCAE has switched on ranked matching, Best match is offered too.",
         "Changed your mind? Open Dismissed Profiles to restore a lecturer or express interest after all.",
       ],
     },
@@ -276,7 +276,7 @@ const unitCoordinator: HelpContent = {
     {
       question: "How do I change the order of the lecturers in Discovery?",
       answer:
-        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the lecturer both name, or Recently active, which puts people who signed in most recently first. Only the order changes, and your choice is remembered on this browser.",
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the lecturer both name, or Recently active, which groups people by when they last signed in (this week, this month, within three months, or longer ago or never) and keeps the order they joined in inside each group. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "Why can't I see a speaker I know?",
