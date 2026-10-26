@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import { getOpenReports, holdReport, resolveReport, type OpenReport } from "@/services/adminApi";
 
@@ -34,6 +35,8 @@ export default function ReportsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // The report whose account the administrator is being asked to deactivate.
+  const [confirming, setConfirming] = useState<OpenReport | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -73,13 +76,19 @@ export default function ReportsPage() {
   }
 
   async function close(row: OpenReport, outcome: "dismissed" | "deactivated") {
-    if (
-      outcome === "deactivated" &&
-      !window.confirm(`Deactivate ${row.reportedEmail ?? "this account"}? You can reactivate it later.`)
-    ) {
+    // Deactivating asks first, in the page; the dialog's Confirm comes back here as "confirmed".
+    if (outcome === "deactivated") {
+      setConfirming(row);
       return;
     }
     await decide(row, () => resolveReport(row.id, outcome), "That decision could not be saved.");
+  }
+
+  async function confirmDeactivate() {
+    const row = confirming;
+    setConfirming(null);
+    if (!row) return;
+    await decide(row, () => resolveReport(row.id, "deactivated"), "That decision could not be saved.");
   }
 
   async function hold(row: OpenReport) {
@@ -192,6 +201,17 @@ export default function ReportsPage() {
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        confirmLabel="Deactivate account"
+        danger
+        onCancel={() => setConfirming(null)}
+        onConfirm={() => void confirmDeactivate()}
+        open={confirming !== null}
+        title={`Deactivate ${confirming?.reportedEmail ?? "this account"}?`}
+      >
+        <p>You can reactivate it later.</p>
+      </ConfirmDialog>
     </div>
   );
 }

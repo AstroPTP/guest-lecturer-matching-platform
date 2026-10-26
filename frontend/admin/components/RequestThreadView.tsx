@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import arrowBackIcon from "@/assets/arrow_back.png";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import {
   getRequestThread,
   replyToRequest,
@@ -26,6 +27,8 @@ export function RequestThreadView({ threadId }: { threadId: string }) {
   const [reply, setReply] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  // Closing a request asks first, in the page.
+  const [isConfirmingClose, setIsConfirmingClose] = useState(false);
 
   // Bumped to fetch the request again after something changes it.
   const [version, setVersion] = useState(0);
@@ -70,12 +73,11 @@ export function RequestThreadView({ threadId }: { threadId: string }) {
     }
   }
 
-  async function changeStatus(status: "open" | "closed") {
+  /** Closing asks first; the dialog's Confirm then calls this with `confirmed`. */
+  async function changeStatus(status: "open" | "closed", confirmed = false) {
     if (!thread || isBusy) return;
-    if (
-      status === "closed" &&
-      !window.confirm(`Close this request? ${thread.user.name} will no longer be able to reply to it.`)
-    ) {
+    if (status === "closed" && !confirmed) {
+      setIsConfirmingClose(true);
       return;
     }
     setIsBusy(true);
@@ -196,6 +198,20 @@ export function RequestThreadView({ threadId }: { threadId: string }) {
           This request is closed, so {thread.user.name} cannot reply. Reopen it to send another message.
         </p>
       )}
+
+      <ConfirmDialog
+        confirmLabel="Close request"
+        danger
+        onCancel={() => setIsConfirmingClose(false)}
+        onConfirm={() => {
+          setIsConfirmingClose(false);
+          void changeStatus("closed", true);
+        }}
+        open={isConfirmingClose}
+        title="Close this request?"
+      >
+        <p>{thread.user.name} will no longer be able to reply to it.</p>
+      </ConfirmDialog>
     </div>
   );
 }

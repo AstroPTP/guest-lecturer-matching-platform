@@ -1760,6 +1760,8 @@ a { color: inherit; text-decoration: none; }
   margin: auto;
   max-width: 440px;
   padding: 24px;
+  background: var(--c-ffffff);
+  color: var(--ink);
   border: 1px solid var(--c-e5e7eb);
   border-radius: 12px;
   box-shadow: 0 20px 40px rgb(0 0 0 / 18%);
@@ -1791,6 +1793,7 @@ a { color: inherit; text-decoration: none; }
   border: 1px solid var(--c-d1d5db);
   border-radius: 8px;
   background: var(--c-ffffff);
+  color: var(--ink);
   font-weight: 600;
   cursor: pointer;
 }
@@ -1798,7 +1801,17 @@ a { color: inherit; text-decoration: none; }
 .confirm-actions button.danger {
   border-color: var(--c-b91c1c);
   background: var(--c-b91c1c);
-  color: var(--c-ffffff);
+  color: #fff;
+}
+
+.confirm-actions button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.confirm-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .6;
 }
 
 /* Room for "5 (2 accepted)" on one line. */

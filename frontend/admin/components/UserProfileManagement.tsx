@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import arrowBackIcon from "@/assets/arrow_back.png";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import { statusColors } from "@/lib/user_status";
 import { getUser, setUserStatus } from "@/services/adminApi";
@@ -33,7 +34,8 @@ export function UserProfileManagement({ directoryId }: { directoryId: string }) 
   const [pending, setPending] = useState<ProfileAction | null>(null);
   const [notice, setNotice] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
-  const confirmDialog = useRef<HTMLDialogElement>(null);
+  // Deactivating asks first, in the page.
+  const [isConfirmingDeactivate, setIsConfirmingDeactivate] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -129,7 +131,7 @@ export function UserProfileManagement({ directoryId }: { directoryId: string }) 
             key={action}
             onClick={() =>
               action === "deactivate"
-                ? confirmDialog.current?.showModal()
+                ? setIsConfirmingDeactivate(true)
                 : void runManagementAction(action)
             }
             type="button"
@@ -140,31 +142,22 @@ export function UserProfileManagement({ directoryId }: { directoryId: string }) 
         <RequestDetailsButton userId={directoryId} userName={user.name} />
       </div>
 
-      <dialog
-        aria-labelledby="confirm-deactivate-title"
-        className="confirm-dialog"
-        ref={confirmDialog}
+      <ConfirmDialog
+        confirmLabel="Deactivate"
+        danger
+        onCancel={() => setIsConfirmingDeactivate(false)}
+        onConfirm={() => {
+          setIsConfirmingDeactivate(false);
+          void runManagementAction("deactivate");
+        }}
+        open={isConfirmingDeactivate}
+        title={`Deactivate ${user.name}?`}
       >
-        <h2 id="confirm-deactivate-title">Deactivate {user.name}?</h2>
         <p>
-          They will be signed out on their next request and will no longer
-          appear to unit coordinators. Their profile and history are kept, and
-          you can reactivate the account at any time.
+          They will be signed out on their next request and will no longer appear to unit coordinators. Their profile
+          and history are kept, and you can reactivate the account at any time.
         </p>
-        <form className="confirm-actions" method="dialog">
-          <button autoFocus type="submit" value="cancel">
-            Cancel
-          </button>
-          <button
-            className="danger"
-            onClick={() => void runManagementAction("deactivate")}
-            type="submit"
-            value="confirm"
-          >
-            Deactivate
-          </button>
-        </form>
-      </dialog>
+      </ConfirmDialog>
 
       {notice ? (
         <p className="profile-notice" role="status">
