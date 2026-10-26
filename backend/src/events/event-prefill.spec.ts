@@ -5,6 +5,7 @@ import {
   parseDurationMinutes,
   sharedTopicsOf,
   suggestTitle,
+  trimTrailingStops,
   type CoordinatorSide,
   type GuestSide,
 } from './event-prefill';
@@ -186,6 +187,63 @@ describe('event prefill', () => {
           expect(suggestTitle(field, name).length).toBeLessThanOrEqual(100);
         }
       }
+    });
+  });
+
+  describe('trimming the end of the learning objective', () => {
+    it('removes trailing full stops and whitespace and nothing else', () => {
+      expect(trimTrailingStops('Apply theory. ')).toBe('Apply theory');
+      expect(trimTrailingStops('Apply theory...')).toBe('Apply theory');
+      expect(trimTrailingStops(' . .\n\t. ')).toBe('');
+      expect(trimTrailingStops('')).toBe('');
+      expect(trimTrailingStops('No stop')).toBe('No stop');
+      expect(trimTrailingStops('A. B')).toBe('A. B');
+      expect(trimTrailingStops('Costs 3.5')).toBe('Costs 3.5');
+    });
+
+    it('takes a 100,000-character run of dots and spaces ending in a letter in well under 50 ms', () => {
+      const hostile = '. '.repeat(50_000) + 'x';
+      expect(hostile).toHaveLength(100_001);
+
+      const started = performance.now();
+      const trimmed = trimTrailingStops(hostile);
+      const prefill = buildPrefill({
+        matchId: 1n,
+        guestProfileId: 2n,
+        coordinator: { ...coordinator, learning_objective: hostile },
+        guest,
+        coordinatorTopics: [],
+        guestTopics: [],
+      });
+      const elapsed = performance.now() - started;
+
+      expect(trimmed).toBe(hostile);
+      expect(prefill.description).toContain('Learning objective: ');
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    it('is just as quick when the whole text is dots and spaces', () => {
+      const started = performance.now();
+      const prefill = buildPrefill({
+        matchId: 1n,
+        guestProfileId: 2n,
+        coordinator: {
+          ...coordinator,
+          learning_objective: '. '.repeat(50_000),
+        },
+        guest,
+        coordinatorTopics: [],
+        guestTopics: [],
+      });
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(prefill.description).not.toContain('Learning objective');
+    });
+
+    it('is just as quick for a very long discipline in the title', () => {
+      const started = performance.now();
+      const title = suggestTitle('. '.repeat(50_000) + 'x', 'Greta Gray');
+      expect(performance.now() - started).toBeLessThan(50);
+      expect(title.length).toBeLessThanOrEqual(100);
     });
   });
 

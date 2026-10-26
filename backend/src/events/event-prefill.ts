@@ -126,6 +126,21 @@ function tidy(text: string | null | undefined): string {
   return (text ?? '').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * `text` without any full stops or whitespace at the end, found by walking
+ * back from the end. A pattern such as /[.\s]+$/ does the same but, when the
+ * text holds a long run of dots and spaces followed by something else, takes
+ * time that grows with the square of the length; this takes time that grows
+ * with the length, however the text is made up.
+ */
+export function trimTrailingStops(text: string): string {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === '.' || /\s/.test(text[end - 1]))) {
+    end -= 1;
+  }
+  return text.slice(0, end);
+}
+
 /** `text` cut at a word, with an ellipsis, so that it is no longer than `max`. */
 function cutAtWord(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -181,9 +196,8 @@ export function buildPrefill(input: {
 
   // The objective is the unit's own words and can be long, so it is kept whole
   // here rather than in the title.
-  const objective = tidy(input.coordinator.learning_objective).replace(
-    /[.\s]+$/,
-    '',
+  const objective = trimTrailingStops(
+    tidy(input.coordinator.learning_objective),
   );
   const objectiveSentence = objective
     ? ` Learning objective: ${objective}.`
