@@ -121,24 +121,45 @@ export function sharedTopicsOf(
     });
 }
 
+/** Collapses runs of space and trims the ends. */
+function tidy(text: string | null | undefined): string {
+  return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** `text` cut at a word, with an ellipsis, so that it is no longer than `max`. */
+function cutAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 3);
+  const atWord = cut.lastIndexOf(' ');
+  return (atWord > 0 ? cut.slice(0, atWord) : cut).trimEnd() + '...';
+}
+
+/** The least room worth giving the unit or discipline before the whole title is cut instead. */
+const MIN_FIELD_LENGTH = 12;
+
 /**
- * The learning objective, cut short at a word if it is long, or the
- * discipline when there is no objective. Empty when the coordinator has given
- * neither.
+ * A short title: "Guest lecture: <unit or discipline> with <guest name>". The
+ * learning objective is long, so it goes in the description and not here.
+ *
+ * Never longer than 100 characters. When the discipline is long it is cut at a
+ * word so the guest's name stays whole. With no discipline it is "Guest
+ * lecture with <guest name>".
  */
 export function suggestTitle(
-  learningObjective: string | null,
   discipline: string | null,
+  guestLecturerName: string,
 ): string {
-  const objective = (learningObjective ?? '').replace(/\s+/g, ' ').trim();
-  if (objective) {
-    if (objective.length <= MAX_TITLE_LENGTH) return objective;
-    const cut = objective.slice(0, MAX_TITLE_LENGTH - 3);
-    const atWord = cut.lastIndexOf(' ');
-    return (atWord > 0 ? cut.slice(0, atWord) : cut).trimEnd() + '...';
+  const field = tidy(discipline);
+  const guest = tidy(guestLecturerName);
+  const withGuest = guest ? ` with ${guest}` : '';
+  if (!field) return cutAtWord(`Guest lecture${withGuest}`, MAX_TITLE_LENGTH);
+
+  const prefix = 'Guest lecture: ';
+  const room = MAX_TITLE_LENGTH - prefix.length - withGuest.length;
+  if (room < MIN_FIELD_LENGTH) {
+    return cutAtWord(`${prefix}${field}${withGuest}`, MAX_TITLE_LENGTH);
   }
-  const field = (discipline ?? '').replace(/\s+/g, ' ').trim();
-  return field ? `Guest lecture: ${field}` : '';
+  return `${prefix}${cutAtWord(field, room)}${withGuest}`;
 }
 
 /** Puts the stored details of a matched pair into the event form's fields. */
@@ -158,6 +179,15 @@ export function buildPrefill(input: {
     input.guestTopics,
   );
 
+  // The objective is the unit's own words and can be long, so it is kept whole
+  // here rather than in the title.
+  const objective = tidy(input.coordinator.learning_objective).replace(
+    /[.\s]+$/,
+    '',
+  );
+  const objectiveSentence = objective
+    ? ` Learning objective: ${objective}.`
+    : '';
   const topicSentence = sharedTopics.length
     ? ` Shared topics: ${sharedTopics.join(', ')}.`
     : '';
@@ -170,11 +200,8 @@ export function buildPrefill(input: {
     guestLecturerId: String(input.guestProfileId),
     guestLecturerName,
     coordinatorName,
-    title: suggestTitle(
-      input.coordinator.learning_objective,
-      input.coordinator.discipline,
-    ),
-    description: `Guest lecture by ${guestLecturerName}, invited by ${coordinatorName}.${topicSentence}`,
+    title: suggestTitle(input.coordinator.discipline, guestLecturerName),
+    description: `Guest lecture by ${guestLecturerName}, invited by ${coordinatorName}.${objectiveSentence}${topicSentence}`,
     format,
     location,
     durationMinutes: parseDurationMinutes(input.coordinator.duration),

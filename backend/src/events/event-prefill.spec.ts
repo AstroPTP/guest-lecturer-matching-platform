@@ -134,25 +134,58 @@ describe('event prefill', () => {
   });
 
   describe('title', () => {
-    it('is the learning objective', () => {
-      expect(suggestTitle('  Apply theory\n to a campaign ', 'Marketing')).toBe(
-        'Apply theory to a campaign',
+    it('is the discipline and the guest lecturer’s name', () => {
+      expect(suggestTitle('Marketing', 'Greta Gray')).toBe(
+        'Guest lecture: Marketing with Greta Gray',
+      );
+      expect(suggestTitle('  Consumer\n behaviour ', ' Greta  Gray ')).toBe(
+        'Guest lecture: Consumer behaviour with Greta Gray',
       );
     });
 
-    it('is the discipline when there is no objective', () => {
-      expect(suggestTitle(null, 'Marketing')).toBe('Guest lecture: Marketing');
-      expect(suggestTitle('   ', 'Marketing')).toBe('Guest lecture: Marketing');
+    it('is short, and never the long learning objective', () => {
+      const title = buildPrefill({
+        matchId: 1n,
+        guestProfileId: 2n,
+        coordinator: {
+          ...coordinator,
+          learning_objective:
+            'Students will apply consumer behaviour theory to plan, run and evaluate a live campaign for a real client, and explain the ethical choices they made along the way.',
+        },
+        guest,
+        coordinatorTopics: [],
+        guestTopics: [],
+      }).title;
+      expect(title).toBe('Guest lecture: Marketing with Greta Gray');
+      expect(title).not.toContain('Students will');
     });
 
-    it('is empty when there is neither', () => {
-      expect(suggestTitle(null, null)).toBe('');
+    it('is just the guest lecturer when there is no discipline', () => {
+      expect(suggestTitle(null, 'Greta Gray')).toBe(
+        'Guest lecture with Greta Gray',
+      );
+      expect(suggestTitle('   ', 'Greta Gray')).toBe(
+        'Guest lecture with Greta Gray',
+      );
     });
 
-    it('cuts a long objective at a word', () => {
-      const title = suggestTitle('word '.repeat(60), null);
+    it('is never empty, and says so plainly when it knows neither', () => {
+      expect(suggestTitle(null, '')).toBe('Guest lecture');
+    });
+
+    it('cuts a long discipline at a word and keeps the guest’s name whole', () => {
+      const title = suggestTitle('word '.repeat(60), 'Greta Gray');
       expect(title.length).toBeLessThanOrEqual(100);
-      expect(title.endsWith('word...')).toBe(true);
+      expect(title.startsWith('Guest lecture: word word')).toBe(true);
+      expect(title.endsWith('word... with Greta Gray')).toBe(true);
+    });
+
+    it('stays within 100 characters for any length of discipline or name', () => {
+      for (const field of ['', 'a', 'x'.repeat(500), 'word '.repeat(90)]) {
+        for (const name of ['', 'Greta', 'Gwendolyn '.repeat(30)]) {
+          expect(suggestTitle(field, name).length).toBeLessThanOrEqual(100);
+        }
+      }
     });
   });
 
@@ -172,9 +205,9 @@ describe('event prefill', () => {
         guestLecturerId: '3002',
         guestLecturerName: 'Greta Gray',
         coordinatorName: 'Cara Coord',
-        title: 'Apply consumer behaviour theory to a live campaign',
+        title: 'Guest lecture: Marketing with Greta Gray',
         description:
-          'Guest lecture by Greta Gray, invited by Cara Coord. Shared topics: Marketing Strategy, Management.',
+          'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply consumer behaviour theory to a live campaign. Shared topics: Marketing Strategy, Management.',
         format: 'online',
         location: 'Building 402, Room 201',
         durationMinutes: 90,
@@ -189,7 +222,21 @@ describe('event prefill', () => {
       });
       expect(sharedTopics).toEqual([]);
       expect(description).toBe(
-        'Guest lecture by Greta Gray, invited by Cara Coord.',
+        'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply consumer behaviour theory to a live campaign.',
+      );
+    });
+
+    it('keeps the whole learning objective in the description, tidied, with no doubled full stop', () => {
+      const { description } = buildPrefill({
+        ...input,
+        coordinator: {
+          ...coordinator,
+          learning_objective: '  Apply theory\n to a campaign.  ',
+        },
+        guestTopics: [],
+      });
+      expect(description).toBe(
+        'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply theory to a campaign.',
       );
     });
 
@@ -243,7 +290,7 @@ describe('event prefill', () => {
         expect.objectContaining({
           coordinatorName: 'the coordinator',
           guestLecturerName: 'Greta',
-          title: '',
+          title: 'Guest lecture with Greta',
           format: 'face-to-face',
           durationMinutes: null,
         }),
