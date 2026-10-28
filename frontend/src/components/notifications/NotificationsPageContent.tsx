@@ -59,7 +59,7 @@ export default function NotificationsPageContent() {
     }
 
     void loadNotifications(false);
-    // The bell tells this list when the unread count changed, which is when new entries have arrived.
+    // The bell tells this list when the unread count or the newest notification's time changed, which is when new entries have arrived.
     window.addEventListener(UNREAD_COUNT_CHANGED_EVENT, reloadQuietly);
 
     return () => {

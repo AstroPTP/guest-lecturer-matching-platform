@@ -1,3 +1,5 @@
+import type { UnreadNotificationSummary } from "@/types/notifications/notificationTypes";
+
 export const UNREAD_POLL_INTERVAL_MS = 30_000;
 
 // How long the person can leave the page alone before it stops asking. Each ask
@@ -8,8 +10,9 @@ export const UNREAD_IDLE_LIMIT_MS = 15 * 60 * 1000;
 // What counts as the person being there. Any of these starts the clock again.
 const INPUT_EVENTS = ["pointerdown", "pointermove", "keydown", "scroll"] as const;
 
-// Sent on window when a poll finds the unread count has changed, so a notifications
-// list that is open can load the new entries.
+// Sent on window when a poll finds the unread count or the time of the newest
+// notification has changed, so a notifications list that is open can load the new
+// entries. The event's detail is the UnreadNotificationSummary the poll found.
 export const UNREAD_COUNT_CHANGED_EVENT = "notifications:unread-count-changed";
 
 // Sent on window when the person marks notifications as read, so the bell does not
@@ -17,15 +20,20 @@ export const UNREAD_COUNT_CHANGED_EVENT = "notifications:unread-count-changed";
 export const NOTIFICATIONS_MARKED_READ_EVENT = "notifications:marked-read";
 
 interface UnreadCountPollerOptions {
-  fetchCount: () => Promise<number>;
+  // Resolves to the count alone, or to the count with the time of the newest
+  // notification. With only a count, only a different count is a change.
+  fetchCount: () => Promise<number | UnreadNotificationSummary>;
   onCount: (count: number) => void;
-  // Called when a count comes back different from the one before it. The first
-  // count is not a change, because there was nothing to compare it with.
-  onChange: () => void;
+  // Called when an answer differs from the one before it in its count or in the
+  // time of the newest notification. The latter is what changes when another
+  // message joins a notice that is already unread: the count stays the same. The
+  // first answer is not a change, because there was nothing to compare it with.
+  onChange: (summary: UnreadNotificationSummary) => void;
 }
 
 // Keeps a count of unread notifications up to date while the page is open, and
-// returns the function that stops it.
+// returns the function that stops it. It also watches the time of the newest
+// notification, so that new entries are noticed even when the count is unchanged.
 //
 // It asks on a timer, but only while the tab is visible: a hidden tab starts
 // again, with an immediate ask, when it is shown. It also asks when the window
@@ -35,7 +43,7 @@ interface UnreadCountPollerOptions {
 // stops asking altogether, and starts again at the next bit of activity.
 export function startUnreadCountPolling({ fetchCount, onCount, onChange }: UnreadCountPollerOptions): () => void {
   let timer: ReturnType<typeof setInterval> | undefined;
-  let lastCount: number | undefined;
+  let last: UnreadNotificationSummary | undefined;
   let latestRequest = 0;
   let lastInputAt = Date.now();
   let stopped = false;
@@ -55,15 +63,16 @@ export function startUnreadCountPolling({ fetchCount, onCount, onChange }: Unrea
     // Answers can arrive out of order, so only the newest question counts.
     const request = ++latestRequest;
     try {
-      const count = await fetchCount();
+      const answer = await fetchCount();
       if (stopped || request !== latestRequest) {
         return;
       }
-      onCount(count);
-      if (lastCount !== undefined && count !== lastCount) {
-        onChange();
+      const summary = typeof answer === "number" ? { count: answer, latestAt: null } : answer;
+      onCount(summary.count);
+      if (last !== undefined && (summary.count !== last.count || summary.latestAt !== last.latestAt)) {
+        onChange(summary);
       }
-      lastCount = count;
+      last = summary;
     } catch {
       // A failed ask leaves the last count on screen, and the next ask tries again.
     }

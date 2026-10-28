@@ -78,7 +78,7 @@ describe('ImagesController', () => {
       expect(images.getVisibleTo).toHaveBeenCalledWith(42n, 'auth0|ann');
     });
 
-    it('lets only the browser of the person asking cache a photo', async () => {
+    it('tells browsers and proxies not to keep a photo', async () => {
       images.getVisibleTo.mockResolvedValue({
         mime_type: 'image/png',
         image_data: PNG_HEAD,
@@ -86,7 +86,7 @@ describe('ImagesController', () => {
 
       const res = await request(app.getHttpServer()).get('/images/42');
 
-      expect(res.headers['cache-control']).toBe('private, max-age=3600');
+      expect(res.headers['cache-control']).toBe('no-store');
     });
 
     it('answers 400 for an id that is not a number, without a lookup', async () => {
@@ -221,7 +221,7 @@ describe('ImagesController.getImage', () => {
     expect(getVisibleTo).toHaveBeenCalledWith(42n, 'auth0|me');
   });
 
-  it('sends the stored type and bytes, cached privately', async () => {
+  it('sends the stored type and bytes, marked no-store', async () => {
     const { controller, res, response } = setup(
       jest
         .fn()
@@ -231,10 +231,7 @@ describe('ImagesController.getImage', () => {
     await controller.getImage('42', caller, response);
 
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'image/webp');
-    expect(res.setHeader).toHaveBeenCalledWith(
-      'Cache-Control',
-      'private, max-age=3600',
-    );
+    expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
     expect(res.send).toHaveBeenCalledWith(bytes);
   });
 

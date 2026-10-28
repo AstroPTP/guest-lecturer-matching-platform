@@ -35,12 +35,12 @@ export class MessagesService {
   ) {}
 
   /**
-   * The latest message in each conversation the caller can open. A paused
-   * conversation is left out, since opening it is refused, and a thread the
-   * caller cannot open should not be advertised in the list.
+   * The latest message in each of the caller's conversations. A conversation
+   * with an open report or a hold stays in the list and stays readable: only
+   * sending new messages is refused, so neither person loses the thread.
    */
   async findSummaries(auth0Id: string): Promise<ConversationSummary[]> {
-    const { matches } = await this.matchRequests.findUnpausedMatches(auth0Id);
+    const { matches } = await this.matchRequests.findAcceptedMatches(auth0Id);
     if (matches.length === 0) {
       return [];
     }
@@ -65,7 +65,7 @@ export class MessagesService {
   }
 
   async findThread(auth0Id: string, targetId: string): Promise<Message[]> {
-    const { side, matchId } = await this.matchRequests.findAcceptedMatch(
+    const { side, matchId } = await this.matchRequests.findReadableMatch(
       auth0Id,
       targetId,
     );
@@ -77,6 +77,7 @@ export class MessagesService {
     return rows.map((row) => this.toMessage(side, row));
   }
 
+  /** Refused while the conversation is paused, which only stops new messages. */
   async send(
     auth0Id: string,
     targetId: string,

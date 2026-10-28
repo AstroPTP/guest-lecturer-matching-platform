@@ -26,6 +26,22 @@ describe('UnitCoordinatorsController', () => {
 
     await controller.findAll({ id: 'auth0|viewer', roles: [] });
 
-    expect(findAll).toHaveBeenCalledWith('auth0|viewer');
+    expect(findAll).toHaveBeenCalledWith('auth0|viewer', false);
   });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+    ['yes', false],
+    [undefined, false],
+  ])(
+    'lists the caller’s matched profiles only for forMatches=%s',
+    async (value, expected) => {
+      const findAll = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+
+      await controller.findAll({ id: 'auth0|viewer', roles: [] }, value);
+
+      expect(findAll).toHaveBeenCalledWith('auth0|viewer', expected);
+    },
+  );
 });
