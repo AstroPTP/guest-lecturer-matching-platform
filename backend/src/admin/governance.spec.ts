@@ -219,13 +219,20 @@ describe('AdminController hold route', () => {
 });
 
 describe('AdminController audit list route', () => {
-  it('passes the limit, the action and the correlation id on to the service', async () => {
+  const routeWith = () => {
     const auditEntries = jest.fn().mockResolvedValue([]);
+    const auditEntriesByCorrelationId = jest.fn().mockResolvedValue([]);
     const controller = new AdminController(
       {} as never,
-      { auditEntries } as never,
+      { auditEntries, auditEntriesByCorrelationId } as never,
       {} as never,
     );
+    return { controller, auditEntries, auditEntriesByCorrelationId };
+  };
+
+  it('looks a correlation id up with the limit and the action', async () => {
+    const { controller, auditEntries, auditEntriesByCorrelationId } =
+      routeWith();
 
     await controller.auditEntries(
       '50',
@@ -233,24 +240,32 @@ describe('AdminController audit list route', () => {
       '01HZX3K9QJ0000000000000000',
     );
 
-    expect(auditEntries).toHaveBeenCalledWith(
+    expect(auditEntriesByCorrelationId).toHaveBeenCalledWith(
+      '01HZX3K9QJ0000000000000000',
       50,
       'user.signed_in',
-      '01HZX3K9QJ0000000000000000',
     );
+    expect(auditEntries).not.toHaveBeenCalled();
   });
 
-  it('asks for no correlation id when the query has none', async () => {
-    const auditEntries = jest.fn().mockResolvedValue([]);
-    const controller = new AdminController(
-      {} as never,
-      { auditEntries } as never,
-      {} as never,
-    );
+  it('lists the newest entries when the query has no correlation id', async () => {
+    const { controller, auditEntries, auditEntriesByCorrelationId } =
+      routeWith();
 
     await controller.auditEntries();
 
-    expect(auditEntries).toHaveBeenCalledWith(undefined, undefined, undefined);
+    expect(auditEntries).toHaveBeenCalledWith(undefined, undefined);
+    expect(auditEntriesByCorrelationId).not.toHaveBeenCalled();
+  });
+
+  it('treats an empty correlation id as none', async () => {
+    const { controller, auditEntries, auditEntriesByCorrelationId } =
+      routeWith();
+
+    await controller.auditEntries('50', undefined, '');
+
+    expect(auditEntries).toHaveBeenCalledWith(50, undefined);
+    expect(auditEntriesByCorrelationId).not.toHaveBeenCalled();
   });
 });
 
@@ -298,7 +313,7 @@ describe('GovernanceService audit list', () => {
   });
 
   it('looks the correlation id up in the entry detail, whatever its age', async () => {
-    await service.auditEntries(200, undefined, ID);
+    await service.auditEntriesByCorrelationId(ID);
 
     expect(queried(findMany).where).toEqual({
       detail: { path: ['correlationId'], equals: ID },
@@ -306,18 +321,12 @@ describe('GovernanceService audit list', () => {
   });
 
   it('applies the action and the correlation id together', async () => {
-    await service.auditEntries(200, 'user.signed_in', ID);
+    await service.auditEntriesByCorrelationId(ID, 200, 'user.signed_in');
 
     expect(queried(findMany).where).toEqual({
       action: 'user.signed_in',
       detail: { path: ['correlationId'], equals: ID },
     });
-  });
-
-  it('treats an empty correlation id as none', async () => {
-    await service.auditEntries(200, undefined, '');
-
-    expect(queried(findMany).where).toEqual({});
   });
 
   it.each([
@@ -330,7 +339,7 @@ describe('GovernanceService audit list', () => {
     'refuses a correlation id with %s, without querying',
     async (_label, id) => {
       await expect(
-        service.auditEntries(200, undefined, id),
+        service.auditEntriesByCorrelationId(id),
       ).rejects.toBeInstanceOf(BadRequestException);
 
       expect(findMany).not.toHaveBeenCalled();
@@ -342,13 +351,13 @@ describe('GovernanceService audit list', () => {
     ['a UUID', 'c0ffee00-0000-4000-8000-000000000001'],
     ['64 characters', 'a'.repeat(64)],
   ])('accepts %s as a correlation id', async (_label, id) => {
-    await service.auditEntries(200, undefined, id);
+    await service.auditEntriesByCorrelationId(id);
 
     expect(findMany).toHaveBeenCalledTimes(1);
   });
 
   it('still returns newest first and never more than 500 rows', async () => {
-    await service.auditEntries(10_000, undefined, ID);
+    await service.auditEntriesByCorrelationId(ID, 10_000);
 
     expect(queried(findMany).orderBy).toEqual({ occurred_at: 'desc' });
     expect(queried(findMany).take).toBe(500);
@@ -357,7 +366,7 @@ describe('GovernanceService audit list', () => {
   it('returns the entries the lookup found, with the stored detail', async () => {
     findMany.mockResolvedValue([entry()] as never);
 
-    await expect(service.auditEntries(200, undefined, ID)).resolves.toEqual([
+    await expect(service.auditEntriesByCorrelationId(ID)).resolves.toEqual([
       {
         id: '7',
         action: 'user.signed_in',

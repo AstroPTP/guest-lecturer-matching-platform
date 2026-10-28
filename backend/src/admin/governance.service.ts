@@ -139,28 +139,41 @@ export class GovernanceService {
     return after;
   }
 
+  /** Newest first. `action` narrows to one kind, e.g. "user.deactivated". */
+  async auditEntries(limit = 200, action?: string) {
+    return this.listAuditEntries(action ? { action } : {}, limit);
+  }
+
   /**
-   * Newest first. `action` narrows to one kind, e.g. "user.deactivated".
-   * `correlationId` narrows to the entries written while one request was
-   * served, which is how an id quoted from an error screen or a log line finds
-   * its entry however long ago it was written. It is matched exactly against
-   * the id stored in each entry's detail, so it reads the table rather than
-   * an index.
+   * The entries written while one request was served, newest first. This is
+   * how an id quoted from an error screen or a log line finds its entry however
+   * long ago it was written. It is matched exactly against the id stored in
+   * each entry's detail, so it reads the table rather than an index.
    */
-  async auditEntries(limit = 200, action?: string, correlationId?: string) {
-    if (correlationId && !CORRELATION_ID_PATTERN.test(correlationId)) {
+  async auditEntriesByCorrelationId(
+    correlationId: string,
+    limit = 200,
+    action?: string,
+  ) {
+    if (!CORRELATION_ID_PATTERN.test(correlationId)) {
       throw new BadRequestException({
         code: ErrorCode.ValidationFailed,
         message: 'The correlation id is not valid.',
       });
     }
+    return this.listAuditEntries(
+      {
+        ...(action ? { action } : {}),
+        detail: { path: ['correlationId'], equals: correlationId },
+      },
+      limit,
+    );
+  }
 
-    const where: Prisma.audit_entriesWhereInput = {};
-    if (action) where.action = action;
-    if (correlationId) {
-      where.detail = { path: ['correlationId'], equals: correlationId };
-    }
-
+  private async listAuditEntries(
+    where: Prisma.audit_entriesWhereInput,
+    limit: number,
+  ) {
     const rows = await prisma.audit_entries.findMany({
       where,
       orderBy: { occurred_at: 'desc' },
