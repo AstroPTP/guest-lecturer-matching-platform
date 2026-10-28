@@ -115,16 +115,33 @@ describe.each([
   });
 
   it('refuses the segments that encoding cannot make safe', () => {
-    for (const unsafe of [
-      ['..'],
-      ['a', '.'],
-      ['a%2Fb'],
-      ['a\\b'],
-      ['%2e%2e'],
-    ]) {
+    for (const unsafe of [['..'], ['a', '.'], ['a/b'], ['a\\b'], ['a\0b']]) {
       expect(isSafeProxyPath(unsafe)).toBe(false);
     }
     expect(isSafeProxyPath(['admin', 'users', '7#9', 'x?y'])).toBe(true);
+  });
+
+  it('sends a segment with a literal % as it is, encoded once', () => {
+    expect(isSafeProxyPath(['support', 'threads', '50%'])).toBe(true);
+    expect(upstreamPath(['support', 'threads', '50%'])).toBe(
+      'support/threads/50%25',
+    );
+    expect(requested(['support', 'threads', '50%']).pathname).toBe(
+      '/support/threads/50%25',
+    );
+  });
+
+  it('does not decode a segment Next has already decoded', () => {
+    // Each of these is what the API should receive as one literal segment.
+    // Decoding them again would turn the first into a slash and the second
+    // into a dot segment, or reject them for not being valid encoding.
+    for (const decoded of ['a%2Fb', '%2e%2e', '100%', '%zz', '%25']) {
+      expect(isSafeProxyPath([decoded])).toBe(true);
+      expect(decodeURIComponent(requested([decoded]).pathname.slice(1))).toBe(
+        decoded,
+      );
+    }
+    expect(requested(['%2e%2e', 'admin']).pathname).toBe('/%252e%252e/admin');
   });
 });
 
