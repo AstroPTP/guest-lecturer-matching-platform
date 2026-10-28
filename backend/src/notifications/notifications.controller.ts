@@ -13,8 +13,8 @@ export class NotificationsController {
   }
 
   @Get('unread-count')
-  async unreadCount(@CurrentUser() user: AuthenticatedUser) {
-    return { count: await this.notificationsService.countUnread(user.id) };
+  unreadCount(@CurrentUser() user: AuthenticatedUser) {
+    return this.notificationsService.unreadSummary(user.id);
   }
 
   @Patch(':id/read')

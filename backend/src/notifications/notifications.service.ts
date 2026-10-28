@@ -23,6 +23,18 @@ interface NotificationRow {
   created_at: Date;
 }
 
+/** How many notices a person has unread, and when their newest arrived. */
+export interface UnreadSummary {
+  count: number;
+  /**
+   * When the newest notice, read or not, was raised or last moved to the top
+   * of the list; null when the person has none. It changes when a message
+   * joins an unread notice that was already counted, which the count alone
+   * does not.
+   */
+  latestAt: string | null;
+}
+
 /** How long a repeat of the same notice is held back. */
 const REPEAT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -133,8 +145,14 @@ export class NotificationsService {
     });
   }
 
-  /** How many of the caller's notifications are still unread. */
-  async countUnread(callerId: string): Promise<number> {
+  /**
+   * How many of the caller's notifications are still unread, and when the
+   * newest one arrived. A page that already shows the list compares the time
+   * as well as the count, because more messages in a conversation that
+   * already has an unread notice move that notice to the top without
+   * changing how many there are.
+   */
+  async unreadSummary(callerId: string): Promise<UnreadSummary> {
     // A lookup, not resolveUserId: that creates the user row when it is missing,
     // and a read the page repeats every half minute should not write anything.
     const user = await prisma.users.findUnique({
@@ -142,12 +160,20 @@ export class NotificationsService {
       select: { userid: true },
     });
     if (!user) {
-      return 0;
+      return { count: 0, latestAt: null };
     }
 
-    return prisma.notifications.count({
-      where: { user_id: user.userid, read: false },
-    });
+    const [count, newest] = await Promise.all([
+      prisma.notifications.count({
+        where: { user_id: user.userid, read: false },
+      }),
+      prisma.notifications.findFirst({
+        where: { user_id: user.userid },
+        orderBy: { created_at: 'desc' },
+        select: { created_at: true },
+      }),
+    ]);
+    return { count, latestAt: newest?.created_at.toISOString() ?? null };
   }
 
   async findByRecipient(recipientId: string): Promise<Notification[]> {

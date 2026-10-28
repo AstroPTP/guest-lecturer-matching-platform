@@ -290,7 +290,9 @@ describe('NotificationsService', () => {
     );
   });
 
-  describe('countUnread', () => {
+  describe('unreadSummary', () => {
+    const newest = new Date('2026-10-12T03:30:00.000Z');
+
     it("counts only the caller's own unread notifications", async () => {
       const find = jest
         .spyOn(prisma.users, 'findUnique')
@@ -299,7 +301,9 @@ describe('NotificationsService', () => {
         .spyOn(prisma.notifications, 'count')
         .mockResolvedValue(3);
 
-      await expect(service.countUnread(recipientId)).resolves.toBe(3);
+      await expect(service.unreadSummary(recipientId)).resolves.toEqual(
+        expect.objectContaining({ count: 3 }),
+      );
       expect(find).toHaveBeenCalledWith({
         where: { auth0Id: recipientId },
         select: { userid: true },
@@ -309,12 +313,67 @@ describe('NotificationsService', () => {
       });
     });
 
-    it('reports zero when nothing is unread', async () => {
+    it('reports when the newest notice, read or not, was raised', async () => {
+      jest
+        .spyOn(prisma.users, 'findUnique')
+        .mockResolvedValue({ userid: 7n } as never);
+      jest.spyOn(prisma.notifications, 'count').mockResolvedValue(2);
+      const findFirst = jest
+        .spyOn(prisma.notifications, 'findFirst')
+        .mockResolvedValue({ created_at: newest } as never);
+
+      await expect(service.unreadSummary(recipientId)).resolves.toEqual({
+        count: 2,
+        latestAt: '2026-10-12T03:30:00.000Z',
+      });
+      expect(findFirst).toHaveBeenCalledWith({
+        where: { user_id: 7n },
+        orderBy: { created_at: 'desc' },
+        select: { created_at: true },
+      });
+    });
+
+    it('moves the time on when a message joins a notice that is already unread', async () => {
+      jest
+        .spyOn(prisma.users, 'findUnique')
+        .mockResolvedValue({ userid: 7n } as never);
+      jest.spyOn(prisma.notifications, 'count').mockResolvedValue(1);
+      const findFirst = jest.spyOn(prisma.notifications, 'findFirst');
+
+      findFirst.mockResolvedValueOnce({ created_at: newest } as never);
+      const before = await service.unreadSummary(recipientId);
+      findFirst.mockResolvedValueOnce({
+        created_at: new Date('2026-10-12T03:30:20.000Z'),
+      } as never);
+      const after = await service.unreadSummary(recipientId);
+
+      expect(after.count).toBe(before.count);
+      expect(after.latestAt).not.toBe(before.latestAt);
+    });
+
+    it('reports zero and no time when the caller has no notifications', async () => {
       jest
         .spyOn(prisma.users, 'findUnique')
         .mockResolvedValue({ userid: 7n } as never);
 
-      await expect(service.countUnread(recipientId)).resolves.toBe(0);
+      await expect(service.unreadSummary(recipientId)).resolves.toEqual({
+        count: 0,
+        latestAt: null,
+      });
+    });
+
+    it('still reports the time when everything has been read', async () => {
+      jest
+        .spyOn(prisma.users, 'findUnique')
+        .mockResolvedValue({ userid: 7n } as never);
+      jest
+        .spyOn(prisma.notifications, 'findFirst')
+        .mockResolvedValue({ created_at: newest } as never);
+
+      await expect(service.unreadSummary(recipientId)).resolves.toEqual({
+        count: 0,
+        latestAt: '2026-10-12T03:30:00.000Z',
+      });
     });
 
     it('reports zero without creating a user row for someone who has none', async () => {
@@ -322,9 +381,14 @@ describe('NotificationsService', () => {
       const upsert = jest.spyOn(prisma.users, 'upsert');
       const create = jest.spyOn(prisma.users, 'create');
       const count = jest.spyOn(prisma.notifications, 'count');
+      const findFirst = jest.spyOn(prisma.notifications, 'findFirst');
 
-      await expect(service.countUnread(recipientId)).resolves.toBe(0);
+      await expect(service.unreadSummary(recipientId)).resolves.toEqual({
+        count: 0,
+        latestAt: null,
+      });
       expect(count).not.toHaveBeenCalled();
+      expect(findFirst).not.toHaveBeenCalled();
       expect(upsert).not.toHaveBeenCalled();
       expect(create).not.toHaveBeenCalled();
     });
