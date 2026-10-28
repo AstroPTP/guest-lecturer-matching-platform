@@ -5,7 +5,7 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { profileImageUrl } from '../images/images.service';
-import { visibleCoordinatorsWhere } from './coordinator-visibility';
+import { visibleCoordinatorsWhere } from '../admin/platform-rules';
 
 type CoordinatorRow = NonNullable<
   Awaited<ReturnType<typeof prisma.coordinators.findUnique>>

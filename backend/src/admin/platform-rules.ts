@@ -18,16 +18,35 @@ export function readSettings() {
 }
 
 /**
+ * The condition both profile listings share: the account behind the profile
+ * has not been deactivated. A profile with no account attached stays listed.
+ */
+export const notDeactivatedWhere: Prisma.guestsWhereInput &
+  Prisma.coordinatorsWhereInput = {
+  OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+};
+
+/**
  * Which guest lecturers coordinators may see: never a deactivated account,
  * and only approved profiles while approval is required.
  */
 export async function visibleGuestsWhere(): Promise<Prisma.guestsWhereInput> {
   const { require_admin_approval: approvalRequired } = await readSettings();
   return {
-    OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+    ...notDeactivatedWhere,
     ...(approvalRequired ? { approved_at: { not: null } } : {}),
   };
 }
+
+/**
+ * Which coordinators other people may see: never one whose account has been
+ * deactivated.
+ *
+ * Shared by the discovery list and by the profile photo route, so a photo is
+ * served to exactly the people the profile is listed to.
+ */
+export const visibleCoordinatorsWhere: Prisma.coordinatorsWhereInput =
+  notDeactivatedWhere;
 
 /**
  * Refuses a coordinator's request to a guest lecturer who was already
