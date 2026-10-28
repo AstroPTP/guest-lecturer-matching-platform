@@ -1180,6 +1180,38 @@ describe('GovernanceService', () => {
         expect(actions(create)).toEqual(['report.resolved']);
       });
 
+      it('refuses a report that was decided in the meantime, and writes and deactivates nothing', async () => {
+        // Report 8 is no longer open: another decision named it first.
+        const create = audit([[openRow(9n, 3n)]]);
+        const deactivate = jest.spyOn(admin, 'setStatus');
+
+        const attempt = service.resolveReport(
+          '8',
+          'deactivated',
+          'auth0|admin',
+        );
+
+        await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+        await expect(attempt).rejects.toMatchObject({
+          response: {
+            code: 'REPORT_ALREADY_DECIDED',
+            message: 'This report has already been dealt with.',
+          },
+        });
+        expect(create).not.toHaveBeenCalled();
+        expect(deactivate).not.toHaveBeenCalled();
+      });
+
+      it('checks the report is still open after taking the lock, and does nothing else when it is not', async () => {
+        audit([[]]);
+
+        await expect(
+          service.resolveReport('8', 'dismissed', 'auth0|admin'),
+        ).rejects.toBeInstanceOf(ConflictException);
+
+        expect(transaction.log).toEqual(['lock', 'read']);
+      });
+
       it('releases on deactivation too, and still deactivates', async () => {
         const deactivate = jest
           .spyOn(admin, 'setStatus')
@@ -1235,7 +1267,7 @@ describe('GovernanceService', () => {
       return service.report('auth0|me', { targetId: profile, reason });
     };
 
-    it('takes the reporter’s lock before reading the limit and storing the report', async () => {
+    it('takes the reporter’s lock, then the reported person’s, before reading the limit and storing the report', async () => {
       jest.spyOn(prisma.audit_entries, 'create').mockResolvedValue({
         entry_id: 31n,
         occurred_at: new Date('2026-10-20T01:00:00.000Z'),
@@ -1243,9 +1275,37 @@ describe('GovernanceService', () => {
 
       await reportThroughMatch('9');
 
-      expect(transaction.log).toEqual(['lock', 'read', 'actor', 'write']);
-      // The double signs every caller in as user 1.
-      expect(transaction.locks[0][1]).toBe(1);
+      expect(transaction.log).toEqual([
+        'lock',
+        'lock',
+        'read',
+        'actor',
+        'write',
+      ]);
+      // The double signs every caller in as user 1; the guest reported is 9.
+      expect(transaction.locks.map(([, person]) => person)).toEqual([1, 9]);
+      // Two different locks, so a person's id in one cannot clash with the other.
+      expect(transaction.locks[0][0]).not.toBe(transaction.locks[1][0]);
+    });
+
+    it('takes the same lock on the person reported as a hold or a decision on them', async () => {
+      jest.spyOn(prisma.audit_entries, 'create').mockResolvedValue({
+        entry_id: 31n,
+        occurred_at: new Date('2026-10-20T01:00:00.000Z'),
+      } as never);
+      await reportThroughMatch('77');
+      const [reporterLock, reportedLock] = transaction.locks;
+
+      jest.spyOn(prisma.audit_entries, 'findFirst').mockResolvedValue({
+        entry_id: 8n,
+        target_id: '77',
+      } as never);
+      stubOpenReports([row(8n, 2n, '77')]);
+      transaction.locks.length = 0;
+      await service.hold('8', 'auth0|admin');
+
+      expect(transaction.locks).toEqual([reportedLock]);
+      expect(reportedLock).not.toEqual(reporterLock);
     });
 
     it('does not take the reporter’s lock for a report it refuses before storing', async () => {
@@ -1335,6 +1395,80 @@ describe('GovernanceService', () => {
       expect(database.written()).toEqual(['user.reported']);
     });
 
+    it.each([
+      ['a dismissal and a deactivation', 'dismissed', 'deactivated'],
+      ['a double click on Dismiss', 'dismissed', 'dismissed'],
+    ] as const)(
+      'lets only one of two simultaneous decisions on the same report through: %s',
+      async (_name, first, second) => {
+        const database = serialisedDatabase([row(8n, 2n, '77')]);
+        const deactivate = jest
+          .spyOn(admin, 'setStatus')
+          .mockResolvedValue({ id: '77', status: 'deactivated' });
+
+        const results = await Promise.allSettled([
+          service.resolveReport('8', first, 'auth0|admin'),
+          service.resolveReport('8', second, 'auth0|admin'),
+        ]);
+
+        expect(results.map((r) => r.status).sort()).toEqual([
+          'fulfilled',
+          'rejected',
+        ]);
+        const refused = results.find((r) => r.status === 'rejected');
+        expect((refused as PromiseRejectedResult).reason).toMatchObject({
+          response: { code: 'REPORT_ALREADY_DECIDED' },
+        });
+        // One decision recorded, so a dismissed report is not then deactivated.
+        expect(database.written()).toEqual(['report.resolved']);
+        const winner = results.findIndex((r) => r.status === 'fulfilled');
+        const outcome = winner === 0 ? first : second;
+        expect(deactivate).toHaveBeenCalledTimes(
+          outcome === 'deactivated' ? 1 : 0,
+        );
+      },
+    );
+
+    it.each([0, 1, 2, 3, 4, 5, 6, 7])(
+      'keeps a new report about someone from landing in the middle of a dismissal, arriving %i steps in',
+      async (steps) => {
+        // Two people from matches have reported 77, who is therefore held.
+        // Dismissing report 8 leaves one, so it releases 77 unless a third
+        // report is stored first.
+        const database = serialisedDatabase([
+          row(8n, 2n, '77'),
+          row(9n, 3n, '77'),
+        ]);
+
+        const dismissal = service.resolveReport(
+          '8',
+          'dismissed',
+          'auth0|admin',
+        );
+        for (let step = 0; step < steps; step++) {
+          await new Promise((resolve) => setImmediate(resolve));
+        }
+        const results = await Promise.allSettled([
+          dismissal,
+          reportThroughMatch('77'),
+        ]);
+
+        expect(results.map((r) => r.status)).toEqual([
+          'fulfilled',
+          'fulfilled',
+        ]);
+        // Either the report was stored first, so three people are still
+        // reporting after the dismissal and nothing is released, or the
+        // dismissal finished first and released 77 before the report was
+        // stored. A release that is recorded or skipped against a state that
+        // changed halfway through matches neither.
+        expect([
+          ['user.reported', 'report.resolved'],
+          ['report.resolved', 'user.released', 'user.reported'],
+        ]).toContainEqual(database.written());
+      },
+    );
+
     it('keeps a hold and a dismissal of the same report from interleaving', async () => {
       const database = serialisedDatabase([row(8n, 2n, '77')]);
 
@@ -1385,6 +1519,7 @@ describe('GovernanceService', () => {
     jest
       .spyOn(prisma.audit_entries, 'findFirst')
       .mockResolvedValue({ entry_id: 2n, target_id: '7' } as never);
+    stubOpenReports([{ entry_id: 2n, actor_user_id: 3n, target_id: '7' }]);
     const deactivate = jest
       .spyOn(admin, 'setStatus')
       .mockResolvedValue({ id: '7', status: 'deactivated' });
@@ -1410,13 +1545,16 @@ describe('GovernanceService', () => {
       .spyOn(prisma.users, 'update')
       .mockResolvedValue({ userid: 7n, deletedat: new Date() } as never);
     jest.spyOn(prisma.users, 'findFirst').mockResolvedValue(null);
+    stubOpenReports([{ entry_id: 2n, actor_user_id: 3n, target_id: '7' }]);
 
     await service.resolveReport('2', 'deactivated', 'auth0|admin');
 
-    // Lock, the status change (look-up and write) and its audit entry, the
+    // Lock, the read of the open reports (which also reads the holds, as one
+    // is open), the status change (look-up and write) and its audit entry, the
     // decision, then the read after it: all through the transaction's client.
     expect(transaction.log).toEqual([
       'lock',
+      'read',
       'read',
       'status',
       'status',

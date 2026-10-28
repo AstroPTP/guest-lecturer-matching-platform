@@ -19,7 +19,8 @@ const ROLE_LABELS: Record<string, string> = {
  * conversation stays readable. It hides the person from everyone only once
  * enough different people have reported them, or an administrator holds them
  * here. Every decision reloads the queue, because closing one report changes
- * the counts shown on the others.
+ * the counts shown on the others. A decision that fails also reloads it, so a
+ * report someone else has just dealt with leaves the list.
  */
 
 function holdText(row: OpenReport): string {
@@ -68,6 +69,12 @@ export default function ReportsPage() {
       await reload();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : failure);
+      // The refusal may be because the report was dealt with elsewhere; show the queue as it is now.
+      try {
+        await reload();
+      } catch {
+        // The message above already says what went wrong.
+      }
     } finally {
       setPendingId(null);
     }
