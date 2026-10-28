@@ -225,9 +225,10 @@ export class GovernanceService {
    * with a match with that profile, and the person reported is found from the
    * match rather than taken from the caller.
    *
-   * While it is open, the reporter and the person reported cannot see or
-   * message each other. It holds the person for everyone only once enough
-   * different people have reported them, or an administrator holds them.
+   * While it is open, the reporter and the person reported cannot find each
+   * other in Discovery or send each other new messages, though their
+   * conversation stays readable. It holds the person for everyone only once
+   * enough different people have reported them, or an administrator holds them.
    *
    * A reporter may have only a few reports open at once, and may not report
    * the same person twice while one is open.
@@ -267,8 +268,11 @@ export class GovernanceService {
 
   /**
    * Checks the limits and stores the report in one transaction that holds a
-   * lock on the reporter. Without it, two reports sent together would both
-   * read the same count of open reports, both pass, and both be stored.
+   * lock on the reporter and then one on the person reported. Without the
+   * first, two reports sent together would both read the same count of open
+   * reports, both pass, and both be stored. The second is the one a hold or a
+   * decision on that person takes, so a new report cannot land in the middle
+   * of one and change who is held before its release is worked out.
    */
   private storeReport(
     reporter: string,
@@ -278,6 +282,7 @@ export class GovernanceService {
   ) {
     return prisma.$transaction(async (tx) => {
       await lockReporter(tx, reporterUserId);
+      await lockReported(tx, reportedUserId);
       assertReporterWithinLimits(
         await findOpenReports(tx),
         reporterUserId,
@@ -448,6 +453,10 @@ export class GovernanceService {
    * leaves the person no longer on hold, whether from the threshold or from an
    * administrator, the release is recorded. All under the person's lock, so a
    * hold, a decision and a release for the same person run one after another.
+   *
+   * The report must still be open once the lock is held. One that was decided
+   * in the meantime, by a second click or another administrator, is refused
+   * with a 409 and nothing is written.
    */
   async resolveReport(
     reportId: string,
@@ -466,6 +475,12 @@ export class GovernanceService {
     await prisma.$transaction(async (tx) => {
       if (person !== null) await lockReported(tx, person);
       const before = await loadModerationState(tx);
+      if (!before.reports.some((r) => r.entry_id === report.entry_id)) {
+        throw new ConflictException({
+          code: 'REPORT_ALREADY_DECIDED',
+          message: 'This report has already been dealt with.',
+        });
+      }
 
       if (outcome === 'deactivated' && report.target_id) {
         await this.admin.setStatus(report.target_id, 'deactivated', actor, tx);
