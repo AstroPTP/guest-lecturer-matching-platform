@@ -1,9 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { THEME_STORAGE_KEY } from "./themeScript";
-
-type Theme = "system" | "light" | "dark";
+import { DEFAULT_THEME, type Theme } from "./themePolicy";
+import { applyTheme, readStoredTheme, writeStoredTheme } from "./themeStorage";
 
 const OPTIONS: { value: Theme; label: string; hint: string }[] = [
   { value: "light", label: "Light", hint: "Always light" },
@@ -31,44 +30,14 @@ function subscribe(onChange: () => void): () => void {
 /** Fired in this tab, where the storage event does not reach. */
 const THEME_CHANGE_EVENT = "glmp:theme";
 
-function readTheme(): Theme {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "dark" || stored === "light" ? stored : "system";
-  } catch {
-    // Private browsing refuses storage. "System" is the right answer then:
-    // the stylesheet's media query still themes the page correctly.
-    return "system";
-  }
-}
-
 /** On the server there is no stored value, and no way to guess one. */
 function readServerTheme(): Theme {
-  return "system";
+  return DEFAULT_THEME;
 }
 
-function apply(theme: Theme) {
-  const root = document.documentElement;
-
-  // System writes no attribute, so the stylesheet's media query decides.
-  // Writing one would freeze the choice at whatever the device was when it
-  // was picked, and stop following it at sunset.
-  if (theme === "system") {
-    root.removeAttribute("data-theme");
-  } else {
-    root.setAttribute("data-theme", theme);
-  }
-
-  try {
-    if (theme === "system") {
-      localStorage.removeItem(THEME_STORAGE_KEY);
-    } else {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
-    }
-  } catch {
-    // Storage refused. The attribute above still themes this page.
-  }
-
+function choose(theme: Theme) {
+  writeStoredTheme(theme);
+  applyTheme(window.location.pathname, theme);
   window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
 }
 
@@ -78,9 +47,12 @@ function apply(theme: Theme) {
  * Three explicit choices rather than a two-state switch, because a switch
  * cannot express "follow the system" and somebody on a device that changes at
  * sunset would have to keep correcting it.
+ *
+ * Rendered only inside the signed-in dashboard. Public pages are always light,
+ * so they have nothing to switch.
  */
 export default function ThemeToggle({ className = "" }: { className?: string }) {
-  const theme = useSyncExternalStore(subscribe, readTheme, readServerTheme);
+  const theme = useSyncExternalStore(subscribe, readStoredTheme, readServerTheme);
 
   return (
     <div
@@ -99,7 +71,7 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
             aria-checked={selected}
             aria-label={option.hint}
             title={option.hint}
-            onClick={() => apply(option.value)}
+            onClick={() => choose(option.value)}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
               selected
                 ? "bg-white text-gray-900 shadow-sm"
