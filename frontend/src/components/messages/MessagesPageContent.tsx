@@ -142,8 +142,9 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         conversationId: conversation.id,
         reason,
       });
-    } catch {
-      setActionError("This isn't connected to a backend yet, so your report couldn't be submitted.");
+    } catch (error) {
+      // reportUser words every failure for the person, including "you have already reported this person".
+      setActionError(error instanceof Error ? error.message : "Your report couldn't be submitted. Please try again.");
       return;
     }
 
