@@ -110,7 +110,8 @@ export default function AuditLogPage() {
         entry.action.toLowerCase().includes(normalized) ||
         entry.target.toLowerCase().includes(normalized) ||
         (entry.correlationId?.toLowerCase().includes(normalized) ?? false);
-      const matchesDateRange = entryTime >= startTime && entryTime <= endTime;
+      // A whole correlation id is looked up on the server across all dates, so the range does not hide it.
+      const matchesDateRange = searchedId !== undefined || (entryTime >= startTime && entryTime <= endTime);
 
       return (
         matchesQuery &&
@@ -119,7 +120,7 @@ export default function AuditLogPage() {
         (actorRole === "All" || entry.actorRole === actorRole)
       );
     });
-  }, [actorRole, auditEntries, category, endDateTime, query, startDateTime]);
+  }, [actorRole, auditEntries, category, endDateTime, query, searchedId, startDateTime]);
 
   // Pagination that actually pages. The four footer buttons had no handlers at
   // all, and the count claimed 2,841 entries over a fixed list of fourteen.
