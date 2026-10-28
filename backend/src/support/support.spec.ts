@@ -19,6 +19,7 @@ import { AppRole } from '../auth/roles';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import type { NotificationsService } from '../notifications/notifications.service';
 import { MAX_ATTACHMENT_BYTES } from './attachments';
+import { ListSupportThreadsQueryDto } from './dto/list-support-threads-query.dto';
 import { OpenSupportThreadDto } from './dto/open-support-thread.dto';
 import { SetSupportStatusDto } from './dto/set-support-status.dto';
 import { SupportReplyDto } from './dto/support-reply.dto';
@@ -417,6 +418,17 @@ describe('SupportAdminController access', () => {
     );
   });
 
+  it('passes the list filter on to the service', async () => {
+    const listThreads = jest.fn().mockResolvedValue([]);
+    const controller = new SupportAdminController({
+      listThreads,
+    } as unknown as SupportService);
+
+    await controller.list({ userId: '2', status: 'open' });
+
+    expect(listThreads).toHaveBeenCalledWith({ userId: '2', status: 'open' });
+  });
+
   it('has a route for each thing an administrator can do, and no others', () => {
     const own = Object.getOwnPropertyNames(
       SupportAdminController.prototype,
@@ -591,6 +603,32 @@ describe('DTOs', () => {
           plainToInstance(UserSupportMessageDto, { content: 'x'.repeat(2001) }),
         )
       ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('accepts a list with no filter, with a person, with a status, or both', async () => {
+    for (const query of [
+      {},
+      { userId: '2' },
+      { status: 'open' },
+      { userId: '2', status: 'closed' },
+    ]) {
+      expect(
+        await validate(plainToInstance(ListSupportThreadsQueryDto, query)),
+      ).toHaveLength(0);
+    }
+  });
+
+  it.each([
+    [{ userId: 'abc' }],
+    [{ userId: '2; drop table users' }],
+    [{ userId: '-1' }],
+    [{ status: 'resolved' }],
+    [{ status: 'OPEN' }],
+  ])('rejects the list filter %j', async (query) => {
+    expect(
+      (await validate(plainToInstance(ListSupportThreadsQueryDto, query)))
+        .length,
     ).toBeGreaterThan(0);
   });
 
@@ -841,6 +879,51 @@ describe('SupportService.listThreads', () => {
 
   it('is empty when there are no requests', async () => {
     await expect(service.listThreads()).resolves.toEqual([]);
+  });
+
+  describe('with a filter', () => {
+    it("lists only the named person's requests", async () => {
+      seedThread(db, { userId: 2n, status: 'closed' });
+      seedThread(db, { userId: 2n });
+      seedThread(db, { userId: 3n });
+
+      const list = await service.listThreads({ userId: '2' });
+
+      expect(list.map((t) => t.userId)).toEqual(['2', '2']);
+    });
+
+    it('lists only open requests, or only closed ones', async () => {
+      seedThread(db, { userId: 2n, status: 'closed' });
+      seedThread(db, { userId: 3n });
+
+      expect(
+        (await service.listThreads({ status: 'open' })).map((t) => t.userId),
+      ).toEqual(['3']);
+      expect(
+        (await service.listThreads({ status: 'closed' })).map((t) => t.userId),
+      ).toEqual(['2']);
+    });
+
+    it('finds the one open request of a person whose request is older than the 200 most recently active', async () => {
+      seedThread(db, { userId: 2n });
+      db.threads[0].updated_at = new Date('2026-01-01T00:00:00.000Z');
+      for (let i = 0; i < 200; i += 1) {
+        seedThread(db, { userId: 3n, status: 'closed' });
+      }
+
+      const unfiltered = await service.listThreads();
+      expect(unfiltered).toHaveLength(200);
+      expect(unfiltered.some((t) => t.userId === '2')).toBe(false);
+
+      const found = await service.listThreads({ userId: '2', status: 'open' });
+      expect(found.map((t) => t.id)).toEqual(['1']);
+    });
+
+    it('refuses a person id that is not a number', async () => {
+      await expect(
+        service.listThreads({ userId: 'abc' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 });
 

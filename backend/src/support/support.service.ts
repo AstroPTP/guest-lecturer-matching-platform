@@ -227,8 +227,21 @@ export class SupportService {
     return { id };
   }
 
-  async listThreads(): Promise<AdminThreadSummary[]> {
+  /**
+   * The most recently active requests, up to 200. A filter is applied in the
+   * query itself, so asking for one person's open request finds it however
+   * long ago it was last touched.
+   */
+  async listThreads(
+    filter: { userId?: string; status?: SupportStatus } = {},
+  ): Promise<AdminThreadSummary[]> {
     const threads: ThreadRow[] = await prisma.support_threads.findMany({
+      where: {
+        ...(filter.userId !== undefined && {
+          user_id: toId(filter.userId, 'userId'),
+        }),
+        ...(filter.status !== undefined && { status: filter.status }),
+      },
       orderBy: { updated_at: 'desc' },
       take: 200,
     });

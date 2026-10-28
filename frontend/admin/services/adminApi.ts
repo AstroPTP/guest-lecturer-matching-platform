@@ -509,10 +509,14 @@ export async function requestDetails(input: {
 /** The code the API answers with when the person already has an open request. */
 export const REQUEST_ALREADY_OPEN = 'SUPPORT_REQUEST_ALREADY_OPEN';
 
-/** The id of the open request with this user, if they have one. */
+/**
+ * The id of the open request with this user, if they have one. Asks the API
+ * for that user's open request, rather than searching the list of recent
+ * requests, so an old request is found as well as a recent one.
+ */
 export async function findOpenRequestId(userId: string): Promise<string | null> {
   const id = numericId(userId);
-  const threads = await getRequestThreads();
+  const threads = await getRequestThreads({ userId: id, status: 'open' });
   return threads.find((thread) => thread.userId === id && thread.status === 'open')?.id ?? null;
 }
 
@@ -524,8 +528,20 @@ function threadPath(id: string): string {
   return `/admin/support/threads/${id}`;
 }
 
-export async function getRequestThreads(): Promise<RequestThreadSummary[]> {
-  return backendFetch<RequestThreadSummary[]>('/admin/support/threads', { cache: 'no-store' });
+/** Narrows the list on the server: one user's requests, only open ones, or both. */
+export interface RequestThreadFilter {
+  userId?: string;
+  status?: RequestStatus;
+}
+
+export async function getRequestThreads(filter: RequestThreadFilter = {}): Promise<RequestThreadSummary[]> {
+  const query = new URLSearchParams();
+  if (filter.userId) query.set('userId', numericId(filter.userId));
+  if (filter.status) query.set('status', filter.status);
+  const search = query.toString();
+  return backendFetch<RequestThreadSummary[]>(`/admin/support/threads${search ? `?${search}` : ''}`, {
+    cache: 'no-store',
+  });
 }
 
 /** Opening a request counts as reading what the user sent. */
