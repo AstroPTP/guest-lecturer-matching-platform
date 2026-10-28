@@ -27,3 +27,31 @@ export function forwardedHeaders(incoming: Headers): Headers {
   });
   return headers;
 }
+
+/**
+ * The line logged when the API cannot be reached: one line of JSON, carrying
+ * the id the user is shown on the 502, so an id quoted from that screen finds
+ * this line.
+ *
+ * The path is the API path without its query string, which can hold search
+ * text. The error contributes only its message.
+ */
+export function unreachableBackendLogLine(details: {
+  correlationId: string;
+  method: string;
+  path: string;
+  error: unknown;
+  now?: Date;
+}): string {
+  return JSON.stringify({
+    ts: (details.now ?? new Date()).toISOString(),
+    event: 'backend_unreachable',
+    correlationId: details.correlationId,
+    method: details.method,
+    path: details.path,
+    error:
+      details.error instanceof Error
+        ? details.error.message
+        : String(details.error),
+  });
+}
