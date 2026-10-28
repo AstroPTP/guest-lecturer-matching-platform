@@ -11,9 +11,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
 import {
   assertGuestCanBeContacted,
+  visibleCoordinatorsWhere,
   visibleGuestsWhere,
 } from '../admin/platform-rules';
-import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
 import {
   isConversationPaused,
   loadModerationState,
@@ -172,45 +172,10 @@ export class MatchRequestsService {
   }
 
   /**
-   * The caller's accepted matches whose conversation is not paused, for lists
-   * that must not show a thread the caller cannot open. Uses the same rule as
-   * `findAcceptedMatch`. However many matches there are, it reads the open
-   * reports once and, only when there are any, looks the other profiles up in
-   * one query.
-   */
-  async findUnpausedMatches(
-    auth0Id: string,
-  ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
-    const caller = await this.resolveSide(auth0Id);
-    const rows = await this.matchRowsOf(caller, ['ACCEPTED']);
-    const state = rows.length > 0 ? await loadModerationState() : null;
-
-    let open = rows;
-    if (state && state.reports.length > 0) {
-      const accounts = await this.accountsOfCounterparts(caller, rows);
-      open = rows.filter(
-        (row) =>
-          !isConversationPaused(
-            state,
-            caller.userId,
-            accounts.get(this.counterpartProfileId(caller, row)) ?? null,
-          ),
-      );
-    }
-
-    return {
-      side: caller.side,
-      matches: open.map((row) => ({
-        matchId: row.match_id,
-        targetId: this.toMatchRequest(caller, row).targetId,
-      })),
-    };
-  }
-
-  /**
-   * The caller's match with one profile; refused unless both sides agreed, and
-   * refused while the two have an open report between them, or either of them
-   * is on hold, until an administrator decides.
+   * The caller's match with one profile, for acting on it, such as sending a
+   * message. Refused unless both sides agreed, and refused while the two have
+   * an open report between them, or either of them is on hold, until an
+   * administrator decides.
    */
   async findAcceptedMatch(
     auth0Id: string,
@@ -223,6 +188,26 @@ export class MatchRequestsService {
       'You can only message people you have matched with.',
     );
     await this.assertConversationNotPaused(caller, row);
+
+    return { side: caller.side, matchId: row.match_id };
+  }
+
+  /**
+   * The caller's match with one profile, for reading what was already said.
+   * Refused unless both sides agreed, but not refused for an open report or a
+   * hold: a pause stops new messages only, so neither person loses the
+   * conversation, and the one reported is not told by it.
+   */
+  async findReadableMatch(
+    auth0Id: string,
+    targetId: string,
+  ): Promise<{ side: Side; matchId: bigint }> {
+    const caller = await this.resolveSide(auth0Id);
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only message people you have matched with.',
+    );
 
     return { side: caller.side, matchId: row.match_id };
   }
@@ -349,44 +334,6 @@ export class MatchRequestsService {
     });
   }
 
-  /** The profile id of the other side of a row. */
-  private counterpartProfileId(
-    caller: CallerSide,
-    row: MatchRequestRow,
-  ): bigint {
-    return caller.side === 'coordinator' ? row.guest_id : row.coordinator_id;
-  }
-
-  /**
-   * users.userid for each other side's profile, in one query. A profile that
-   * was never linked to an account is left out.
-   */
-  private async accountsOfCounterparts(
-    caller: CallerSide,
-    rows: MatchRequestRow[],
-  ): Promise<Map<bigint, bigint>> {
-    const ids = rows.map((row) => this.counterpartProfileId(caller, row));
-    const accounts = new Map<bigint, bigint>();
-    if (caller.side === 'coordinator') {
-      const guests = await prisma.guests.findMany({
-        where: { guest_id: { in: ids } },
-        select: { guest_id: true, user_id: true },
-      });
-      for (const g of guests) {
-        if (g.user_id !== null) accounts.set(g.guest_id, g.user_id);
-      }
-    } else {
-      const coordinators = await prisma.coordinators.findMany({
-        where: { coordinator_id: { in: ids } },
-        select: { coordinator_id: true, user_id: true },
-      });
-      for (const c of coordinators) {
-        if (c.user_id !== null) accounts.set(c.coordinator_id, c.user_id);
-      }
-    }
-    return accounts;
-  }
-
   /** users.userid of the other side of a match, if their profile has one. */
   private async counterpartUserId(
     caller: CallerSide,
@@ -406,9 +353,9 @@ export class MatchRequestsService {
   }
 
   /**
-   * Refuses when messaging between the two is paused: an open report between
-   * them, or either of them on hold. The message does not say why, or that a
-   * report exists at all, so the person reported is not told they were.
+   * Refuses a new message between the two while it is paused: an open report
+   * between them, or either of them on hold. The message does not say why, or
+   * that a report exists at all, so the person reported is not told they were.
    */
   private async assertConversationNotPaused(
     caller: CallerSide,
@@ -423,8 +370,7 @@ export class MatchRequestsService {
     if (isConversationPaused(state, caller.userId, counterpart)) {
       throw new ForbiddenException({
         code: 'CONVERSATION_PAUSED',
-        message:
-          'Messaging with this person is paused for now. Please try again later.',
+        message: "You can't send messages in this conversation right now.",
       });
     }
   }
