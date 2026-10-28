@@ -22,7 +22,7 @@ import {
   saveGuestLecturerDiscoveryFilters,
   saveUnitCoordinatorDiscoveryFilters,
 } from "@/services/filter/discoveryFilterService";
-import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
+import { dismissProfile, expressInterest, getAccountOnHoldMessage, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import {
   applyGuestLecturerFilters,
   applyUnitCoordinatorFilters,
@@ -233,8 +233,9 @@ export default function DiscoveryPageContent({
       if (result.matched && result.match) {
         setMatchModalData({ match: result.match, matchedItem: selectedItem });
       }
-    } catch {
-      setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
+    } catch (error) {
+      // A person on hold is told it is their account, rather than that the backend is missing.
+      setActionError(getAccountOnHoldMessage(error) ?? "This isn't connected to a backend yet, so that action couldn't be saved.");
     } finally {
       setBusyProfileId(null);
     }

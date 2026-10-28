@@ -74,7 +74,8 @@ export class MatchRequestsService {
   /**
    * Raises a request against another profile. When the other side already sent
    * one, this accepts it instead, which is what makes a match. Asking twice
-   * returns the request that already exists.
+   * returns the request that already exists. A caller who is on hold can do
+   * neither: they are refused before a request is saved or accepted.
    */
   async create(auth0Id: string, targetId: string): Promise<MatchRequest> {
     const caller = await this.resolveSide(auth0Id);
@@ -617,6 +618,11 @@ export class MatchRequestsService {
    * deactivated, not yet approved while approval is required, on hold, or
    * reported by or against the caller cannot be reached by guessing its id,
    * and the 404 does not say which of those it was.
+   *
+   * The one exception is the caller being on hold themselves: that is refused
+   * with a 403 that says so, because the problem is their account and not the
+   * profile they asked for. It applies to accepting a request as much as to
+   * sending one, since both come through here.
    */
   private async assertCanRequest(
     caller: CallerSide,
@@ -650,8 +656,29 @@ export class MatchRequestsService {
               select: { coordinator_id: true },
             }),
           ]);
+    if (!own) {
+      await this.assertCallerNotOnHold(caller);
+    }
     if (!own || !other) {
       throw new NotFoundException('That profile does not exist.');
+    }
+  }
+
+  /**
+   * Refuses with a message about the caller's own account when they are on
+   * hold. Their own profile is hidden from them like everyone else's, so
+   * without this the refusal would read as a problem with the profile they
+   * clicked. Only asked once the caller's own profile has failed to load, so
+   * the usual request pays for no extra read.
+   */
+  private async assertCallerNotOnHold(caller: CallerSide): Promise<void> {
+    const state = await loadModerationState();
+    if (state.held.has(caller.userId)) {
+      throw new ForbiddenException({
+        code: ErrorCode.AccountOnHold,
+        message:
+          "Your account is on hold while CCAE reviews a report, so you can't send or accept requests right now.",
+      });
     }
   }
 

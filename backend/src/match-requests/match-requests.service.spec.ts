@@ -742,6 +742,32 @@ describe('MatchRequestsService', () => {
       expect(interest).not.toHaveBeenCalled();
     }
 
+    const onHold = {
+      status: 403,
+      response: {
+        code: 'ACCOUNT_ON_HOLD',
+        message:
+          "Your account is on hold while CCAE reviews a report, so you can't send or accept requests right now.",
+      },
+    };
+
+    /** Refused with a 403 about the caller's own account, and nothing is saved or sent. */
+    async function expectCallerOnHold(targetId: string) {
+      const create = jest.spyOn(prisma.match_requests, 'create');
+      const update = jest.spyOn(prisma.match_requests, 'updateMany');
+      const notify = jest.spyOn(notifications, 'create');
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      const attempt = service.create(userId, targetId);
+
+      await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(attempt).rejects.toMatchObject(onHold);
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+      expect(interest).not.toHaveBeenCalled();
+    }
+
     async function expectAllowed(targetId: string) {
       const create = jest.spyOn(prisma.match_requests, 'create');
 
@@ -822,8 +848,62 @@ describe('MatchRequestsService', () => {
         await expectRefused('5');
       });
 
-      it('cannot ask', async () => {
+      it('cannot ask, and is told it is their own account', async () => {
         reports(twoReportsAbout('1'));
+        setUp('coordinator', me, them);
+        await expectCallerOnHold('7');
+      });
+
+      it('is told so from the guest side too', async () => {
+        reports(twoReportsAbout('1'));
+        setUp('guest', me, { userId: 55n });
+        await expectCallerOnHold('5');
+      });
+
+      it('is held by an administrator the same way', async () => {
+        // One reporter is under the threshold; the administrator's hold covers report 40.
+        stubOpenReportsAlways([
+          {
+            entry_id: 40n,
+            actor_user_id: 900n,
+            target_id: '1',
+            detail: { reason: 'asked for money', matchId: '1' },
+          },
+        ]);
+        jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValue([
+          {
+            action: 'user.held',
+            target_id: '1',
+            detail: { reportIds: ['40'] },
+          },
+        ] as never);
+        setUp('coordinator', me, them);
+        await expectCallerOnHold('7');
+      });
+
+      it('cannot accept a request that is waiting for them either', async () => {
+        reports(twoReportsAbout('1'));
+        setUp('guest', me, { userId: 55n });
+        jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+          match_id: 6031n,
+          coordinator_id: 5n,
+          guest_id: 7n,
+          status: 'PENDING',
+          requested_at: requestedAt,
+          requested_by: 'coordinator',
+        } as never);
+
+        await expectCallerOnHold('5');
+      });
+
+      it('is told about their own account even when the profile they asked for is hidden', async () => {
+        reports([...twoReportsAbout('1'), ...twoReportsAbout('77')]);
+        setUp('coordinator', me, them);
+        await expectCallerOnHold('7');
+      });
+
+      it('keeps the missing-profile message for a target that is on hold', async () => {
+        reports(twoReportsAbout('77'));
         setUp('coordinator', me, them);
         await expectRefused('7');
       });
