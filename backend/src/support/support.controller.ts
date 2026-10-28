@@ -14,7 +14,11 @@ import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
-import { downloadHeaders, MAX_ATTACHMENT_BYTES } from './attachments';
+import {
+  AttachmentTooLargeInterceptor,
+  downloadHeaders,
+  MAX_ATTACHMENT_BYTES,
+} from './attachments';
 import { UserSupportMessageDto } from './dto/user-support-message.dto';
 import { SupportService } from './support.service';
 
@@ -58,7 +62,8 @@ export class SupportController {
   // tighter limit than the API-wide one.
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('threads/:id/messages')
-  @UseInterceptors(attachmentUpload)
+  // The first interceptor wraps the second, so it sees the parser's refusal.
+  @UseInterceptors(AttachmentTooLargeInterceptor, attachmentUpload)
   reply(
     @Param('id') id: string,
     @Body() dto: UserSupportMessageDto,
