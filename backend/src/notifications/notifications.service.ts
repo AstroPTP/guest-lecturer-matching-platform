@@ -77,6 +77,29 @@ export class NotificationsService {
   }
 
   /**
+   * Deletes the person's notices with this type, title and href, read or not.
+   * Those are the fields `createUnlessRecent` compares, so once the notice a
+   * request raised is gone, the same request raised again is a new notice
+   * rather than a repeat.
+   */
+  async deleteMatching(
+    notice: Pick<
+      CreateNotificationDto,
+      'recipientId' | 'type' | 'title' | 'href'
+    >,
+  ): Promise<void> {
+    const userId = await resolveUserId(notice.recipientId);
+    await prisma.notifications.deleteMany({
+      where: {
+        user_id: userId,
+        type: notice.type,
+        title: notice.title,
+        href: notice.href,
+      },
+    });
+  }
+
+  /**
    * Raises a notice, or, when the person still has an unread one with the same
    * type and href, moves that one back to the top of their list instead of
    * adding another. A run of messages in one conversation is then a single

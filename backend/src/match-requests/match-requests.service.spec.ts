@@ -576,7 +576,7 @@ describe('MatchRequestsService', () => {
       expect(interest).toHaveBeenCalledTimes(1);
     });
 
-    it('notifies once when the same person withdraws and asks again within a day', async () => {
+    it('notifies once when the same person asks twice within a day without withdrawing', async () => {
       const ask = () =>
         askAs('coordinator', {
           coordinator: coordinatorProfile,
@@ -594,6 +594,70 @@ describe('MatchRequestsService', () => {
       ask();
       await service.create(userId, '7');
       expect(stored).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a fresh notice when the same person withdraws and asks again within a day', async () => {
+      // A notifications table that keeps what is stored and honours the
+      // equality filters, so the withdrawal's delete is what the second ask sees.
+      const table: Record<string, unknown>[] = [];
+      const matching = (where: Record<string, unknown>) =>
+        table.filter((row) =>
+          Object.entries(where).every(
+            ([key, value]) => key === 'created_at' || row[key] === value,
+          ),
+        );
+      const stored = jest
+        .spyOn(prisma.notifications, 'create')
+        .mockImplementation(((...args: unknown[]) => {
+          const { data } = args[0] as { data: Record<string, unknown> };
+          table.push(data);
+          return Promise.resolve(data);
+        }) as never);
+      jest.spyOn(prisma.notifications, 'findFirst').mockImplementation(((
+        ...args: unknown[]
+      ) => {
+        const { where } = args[0] as { where: Record<string, unknown> };
+        return Promise.resolve(
+          matching(where).length > 0 ? { notification_id: 10n } : null,
+        );
+      }) as never);
+      jest.spyOn(prisma.notifications, 'deleteMany').mockImplementation(((
+        ...args: unknown[]
+      ) => {
+        const { where } = args[0] as { where: Record<string, unknown> };
+        const gone = matching(where);
+        gone.forEach((row) => table.splice(table.indexOf(row), 1));
+        return Promise.resolve({ count: gone.length });
+      }) as never);
+      const ask = () =>
+        askAs('coordinator', {
+          coordinator: coordinatorProfile,
+          guest: guestProfile,
+        });
+
+      ask();
+      await service.create(userId, '7');
+      expect(table).toHaveLength(1);
+
+      // The coordinator withdraws: their own profile, then both parties for the notice.
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValueOnce({ coordinator_id: 5n } as never)
+        .mockResolvedValueOnce(coordinatorProfile as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValueOnce(guestProfile as never);
+      jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockResolvedValue(newRow('coordinator'));
+      await service.remove(userId, '7');
+      expect(table).toHaveLength(0);
+
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue(null);
+      ask();
+      await service.create(userId, '7');
+      expect(stored).toHaveBeenCalledTimes(2);
+      expect(table).toHaveLength(1);
     });
 
     it('still returns the request when the notice cannot be saved', async () => {
@@ -968,6 +1032,187 @@ describe('MatchRequestsService', () => {
       await service.remove(userId, '2001');
       expect(deleteMany).toHaveBeenCalledWith({
         where: { coordinator_id: 2001n, guest_id: 7n },
+      });
+    });
+
+    describe('the notice about a withdrawn request', () => {
+      const coordinatorProfile = {
+        first_name: 'Ada',
+        last_name: 'Lee',
+        users: { auth0Id: 'auth0|coordinator' },
+      };
+      const guestProfile = {
+        first_name: 'Sam',
+        last_name: 'Tran',
+        users: { auth0Id: 'auth0|guest' },
+      };
+
+      /** Queues the two profiles read after the withdrawal, behind the caller's own sign-in. */
+      function profilesFound(profiles: {
+        coordinator: object | null;
+        guest: object | null;
+      }) {
+        jest
+          .spyOn(prisma.coordinators, 'findUnique')
+          .mockResolvedValueOnce(profiles.coordinator as never);
+        jest
+          .spyOn(prisma.guests, 'findUnique')
+          .mockResolvedValueOnce(profiles.guest as never);
+      }
+
+      function pendingRow(requestedBy: string | null) {
+        jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+          match_id: 6008n,
+          coordinator_id: 2001n,
+          guest_id: 7n,
+          status: 'PENDING',
+          requested_at: requestedAt,
+          requested_by: requestedBy,
+        } as never);
+      }
+
+      it("deletes the coordinator's New interest notice when a guest withdraws", async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).toHaveBeenCalledTimes(1);
+        expect(deleteMatching).toHaveBeenCalledWith({
+          recipientId: 'auth0|coordinator',
+          type: 'match',
+          title: 'New interest',
+          href: '/unit_coordinator/discovery?from=7',
+        });
+      });
+
+      it("deletes the guest's New interest notice when a coordinator withdraws", async () => {
+        signInAsCoordinator(2001n);
+        pendingRow('coordinator');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '7');
+        expect(deleteMatching).toHaveBeenCalledWith({
+          recipientId: 'auth0|guest',
+          type: 'match',
+          title: 'New interest',
+          href: '/guest_lecturer/discovery?from=2001',
+        });
+      });
+
+      it('treats an older request with no sender as sent by the coordinator', async () => {
+        signInAsCoordinator(2001n);
+        pendingRow(null);
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '7');
+        expect(deleteMatching).toHaveBeenCalledWith(
+          expect.objectContaining({
+            recipientId: 'auth0|guest',
+            href: '/guest_lecturer/discovery?from=2001',
+          }),
+        );
+      });
+
+      it('removes the notice for whoever sent the request, even when the person it was sent to deletes it', async () => {
+        signInAsGuest(7n);
+        pendingRow('coordinator');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).toHaveBeenCalledWith({
+          recipientId: 'auth0|guest',
+          type: 'match',
+          title: 'New interest',
+          href: '/guest_lecturer/discovery?from=2001',
+        });
+      });
+
+      it('deletes the request before its notice', async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const order: string[] = [];
+        jest
+          .spyOn(prisma.match_requests, 'deleteMany')
+          .mockImplementation((() => {
+            order.push('request');
+            return Promise.resolve({ count: 1 });
+          }) as never);
+        jest.spyOn(notifications, 'deleteMatching').mockImplementation(() => {
+          order.push('notice');
+          return Promise.resolve();
+        });
+
+        await service.remove(userId, '2001');
+        expect(order).toEqual(['request', 'notice']);
+      });
+
+      it('has no notice to delete when the other person has no account', async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({
+          coordinator: { ...coordinatorProfile, users: null },
+          guest: guestProfile,
+        });
+        const deleteMatching = jest.spyOn(notifications, 'deleteMatching');
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).not.toHaveBeenCalled();
+      });
+
+      it('leaves every notice alone when ending a match', async () => {
+        signInAsGuest(7n);
+        existingRow('ACCEPTED');
+        jest
+          .spyOn(prisma.match_requests, 'updateMany')
+          .mockResolvedValue({ count: 1 });
+        jest.spyOn(notifications, 'create').mockResolvedValue({} as never);
+        const deleteMatching = jest.spyOn(notifications, 'deleteMatching');
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).not.toHaveBeenCalled();
+      });
+
+      it('leaves every notice alone when there is no request to withdraw', async () => {
+        signInAsGuest(7n);
+        const deleteMatching = jest.spyOn(notifications, 'deleteMatching');
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).not.toHaveBeenCalled();
+      });
+
+      it('still withdraws the request when the notice cannot be removed, and logs only the error name', async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMany = jest
+          .spyOn(prisma.match_requests, 'deleteMany')
+          .mockResolvedValue({ count: 1 });
+        jest.spyOn(notifications, 'deleteMatching').mockRejectedValue(
+          Object.assign(new Error('failed for ada.lee@example.com'), {
+            name: 'PrismaClientKnownRequestError',
+          }),
+        );
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+        await expect(service.remove(userId, '2001')).resolves.toBeUndefined();
+        expect(deleteMany).toHaveBeenCalledTimes(1);
+        expect((warn.mock.calls as [string][]).map(([line]) => line)).toEqual([
+          'Could not remove the notice for a withdrawn request: PrismaClientKnownRequestError',
+        ]);
       });
     });
 

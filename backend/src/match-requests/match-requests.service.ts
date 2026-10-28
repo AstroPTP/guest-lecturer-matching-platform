@@ -21,6 +21,24 @@ import {
 
 export type Side = 'coordinator' | 'guest';
 
+/** The title of the notice that tells someone a new request came in. */
+const INTEREST_NOTICE_TITLE = 'New interest';
+
+/**
+ * Where the notice about a request leads: the sender's card in the
+ * recipient's Discovery. The id after "from" is the sender's profile, so
+ * requests from two people are two notices, and the same pair always
+ * produces the same link.
+ */
+function interestHref(
+  pair: { coordinator_id: bigint; guest_id: bigint },
+  senderSide: Side,
+): string {
+  return senderSide === 'coordinator'
+    ? '/guest_lecturer/discovery?from=' + String(pair.coordinator_id)
+    : '/unit_coordinator/discovery?from=' + String(pair.guest_id);
+}
+
 interface CallerSide {
   side: Side;
   ownId: bigint;
@@ -241,9 +259,12 @@ export class MatchRequestsService {
     };
   }
 
-  /** Withdraws a request or ends a match; the messages under it cascade. */
   /**
    * Withdraws a request that is not a match yet, or ends a match.
+   *
+   * Withdrawing deletes the request and the other person's "New interest"
+   * notice about it, so their list does not keep a link to a request that is
+   * gone and asking again is told to them afresh.
    *
    * Ending a match keeps the row as UNMATCHED rather than deleting it, so the
    * pair stays hidden from each other's Discovery and their event history is
@@ -261,6 +282,7 @@ export class MatchRequestsService {
 
     if (existing.status !== 'ACCEPTED') {
       await prisma.match_requests.deleteMany({ where: pair });
+      await this.retractInterest(pair, this.senderOf(existing));
       return;
     }
 
@@ -556,26 +578,57 @@ export class MatchRequestsService {
       }
 
       // Discovery is where they answer: the sender's card is still there to
-      // accept, which makes the match, or to dismiss. The id after "from" is
-      // that card, so Discovery opens on it and a repeat from someone else is
-      // not mistaken for this one.
-      const senderId = fromCoordinator ? pair.coordinator_id : pair.guest_id;
-      const discovery = fromCoordinator
-        ? '/guest_lecturer/discovery'
-        : '/unit_coordinator/discovery';
+      // accept, which makes the match, or to dismiss. The link opens on that
+      // card, and a repeat from someone else is not mistaken for this one.
       await this.notificationsService.createUnlessRecent({
         recipientId,
         type: 'match',
-        title: 'New interest',
+        title: INTEREST_NOTICE_TITLE,
         description: personLabel(sender) + ' is interested in working with you',
         actionLabel: 'View',
-        href: discovery + '?from=' + String(senderId),
+        href: interestHref(pair, senderSide),
       });
     } catch (error) {
       // Only the error's name: a database error's message can quote the
       // names and ids it was working with, and none of that belongs in a log.
       this.logger.warn(
         'Could not notify about a new request: ' +
+          (error instanceof Error ? error.name : 'UnknownError'),
+      );
+    }
+  }
+
+  /**
+   * Deletes the "New interest" notice a request raised, whether the recipient
+   * has read it or not. A notice that stayed would lead to a request that no
+   * longer exists, and would also count as a repeat of the next request from
+   * the same person within a day, so that one would send nothing.
+   *
+   * The request is already deleted by now, so a notice that cannot be removed
+   * is logged and dropped rather than failing a withdrawal that went through.
+   */
+  private async retractInterest(
+    pair: { coordinator_id: bigint; guest_id: bigint },
+    senderSide: Side,
+  ): Promise<void> {
+    try {
+      const parties = await this.loadParties(pair);
+      const recipientId =
+        parties[senderSide === 'coordinator' ? 'guest' : 'coordinator'].auth0Id;
+      if (!recipientId) {
+        return;
+      }
+
+      await this.notificationsService.deleteMatching({
+        recipientId,
+        type: 'match',
+        title: INTEREST_NOTICE_TITLE,
+        href: interestHref(pair, senderSide),
+      });
+    } catch (error) {
+      // Only the error's name, as when a notice cannot be sent.
+      this.logger.warn(
+        'Could not remove the notice for a withdrawn request: ' +
           (error instanceof Error ? error.name : 'UnknownError'),
       );
     }

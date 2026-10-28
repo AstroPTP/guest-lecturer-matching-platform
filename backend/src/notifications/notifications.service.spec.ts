@@ -122,6 +122,50 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('deleteMatching', () => {
+    const notice = {
+      recipientId,
+      type: 'match' as const,
+      title: 'New interest',
+      href: '/guest_lecturer/discovery?from=5',
+    };
+
+    it("deletes the person's notices with this type, title and href, read or not", async () => {
+      const deleteMany = jest
+        .spyOn(prisma.notifications, 'deleteMany')
+        .mockResolvedValue({ count: 1 });
+
+      await service.deleteMatching(notice);
+      expect(deleteMany).toHaveBeenCalledTimes(1);
+      expect(deleteMany).toHaveBeenCalledWith({
+        where: {
+          user_id: 1n,
+          type: 'match',
+          title: 'New interest',
+          href: '/guest_lecturer/discovery?from=5',
+        },
+      });
+    });
+
+    it('does not filter on whether the notice was read', async () => {
+      const deleteMany = jest.spyOn(prisma.notifications, 'deleteMany');
+
+      await service.deleteMatching(notice);
+      const [{ where }] = deleteMany.mock.calls[0] as [
+        { where: Record<string, unknown> },
+      ];
+      expect(where).not.toHaveProperty('read');
+    });
+
+    it('does nothing when the person has no such notice', async () => {
+      jest
+        .spyOn(prisma.notifications, 'deleteMany')
+        .mockResolvedValue({ count: 0 });
+
+      await expect(service.deleteMatching(notice)).resolves.toBeUndefined();
+    });
+  });
+
   describe('createOrRefreshUnread', () => {
     const dto = {
       recipientId,
