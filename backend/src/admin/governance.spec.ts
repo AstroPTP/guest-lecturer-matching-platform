@@ -18,6 +18,8 @@ import { AdminController } from './admin.controller';
 import { ModerationController } from './moderation.controller';
 import {
   assertGuestCanBeContacted,
+  notDeactivatedWhere,
+  visibleCoordinatorsWhere,
   visibleGuestsWhere,
 } from './platform-rules';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -53,6 +55,25 @@ describe('platform rules', () => {
     expect(await visibleGuestsWhere()).toMatchObject({
       approved_at: { not: null },
     });
+  });
+
+  it('leaves out deactivated accounts, and keeps profiles with no account', () => {
+    expect(notDeactivatedWhere).toEqual({
+      OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+    });
+  });
+
+  it('applies the same deactivated-account condition to guests and coordinators', async () => {
+    jest
+      .spyOn(prisma.admin_settings, 'upsert')
+      .mockResolvedValue(settingsRow({ require_admin_approval: true }));
+
+    expect(await visibleGuestsWhere()).toMatchObject(notDeactivatedWhere);
+    expect(await visibleCoordinatorsWhere()).toMatchObject(notDeactivatedWhere);
+  });
+
+  it('does not apply the approval rule to coordinators', async () => {
+    expect(await visibleCoordinatorsWhere()).not.toHaveProperty('approved_at');
   });
 
   it('refuses a second request to the same lecturer inside the limit', async () => {

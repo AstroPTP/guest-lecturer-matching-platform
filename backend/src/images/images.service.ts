@@ -4,8 +4,10 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { prisma, resolveUserId } from '../prisma';
-import { visibleGuestsWhere } from '../admin/platform-rules';
-import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
+import {
+  visibleCoordinatorsWhere,
+  visibleGuestsWhere,
+} from '../admin/platform-rules';
 
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 

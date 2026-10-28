@@ -19,6 +19,15 @@ export function readSettings() {
 }
 
 /**
+ * The condition both profile listings share: the account behind the profile
+ * has not been deactivated. A profile with no account attached stays listed.
+ */
+export const notDeactivatedWhere: Prisma.guestsWhereInput &
+  Prisma.coordinatorsWhereInput = {
+  OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+};
+
+/**
  * Which guest lecturers a viewer may see: never a deactivated account, only
  * approved profiles while approval is required, and never someone on hold after
  * reports or someone the viewer has an open report with (whoever made it).
@@ -34,9 +43,30 @@ export async function visibleGuestsWhere(
 ): Promise<Prisma.guestsWhereInput> {
   const { require_admin_approval: approvalRequired } = await readSettings();
   return {
-    OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
+    ...notDeactivatedWhere,
     AND: [await notHiddenWhere(viewerAuth0Id, options)],
     ...(approvalRequired ? { approved_at: { not: null } } : {}),
+  };
+}
+
+/**
+ * Which coordinators a viewer may see: never one whose account an
+ * administrator has deactivated, as with guest lecturers, nor one who is on
+ * hold after reports, nor one the viewer has an open report with (whoever made
+ * it).
+ *
+ * Shared by the discovery list and by the profile photo route, so a photo is
+ * served to exactly the people the profile is listed to. `keepReportedPair`
+ * keeps the people the viewer has an open report with, for the viewer's own
+ * matches.
+ */
+export async function visibleCoordinatorsWhere(
+  viewerAuth0Id?: string,
+  options: { keepReportedPair?: boolean } = {},
+): Promise<Prisma.coordinatorsWhereInput> {
+  return {
+    ...notDeactivatedWhere,
+    AND: [await notHiddenWhere(viewerAuth0Id, options)],
   };
 }
 
