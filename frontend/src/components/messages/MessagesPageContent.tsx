@@ -12,6 +12,7 @@ import type { ChatMessage, Conversation, ConversationParticipant, ConversationSe
 import type { UserRole } from "@/types/shared/userRole";
 import { deleteConversation, ensureConversations, getConversations, getMessages, sendMessage } from "@/services/messages/messageService";
 import { unmatchUsers } from "@/services/discovery/matchService";
+import { BackendError } from "@/lib/api/backendClient";
 import { reportUser } from "@/services/reports/reportService";
 import { getInitials } from "@/utils/displayFormatters";
 const CURRENT_USER_PLACEHOLDER_ID = "";
@@ -129,8 +130,13 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       const updatedConversations = await getConversations(userType);
       setConversations(updatedConversations);
       setSelectedConversation(updatedConversations.find((conversation) => conversation.id === selectedConversation.id) ?? selectedConversation);
-    } catch {
-      setActionError("This isn't connected to a backend yet, so your message couldn't be sent.");
+    } catch (error) {
+      // A refusal for this conversation is worded for the person, so it is shown as sent.
+      setActionError(
+        error instanceof BackendError && error.status === 403
+          ? error.message
+          : "This isn't connected to a backend yet, so your message couldn't be sent.",
+      );
     }
   }
 

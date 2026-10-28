@@ -29,8 +29,10 @@ export class ImagesService {
   /**
    * The image, but only to someone who may see it: the owner of the profile it
    * belongs to, or a signed-in person to whom that profile is listed on the
-   * discovery pages. That excludes people on hold after reports, and people the
-   * viewer has an open report with, whichever of them made it.
+   * discovery pages or in their matches. That excludes people on hold after
+   * reports. A person the viewer has an open report with, whichever of them
+   * made it, is still served, because they stay in the viewer's matches and
+   * their conversation shows their photo.
    *
    * Every other case is reported as missing, the same as an id that does not
    * exist, so a caller cannot tell which ids are in use or whose photo a
@@ -51,14 +53,24 @@ export class ImagesService {
           {
             guests: {
               some: {
-                OR: [ownProfile, await visibleGuestsWhere(viewerAuth0Id)],
+                OR: [
+                  ownProfile,
+                  await visibleGuestsWhere(viewerAuth0Id, {
+                    keepReportedPair: true,
+                  }),
+                ],
               },
             },
           },
           {
             coordinators: {
               some: {
-                OR: [ownProfile, await visibleCoordinatorsWhere(viewerAuth0Id)],
+                OR: [
+                  ownProfile,
+                  await visibleCoordinatorsWhere(viewerAuth0Id, {
+                    keepReportedPair: true,
+                  }),
+                ],
               },
             },
           },

@@ -33,7 +33,7 @@ describe('MessagesService', () => {
   describe('findThread', () => {
     it("marks the caller's own messages as theirs", async () => {
       jest
-        .spyOn(matchRequests, 'findAcceptedMatch')
+        .spyOn(matchRequests, 'findReadableMatch')
         .mockResolvedValue({ side: 'guest', matchId: 6007n });
       const findMany = jest
         .spyOn(prisma.messages, 'findMany')
@@ -127,9 +127,39 @@ describe('MessagesService', () => {
         })),
       );
     }
+    const stored = [
+      {
+        message_id: 1n,
+        content: 'Hi',
+        sent_at: sentAt,
+        sent_by: 'coordinator',
+      },
+      {
+        message_id: 2n,
+        content: 'Hello',
+        sent_at: sentAt,
+        sent_by: 'guest',
+      },
+    ];
 
-    it('refuses a new message and writes nothing', async () => {
+    it('refuses a new message with neutral wording and writes nothing', async () => {
       matched([[55n, '1']]);
+      const create = jest.spyOn(prisma.messages, 'create');
+
+      const attempt = service.send(userId, '5', 'Hello');
+
+      await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(attempt).rejects.toMatchObject({
+        response: {
+          code: 'CONVERSATION_PAUSED',
+          message: "You can't send messages in this conversation right now.",
+        },
+      });
+      expect(create).not.toHaveBeenCalled();
+    });
+
+    it('refuses a new message from the person who made the report too', async () => {
+      matched([[1n, '55']]);
       const create = jest.spyOn(prisma.messages, 'create');
 
       await expect(service.send(userId, '5', 'Hello')).rejects.toBeInstanceOf(
@@ -138,14 +168,58 @@ describe('MessagesService', () => {
       expect(create).not.toHaveBeenCalled();
     });
 
-    it('refuses to open the thread', async () => {
+    it('still opens the thread for the person who made the report', async () => {
       matched([[1n, '55']]);
-      const read = jest.spyOn(prisma.messages, 'findMany');
+      jest
+        .spyOn(prisma.messages, 'findMany')
+        .mockResolvedValue(stored as never);
 
-      await expect(service.findThread(userId, '5')).rejects.toBeInstanceOf(
-        ForbiddenException,
+      await expect(service.findThread(userId, '5')).resolves.toEqual([
+        { id: '1', text: 'Hi', sentAt: sentAt.toISOString(), fromMe: false },
+        { id: '2', text: 'Hello', sentAt: sentAt.toISOString(), fromMe: true },
+      ]);
+    });
+
+    it('still opens the thread for the person who was reported', async () => {
+      matched([[55n, '1']]);
+      const read = jest
+        .spyOn(prisma.messages, 'findMany')
+        .mockResolvedValue(stored as never);
+
+      await expect(service.findThread(userId, '5')).resolves.toHaveLength(2);
+      expect(read).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { match_id: 6007n } }),
       );
-      expect(read).not.toHaveBeenCalled();
+    });
+
+    it('still opens the thread of someone who is on hold', async () => {
+      matched([
+        [900n, '55'],
+        [901n, '55'],
+      ]);
+      jest
+        .spyOn(prisma.messages, 'findMany')
+        .mockResolvedValue(stored as never);
+
+      await expect(service.findThread(userId, '5')).resolves.toHaveLength(2);
+    });
+
+    it('does not look at the reports to open a thread', async () => {
+      const reads = jest.spyOn(prisma, '$queryRaw');
+      jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValueOnce(null);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValue({ guest_id: 7n } as never);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6007n,
+        coordinator_id: 5n,
+        guest_id: 7n,
+        status: 'ACCEPTED',
+      } as never);
+
+      await service.findThread(userId, '5');
+
+      expect(reads).not.toHaveBeenCalled();
     });
 
     it('still delivers when only one stranger has reported the other person', async () => {
@@ -166,7 +240,7 @@ describe('MessagesService', () => {
 
   describe('findSummaries', () => {
     it('returns the latest message for each match that has any', async () => {
-      jest.spyOn(matchRequests, 'findUnpausedMatches').mockResolvedValue({
+      jest.spyOn(matchRequests, 'findAcceptedMatches').mockResolvedValue({
         side: 'guest',
         matches: [
           { matchId: 6007n, targetId: '2005' },
@@ -187,14 +261,14 @@ describe('MessagesService', () => {
       ]);
     });
 
-    it('asks only for conversations that are not paused', async () => {
-      const accepted = jest.spyOn(matchRequests, 'findAcceptedMatches');
+    it('returns nothing, and reads no messages, for a caller with no matches', async () => {
       jest
-        .spyOn(matchRequests, 'findUnpausedMatches')
+        .spyOn(matchRequests, 'findAcceptedMatches')
         .mockResolvedValue({ side: 'guest', matches: [] });
+      const read = jest.spyOn(prisma.messages, 'findMany');
 
       await expect(service.findSummaries(userId)).resolves.toEqual([]);
-      expect(accepted).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
     });
 
     describe('while a report keeps two people apart', () => {
@@ -214,10 +288,6 @@ describe('MessagesService', () => {
             status: 'ACCEPTED',
           })) as never,
         );
-        jest.spyOn(prisma.coordinators, 'findMany').mockResolvedValue([
-          { coordinator_id: 5n, user_id: 55n },
-          { coordinator_id: 6n, user_id: 56n },
-        ] as never);
         const messages = jest
           .spyOn(prisma.messages, 'findMany')
           .mockResolvedValue(
@@ -227,7 +297,7 @@ describe('MessagesService', () => {
               sent_at: sentAt,
             })) as never,
           );
-        stubOpenReports(
+        const lookup = stubOpenReports(
           reports.map(([actor, target], i) => ({
             entry_id: BigInt(40 + i),
             actor_user_id: actor,
@@ -235,7 +305,7 @@ describe('MessagesService', () => {
             detail: { reason: 'asked for money', matchId: '6005' },
           })),
         );
-        return messages;
+        return { messages, lookup };
       }
       const listed = async () =>
         (await service.findSummaries(userId)).map((c) => c.targetId);
@@ -246,44 +316,51 @@ describe('MessagesService', () => {
         await expect(listed()).resolves.toEqual(['5', '6']);
       });
 
-      it('leaves out the thread with the person the caller reported', async () => {
+      it('keeps the thread with the person the caller reported', async () => {
         matchedWithTwo([[1n, '55']]);
 
-        await expect(listed()).resolves.toEqual(['6']);
+        await expect(listed()).resolves.toEqual(['5', '6']);
       });
 
-      it('leaves out the thread with the person who reported the caller', async () => {
+      it('keeps the thread with the person who reported the caller', async () => {
         matchedWithTwo([[55n, '1']]);
 
-        await expect(listed()).resolves.toEqual(['6']);
+        await expect(listed()).resolves.toEqual(['5', '6']);
       });
 
-      it('leaves out the thread with a person held for everybody', async () => {
+      it('keeps the threads of someone who is held, or when the caller is held', async () => {
         matchedWithTwo([
           [900n, '56'],
           [901n, '56'],
         ]);
+        await expect(listed()).resolves.toEqual(['5', '6']);
 
-        await expect(listed()).resolves.toEqual(['5']);
-      });
-
-      it('lists nothing for a caller who is held', async () => {
+        jest.restoreAllMocks();
         matchedWithTwo([
           [900n, '1'],
           [901n, '1'],
         ]);
-
-        await expect(listed()).resolves.toEqual([]);
+        await expect(listed()).resolves.toEqual(['5', '6']);
       });
 
-      it('does not read the messages of a paused thread', async () => {
-        const messages = matchedWithTwo([[1n, '55']]);
+      it('reads the messages of every thread, including the one with an open report', async () => {
+        const { messages } = matchedWithTwo([[1n, '55']]);
 
         await listed();
 
         expect(messages).toHaveBeenCalledWith(
-          expect.objectContaining({ where: { match_id: { in: [6006n] } } }),
+          expect.objectContaining({
+            where: { match_id: { in: [6005n, 6006n] } },
+          }),
         );
+      });
+
+      it('does not read the reports at all to build the list', async () => {
+        const { lookup } = matchedWithTwo([[1n, '55']]);
+
+        await listed();
+
+        expect(lookup).not.toHaveBeenCalled();
       });
     });
   });

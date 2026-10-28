@@ -14,10 +14,12 @@ const ROLE_LABELS: Record<string, string> = {
  * nobody has dealt with yet. Dismissing or deactivating closes the report,
  * and both are recorded in the audit log.
  *
- * An open report keeps the reporter and the person reported apart. It hides
- * the person from everyone only once enough different people have reported
- * them, or an administrator holds them here. Every decision reloads the queue,
- * because closing one report changes the counts shown on the others.
+ * An open report stops the reporter and the person reported sending each
+ * other new messages and hides them from each other in Discovery; their
+ * conversation stays readable. It hides the person from everyone only once
+ * enough different people have reported them, or an administrator holds them
+ * here. Every decision reloads the queue, because closing one report changes
+ * the counts shown on the others.
  */
 
 function holdText(row: OpenReport): string {
@@ -91,7 +93,7 @@ export default function ReportsPage() {
     <div className="overview-page">
       <header className="overview-heading">
         <h1>Reports</h1>
-        <p>Reports users have raised about the people they matched with. While a report is open, the two people can no longer see or message each other. A person is hidden from everyone only when several different people have reported them, or when you hold them. Dismissing the last open report lifts the hold.</p>
+        <p>Reports users have raised about the people they matched with. While a report is open, the two people cannot send each other new messages or find each other in Discovery, but their conversation stays readable. A person is hidden from everyone only when several different people have reported them, or when you hold them. Dismissing the last open report lifts the hold.</p>
       </header>
 
       {errorMessage ? (
@@ -144,7 +146,7 @@ export default function ReportsPage() {
                     <dd>
                       {row.onHold
                         ? "Hidden from Discovery for everyone and unable to send or receive messages."
-                        : "Only the reporter and this person are kept apart. Everyone else is unaffected."}
+                        : "The reporter and this person cannot send each other new messages or find each other in Discovery. Their conversation stays readable. Everyone else is unaffected."}
                     </dd>
                   </div>
                 </dl>

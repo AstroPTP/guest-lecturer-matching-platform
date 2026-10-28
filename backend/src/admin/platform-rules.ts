@@ -24,15 +24,18 @@ export function readSettings() {
  * reports or someone the viewer has an open report with (whoever made it).
  *
  * Shared by the discovery list and by the profile photo route, so a photo is
- * served to exactly the people the profile is listed to.
+ * served to exactly the people the profile is listed to. `keepReportedPair`
+ * keeps the people the viewer has an open report with, for the viewer's own
+ * matches.
  */
 export async function visibleGuestsWhere(
   viewerAuth0Id?: string,
+  options: { keepReportedPair?: boolean } = {},
 ): Promise<Prisma.guestsWhereInput> {
   const { require_admin_approval: approvalRequired } = await readSettings();
   return {
     OR: [{ user_id: null }, { users: { is: { deletedat: null } } }],
-    AND: [await notHiddenWhere(viewerAuth0Id)],
+    AND: [await notHiddenWhere(viewerAuth0Id, options)],
     ...(approvalRequired ? { approved_at: { not: null } } : {}),
   };
 }
