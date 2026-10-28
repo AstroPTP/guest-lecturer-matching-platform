@@ -142,6 +142,16 @@ function fakeDatabase() {
         guest: null,
         coordinator: null,
       },
+      {
+        // Has signed in but has not chosen a role yet.
+        userid: 6n,
+        auth0Id: 'auth0|erin',
+        email: 'erin@example.com',
+        role: null,
+        deletedat: null,
+        guest: null,
+        coordinator: null,
+      },
     ] as Row[],
     threads: [] as Row[],
     messages: [] as Row[],
@@ -713,6 +723,45 @@ describe('SupportService.openThread', () => {
     expect(notifications.create).toHaveBeenCalledWith(
       expect.objectContaining({ recipientId: 'auth0|dave' }),
     );
+  });
+
+  describe('when the person cannot reach the conversation', () => {
+    it.each([
+      ['another administrator', '1'],
+      ['someone with no role yet', '6'],
+    ])(
+      'refuses %s with a 400 that says who can be asked',
+      async (_who, userId) => {
+        const attempt = service.openThread(ADMIN, dto({ userId }));
+
+        await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+        await expect(attempt).rejects.toMatchObject({
+          response: {
+            code: 'SUPPORT_USER_NOT_REACHABLE',
+            message:
+              'Requests can only be sent to guest lecturers and unit coordinators.',
+          },
+        });
+      },
+    );
+
+    it('writes, records and notifies nothing', async () => {
+      await service.openThread(ADMIN, dto({ userId: '1' })).catch(() => null);
+      await service.openThread(ADMIN, dto({ userId: '6' })).catch(() => null);
+
+      expect(db.threads).toHaveLength(0);
+      expect(db.messages).toHaveLength(0);
+      expect(db.audits).toHaveLength(0);
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('does not stop the next request being opened for a lecturer or coordinator', async () => {
+      await service.openThread(ADMIN, dto({ userId: '1' })).catch(() => null);
+
+      await expect(
+        service.openThread(ADMIN, dto({ userId: '3' })),
+      ).resolves.toEqual({ id: expect.any(String) as string });
+    });
   });
 
   it('records support.requested against the thread, as the administrator', async () => {
@@ -1715,6 +1764,19 @@ describe('refusals carry a code and a message the user can read', () => {
         return service.adminReply(ADMIN, id, 'Hello');
       },
       'SUPPORT_THREAD_CLOSED',
+    ],
+    [
+      'a person who cannot reach the conversation',
+      () =>
+        service.openThread(
+          ADMIN,
+          Object.assign(new OpenSupportThreadDto(), {
+            userId: '6',
+            subject: 's',
+            message: 'm',
+          }),
+        ),
+      'SUPPORT_USER_NOT_REACHABLE',
     ],
     [
       'a deactivated account',

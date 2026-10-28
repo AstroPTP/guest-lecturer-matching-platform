@@ -143,6 +143,15 @@ const closedForUser = () =>
     message: 'This request has been closed, so it cannot take a reply.',
   });
 
+/**
+ * The roles that have a Messages page. A request to anyone else would stay
+ * open with nobody able to answer it, and block any new request for them.
+ */
+const REACHABLE_ROLES: readonly (string | null)[] = [
+  AppRole.GuestSpeaker,
+  AppRole.UnitCoordinator,
+];
+
 const asStatus = (value: string): SupportStatus =>
   value === 'closed' ? 'closed' : 'open';
 
@@ -184,6 +193,13 @@ export class SupportService {
       throw new NotFoundException({
         code: SupportErrorCode.UserNotFound,
         message: 'No user with that id.',
+      });
+    }
+    if (!REACHABLE_ROLES.includes(target.role)) {
+      throw new BadRequestException({
+        code: SupportErrorCode.UserNotReachable,
+        message:
+          'Requests can only be sent to guest lecturers and unit coordinators.',
       });
     }
     if (target.deletedat) {
