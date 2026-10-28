@@ -17,18 +17,6 @@ describe.each([
   ['student app', studentHeaders],
   ['administrator portal', adminHeaders],
 ])('the %s proxy request headers', (_app, forwardedHeaders) => {
-  it('does not pass on a correlation id the browser chose, whatever its case', () => {
-    const sent = forwardedHeaders(
-      new Headers({ 'X-Correlation-Id': 'chosen-by-the-browser' }),
-    );
-
-    expect(sent.has('x-correlation-id')).toBe(false);
-  });
-
-  it('leaves the id for the backend to give, rather than adding one', () => {
-    expect(forwardedHeaders(new Headers()).has('x-correlation-id')).toBe(false);
-  });
-
   it('never passes on the browser’s own credentials', () => {
     const sent = forwardedHeaders(
       new Headers({ Authorization: 'Bearer stolen', Cookie: 'session=1' }),

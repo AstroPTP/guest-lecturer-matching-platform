@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { corsOptions } from './common/cors-options';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { requestContextMiddleware } from './common/request-context.middleware';
 import { validateEnv } from './config/env.validation';
@@ -55,16 +56,7 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors({
-    origin: env.allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Correlation-Id'],
-    // A browser hides response headers that are not listed. Without this a
-    // cross-origin caller sends an id but cannot read the one that came back.
-    exposedHeaders: ['X-Correlation-Id'],
-    maxAge: 600,
-  });
+  app.enableCors(corsOptions(env.allowedOrigins));
 
   app.useGlobalPipes(
     new ValidationPipe({

@@ -15,10 +15,6 @@ const NOT_FORWARDED = new Set([
   // own credentials and defeat the whole arrangement.
   'authorization',
   'cookie',
-  // The backend gives every request its own id, and that id is what the logs,
-  // the audit trail and the error a user sees have in common. One chosen by
-  // the browser would let a caller pick the id its actions are filed under.
-  'x-correlation-id',
 ]);
 
 /** The browser's headers, less the ones the proxy sets or refuses to pass on. */
