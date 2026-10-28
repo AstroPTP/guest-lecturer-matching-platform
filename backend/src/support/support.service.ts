@@ -131,6 +131,18 @@ const alreadyOpen = () =>
       'This person already has an open request. Reply there or close it first.',
   });
 
+const closedForAdmin = () =>
+  new ConflictException({
+    code: SupportErrorCode.ThreadClosed,
+    message: 'This request is closed. Reopen it to send another message.',
+  });
+
+const closedForUser = () =>
+  new ConflictException({
+    code: SupportErrorCode.ThreadClosed,
+    message: 'This request has been closed, so it cannot take a reply.',
+  });
+
 const asStatus = (value: string): SupportStatus =>
   value === 'closed' ? 'closed' : 'open';
 
@@ -312,21 +324,14 @@ export class SupportService {
   ): Promise<SupportMessageView> {
     const thread = await this.threadOrThrow(id);
     if (thread.status !== 'open') {
-      throw new ConflictException({
-        code: SupportErrorCode.ThreadClosed,
-        message: 'This request is closed. Reopen it to send another message.',
-      });
+      throw closedForAdmin();
     }
 
     const message = await prisma.$transaction(async (tx) => {
-      const created = await tx.support_messages.create({
+      await this.touchOpenThread(tx, thread.thread_id, closedForAdmin);
+      return tx.support_messages.create({
         data: { thread_id: thread.thread_id, sender: 'admin', content },
       });
-      await tx.support_threads.update({
-        where: { thread_id: thread.thread_id },
-        data: { updated_at: new Date() },
-      });
-      return created;
     });
 
     await recordAudit(
@@ -400,6 +405,27 @@ export class SupportService {
     });
     if (open && open.thread_id !== except) {
       throw alreadyOpen();
+    }
+  }
+
+  /**
+   * Moves a request to the top of the list, but only while it is still open.
+   * The conditional update takes the row lock, so a close that is in progress
+   * finishes first and this then finds the request closed and refuses; a reply
+   * that gets here first is saved before the close can follow it. Run before
+   * anything is written, so a refused reply leaves nothing behind.
+   */
+  private async touchOpenThread(
+    tx: Prisma.TransactionClient,
+    threadId: bigint,
+    closed: () => Error,
+  ): Promise<void> {
+    const { count } = await tx.support_threads.updateMany({
+      where: { thread_id: threadId, status: 'open' },
+      data: { updated_at: new Date() },
+    });
+    if (count === 0) {
+      throw closed();
     }
   }
 
@@ -477,10 +503,7 @@ export class SupportService {
   ): Promise<SupportMessageView> {
     const thread = await this.ownThreadOrThrow(auth0Id, id);
     if (thread.status !== 'open') {
-      throw new ConflictException({
-        code: SupportErrorCode.ThreadClosed,
-        message: 'This request has been closed, so it cannot take a reply.',
-      });
+      throw closedForUser();
     }
 
     const text = (content ?? '').trim();
@@ -493,6 +516,7 @@ export class SupportService {
     }
 
     const { message, stored } = await prisma.$transaction(async (tx) => {
+      await this.touchOpenThread(tx, thread.thread_id, closedForUser);
       const row = attachment
         ? await tx.support_attachments.create({
             data: {
@@ -510,10 +534,6 @@ export class SupportService {
           content: text,
           attachment_id: row?.attachment_id ?? null,
         },
-      });
-      await tx.support_threads.update({
-        where: { thread_id: thread.thread_id },
-        data: { updated_at: new Date() },
       });
       return { message: created, stored: row };
     });

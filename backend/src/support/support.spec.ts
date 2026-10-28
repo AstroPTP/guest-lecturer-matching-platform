@@ -213,6 +213,15 @@ function fakeDatabase() {
     return Promise.resolve(row);
   }) as never);
 
+  jest.spyOn(prisma.support_threads, 'updateMany').mockImplementation(((args: {
+    where: Row;
+    data: Row;
+  }) => {
+    const rows = db.threads.filter((t) => matches(t, args.where));
+    rows.forEach((row) => Object.assign(row, args.data));
+    return Promise.resolve({ count: rows.length });
+  }) as never);
+
   jest.spyOn(prisma.support_messages, 'create').mockImplementation(((args: {
     data: Row;
   }) => {
@@ -295,6 +304,21 @@ function fakeDatabase() {
 }
 
 type Db = ReturnType<typeof fakeDatabase>;
+
+/**
+ * Makes an administrator close the request after the service has read it as
+ * open and before its transaction runs, which is what happens when the close
+ * lands while a file is still uploading.
+ */
+function closeBeforeTransaction(db: Db, threadId: string) {
+  jest
+    .spyOn(prisma, '$transaction')
+    .mockImplementation((fn: (tx: typeof prisma) => Promise<unknown>) => {
+      const thread = db.threads.find((t) => t.thread_id === BigInt(threadId));
+      if (thread) thread.status = 'closed';
+      return fn(prisma);
+    });
+}
 
 /** Adds a thread to the fake database the way an administrator's request would. */
 function seedThread(
@@ -937,6 +961,38 @@ describe('SupportService.adminReply', () => {
       NotFoundException,
     );
   });
+
+  it('refuses when the request is closed after it was read as open, and writes nothing', async () => {
+    const id = seedThread(db);
+    closeBeforeTransaction(db, id);
+
+    const attempt = service.adminReply(ADMIN, id, 'Hello');
+
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'SUPPORT_THREAD_CLOSED' },
+    });
+    expect(db.messages).toHaveLength(1);
+    expect(db.audits).toHaveLength(0);
+    expect(notifications.create).not.toHaveBeenCalled();
+  });
+
+  it('checks that the request is open inside the transaction, before it writes the message', async () => {
+    const id = seedThread(db);
+    const check = jest.spyOn(prisma.support_threads, 'updateMany');
+    const write = jest.spyOn(prisma.support_messages, 'create');
+
+    await service.adminReply(ADMIN, id, 'Hello');
+
+    expect(check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { thread_id: BigInt(id), status: 'open' },
+      }),
+    );
+    expect(check.mock.invocationCallOrder[0]).toBeLessThan(
+      write.mock.invocationCallOrder[0],
+    );
+  });
 });
 
 describe('SupportService.setStatus', () => {
@@ -1194,6 +1250,46 @@ describe('SupportService.postMine', () => {
 
     expect(db.messages).toHaveLength(1);
     expect(db.attachments).toHaveLength(0);
+  });
+
+  it('refuses when the request is closed while the file is still uploading, and stores nothing', async () => {
+    const id = seedThread(db);
+    closeBeforeTransaction(db, id);
+
+    const attempt = service.postMine(
+      ALICE,
+      id,
+      'Here',
+      upload(PDF, 'application/pdf'),
+    );
+
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'SUPPORT_THREAD_CLOSED' },
+    });
+    expect(db.messages).toHaveLength(1);
+    expect(db.attachments).toHaveLength(0);
+  });
+
+  it('checks that the request is open inside the transaction, before it stores the file or the message', async () => {
+    const id = seedThread(db);
+    const check = jest.spyOn(prisma.support_threads, 'updateMany');
+    const file = jest.spyOn(prisma.support_attachments, 'create');
+    const message = jest.spyOn(prisma.support_messages, 'create');
+
+    await service.postMine(ALICE, id, 'Here', upload(PDF, 'application/pdf'));
+
+    expect(check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { thread_id: BigInt(id), status: 'open' },
+      }),
+    );
+    expect(check.mock.invocationCallOrder[0]).toBeLessThan(
+      file.mock.invocationCallOrder[0],
+    );
+    expect(check.mock.invocationCallOrder[0]).toBeLessThan(
+      message.mock.invocationCallOrder[0],
+    );
   });
 
   it("refuses a reply to someone else's thread, and stores nothing", async () => {
@@ -1527,6 +1623,15 @@ describe('refusals carry a code and a message the user can read', () => {
         return service.getMine(ALICE, id);
       },
       'SUPPORT_THREAD_NOT_FOUND',
+    ],
+    [
+      'a request closed while the reply was being saved',
+      () => {
+        const id = seedThread(db);
+        closeBeforeTransaction(db, id);
+        return service.adminReply(ADMIN, id, 'Hello');
+      },
+      'SUPPORT_THREAD_CLOSED',
     ],
     [
       'a deactivated account',
