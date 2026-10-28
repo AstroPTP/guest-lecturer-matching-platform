@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
 import searchIcon from "@/assets/search.png";
+import { correlationIdFromSearch } from "@/lib/auditSearch";
 import { AUDIT_ACTION_FILTERS, getAuditEntries } from "@/services/adminApi";
 import type { AuditActorRole, AuditCategory, AuditEntry } from "@/types/admin";
 
@@ -56,11 +57,29 @@ export default function AuditLogPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Set when the search text is a whole correlation ID. That search is sent to
+  // the server, because searching in the browser only reaches the newest
+  // entries loaded, and an older ID would never be found.
+  const searchedId = correlationIdFromSearch(query);
+
+  // Cleared at once, so rows from the previous request are not shown as though
+  // they belonged to the new one while it loads.
+  function startLoading() {
+    setAuditEntries([]);
+    setErrorMessage(null);
+    setIsLoading(true);
+    setCurrentPage(1);
+  }
+
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const rows = await getAuditEntries(500, action === "All" ? undefined : action);
+        const rows = await getAuditEntries(
+          500,
+          action === "All" ? undefined : action,
+          searchedId,
+        );
         if (active) setAuditEntries(rows);
       } catch (error) {
         if (active) {
@@ -76,7 +95,7 @@ export default function AuditLogPage() {
     return () => {
       active = false;
     };
-  }, [action]);
+  }, [action, searchedId]);
 
   const filteredEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -161,7 +180,11 @@ export default function AuditLogPage() {
         <label className="audit-search">
           <Image alt="" aria-hidden="true" height={14} src={searchIcon} width={14} />
           <input
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => {
+              const text = event.target.value;
+              if (correlationIdFromSearch(text) !== searchedId) startLoading();
+              setQuery(text);
+            }}
             placeholder="Search by actor, action, target or correlation ID..."
             type="search"
             value={query}
@@ -172,12 +195,7 @@ export default function AuditLogPage() {
           <span>Action</span>
           <select
             onChange={(event) => {
-              // Cleared at once, so rows from the previous action are not shown
-              // as though they belonged to this one while the new ones load.
-              setAuditEntries([]);
-              setErrorMessage(null);
-              setIsLoading(true);
-              setCurrentPage(1);
+              startLoading();
               setAction(event.target.value);
             }}
             value={action}
@@ -288,7 +306,9 @@ export default function AuditLogPage() {
                       : errorMessage
                         ? errorMessage
                         : auditEntries.length === 0
-                          ? "Nothing has been recorded yet."
+                          ? searchedId
+                            ? "No audit entry carries that correlation ID."
+                            : "Nothing has been recorded yet."
                           : "No audit entries match your filters."}
                   </td>
                 </tr>

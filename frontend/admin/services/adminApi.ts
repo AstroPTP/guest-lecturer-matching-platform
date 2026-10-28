@@ -315,10 +315,19 @@ function toAuditEntry(row: AuditRow): AuditEntry {
  * Newest first. `action` is the stored key, such as "user.signed_in", and is
  * filtered on the server: a busy action like sign-ins would otherwise fill the
  * whole page of rows and push everything else out of view.
+ *
+ * `correlationId` is filtered on the server too. The page searches the rows it
+ * has loaded, which are only the newest `limit`, so an id older than those
+ * would never be found by searching in the browser.
  */
-export async function getAuditEntries(limit = 200, action?: string): Promise<AuditEntry[]> {
+export async function getAuditEntries(
+  limit = 200,
+  action?: string,
+  correlationId?: string,
+): Promise<AuditEntry[]> {
   const query = new URLSearchParams({ limit: String(limit) });
   if (action) query.set('action', action);
+  if (correlationId) query.set('correlationId', correlationId);
   const rows = await backendFetch<AuditRow[]>(`/admin/audit-entries?${query.toString()}`);
   return rows.map(toAuditEntry);
 }

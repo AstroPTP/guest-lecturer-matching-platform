@@ -93,10 +93,12 @@ export class AdminController {
   auditEntries(
     @Query('limit') limit?: string,
     @Query('action') action?: string,
+    @Query('correlationId') correlationId?: string,
   ) {
     return this.governance.auditEntries(
       limit ? Number(limit) || undefined : undefined,
       action,
+      correlationId,
     );
   }
 
