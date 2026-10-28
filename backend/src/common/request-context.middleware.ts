@@ -1,9 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import {
-  acceptInboundCorrelationId,
-  CORRELATION_HEADER,
-  runInRequestContext,
-} from './request-context';
+import { CORRELATION_HEADER, runInRequestContext } from './request-context';
 import { ulid } from './ulid';
 
 /** One finished request, as written to the log. */
@@ -38,10 +34,12 @@ const MAX_LOGGED_PATH = 200;
 /**
  * Gives every request one correlation id and one log line.
  *
- * The id is the caller's if it is well-formed, otherwise a fresh ULID. It goes
- * on the response, so a client can quote it, into the request context, so the
- * error filter and the audit trail can read it without being handed the
- * request, and into the line written when the response finishes.
+ * The id is always a fresh ULID made here. Any id the caller sends is ignored,
+ * so a caller cannot file its requests and audit entries under an id of its own
+ * choosing or reuse one belonging to another request. It goes on the response,
+ * so a client can quote it, into the request context, so the error filter and
+ * the audit trail can read it without being handed the request, and into the
+ * line written when the response finishes.
  *
  * Registered first in main.ts. That way a request refused before it reaches a
  * controller (a CORS preflight, an oversized body, a missing route) still has
@@ -57,8 +55,7 @@ export function requestContextMiddleware(options: RequestContextOptions = {}) {
 
   return (request: Request, response: Response, next: NextFunction): void => {
     const startedAt = now();
-    const correlationId =
-      acceptInboundCorrelationId(request.header(CORRELATION_HEADER)) ?? ulid();
+    const correlationId = ulid();
 
     response.setHeader(CORRELATION_HEADER, correlationId);
 

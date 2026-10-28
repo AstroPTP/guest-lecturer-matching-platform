@@ -1,4 +1,4 @@
-import { backendFetch } from "@/lib/api/backendClient";
+import { BackendError, backendFetch } from "@/lib/api/backendClient";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchRecord, MatchResult } from "@/types/discovery/matchTypes";
 import { CURRENT_USER_PLACEHOLDER_ID } from "@/utils/discoveryFilters";
 
@@ -79,6 +79,17 @@ export async function expressInterest(targetUserId: string): Promise<MatchResult
 
   const matched = row.status === "ACCEPTED";
   return { matched, match: matched ? toMatchRecord(row) : null };
+}
+
+/** The code the API answers with when the person's own account is on hold. */
+const ACCOUNT_ON_HOLD_CODE = "ACCOUNT_ON_HOLD";
+
+/**
+ * The API's own wording when a request was refused because the person's account
+ * is on hold, which is safe to show as sent. Undefined for any other failure.
+ */
+export function getAccountOnHoldMessage(error: unknown): string | undefined {
+  return error instanceof BackendError && error.status === 403 && error.code === ACCOUNT_ON_HOLD_CODE ? error.message : undefined;
 }
 
 export async function removeInterest(targetUserId: string): Promise<void> {

@@ -19,6 +19,14 @@ import {
 import { readSettings, recordAudit } from './platform-rules';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
+import type { Prisma } from '../../generated/prisma/client';
+
+/**
+ * What a correlation id can look like: letters, digits, hyphens and
+ * underscores, at most 64. Anything else cannot be an id the API made, and is
+ * refused rather than put into a query.
+ */
+const CORRELATION_ID_PATTERN = /^[\w-]{1,64}$/;
 
 const fullName = (
   p?: { first_name?: string | null; last_name?: string | null } | null,
@@ -133,8 +141,41 @@ export class GovernanceService {
 
   /** Newest first. `action` narrows to one kind, e.g. "user.deactivated". */
   async auditEntries(limit = 200, action?: string) {
+    return this.listAuditEntries(action ? { action } : {}, limit);
+  }
+
+  /**
+   * The entries written while one request was served, newest first. This is
+   * how an id quoted from an error screen or a log line finds its entry however
+   * long ago it was written. It is matched exactly against the id stored in
+   * each entry's detail, so it reads the table rather than an index.
+   */
+  async auditEntriesByCorrelationId(
+    correlationId: string,
+    limit = 200,
+    action?: string,
+  ) {
+    if (!CORRELATION_ID_PATTERN.test(correlationId)) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'The correlation id is not valid.',
+      });
+    }
+    return this.listAuditEntries(
+      {
+        ...(action ? { action } : {}),
+        detail: { path: ['correlationId'], equals: correlationId },
+      },
+      limit,
+    );
+  }
+
+  private async listAuditEntries(
+    where: Prisma.audit_entriesWhereInput,
+    limit: number,
+  ) {
     const rows = await prisma.audit_entries.findMany({
-      where: action ? { action } : undefined,
+      where,
       orderBy: { occurred_at: 'desc' },
       take: Math.min(Math.max(limit, 1), 500),
       include: { actor: { select: { email: true, role: true } } },
@@ -197,9 +238,10 @@ export class GovernanceService {
    * with a match with that profile, and the person reported is found from the
    * match rather than taken from the caller.
    *
-   * While it is open, the reporter and the person reported cannot see or
-   * message each other. It holds the person for everyone only once enough
-   * different people have reported them, or an administrator holds them.
+   * While it is open, the reporter and the person reported cannot find each
+   * other in Discovery or send each other new messages, though their
+   * conversation stays readable. It holds the person for everyone only once
+   * enough different people have reported them, or an administrator holds them.
    *
    * A reporter may have only a few reports open at once, and may not report
    * the same person twice while one is open.
@@ -239,8 +281,11 @@ export class GovernanceService {
 
   /**
    * Checks the limits and stores the report in one transaction that holds a
-   * lock on the reporter. Without it, two reports sent together would both
-   * read the same count of open reports, both pass, and both be stored.
+   * lock on the reporter and then one on the person reported. Without the
+   * first, two reports sent together would both read the same count of open
+   * reports, both pass, and both be stored. The second is the one a hold or a
+   * decision on that person takes, so a new report cannot land in the middle
+   * of one and change who is held before its release is worked out.
    */
   private storeReport(
     reporter: string,
@@ -250,6 +295,7 @@ export class GovernanceService {
   ) {
     return prisma.$transaction(async (tx) => {
       await lockReporter(tx, reporterUserId);
+      await lockReported(tx, reportedUserId);
       assertReporterWithinLimits(
         await findOpenReports(tx),
         reporterUserId,
@@ -420,6 +466,10 @@ export class GovernanceService {
    * leaves the person no longer on hold, whether from the threshold or from an
    * administrator, the release is recorded. All under the person's lock, so a
    * hold, a decision and a release for the same person run one after another.
+   *
+   * The report must still be open once the lock is held. One that was decided
+   * in the meantime, by a second click or another administrator, is refused
+   * with a 409 and nothing is written.
    */
   async resolveReport(
     reportId: string,
@@ -438,6 +488,12 @@ export class GovernanceService {
     await prisma.$transaction(async (tx) => {
       if (person !== null) await lockReported(tx, person);
       const before = await loadModerationState(tx);
+      if (!before.reports.some((r) => r.entry_id === report.entry_id)) {
+        throw new ConflictException({
+          code: 'REPORT_ALREADY_DECIDED',
+          message: 'This report has already been dealt with.',
+        });
+      }
 
       if (outcome === 'deactivated' && report.target_id) {
         await this.admin.setStatus(report.target_id, 'deactivated', actor, tx);

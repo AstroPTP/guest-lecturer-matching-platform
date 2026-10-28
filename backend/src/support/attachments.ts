@@ -1,7 +1,47 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  CallHandler,
+  ExecutionContext,
+  Injectable,
+  NestInterceptor,
+  PayloadTooLargeException,
+} from '@nestjs/common';
+import { catchError, Observable, throwError } from 'rxjs';
 import { SupportErrorCode } from './support-errors';
 
 export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5MB
+
+const TOO_LARGE_MESSAGE = 'File too large. Max 5MB.';
+
+/**
+ * Gives the upload parser's refusal of an oversized file the support error
+ * code and message. The parser stops the file while it is still being read, so
+ * the error reaches the client without passing through any code of ours, and
+ * without a code the global filter replaces it with a generic message.
+ *
+ * Listed before the file interceptor on a route, so it wraps it. Every other
+ * error passes through unchanged.
+ */
+@Injectable()
+export class AttachmentTooLargeInterceptor implements NestInterceptor {
+  intercept(
+    _context: ExecutionContext,
+    next: CallHandler,
+  ): Observable<unknown> {
+    return next.handle().pipe(
+      catchError((error: unknown) =>
+        throwError(() =>
+          error instanceof PayloadTooLargeException
+            ? new PayloadTooLargeException({
+                code: SupportErrorCode.AttachmentTooLarge,
+                message: TOO_LARGE_MESSAGE,
+              })
+            : error,
+        ),
+      ),
+    );
+  }
+}
 
 /**
  * What a file must start with to be the type it claims. Matched against the
@@ -96,7 +136,7 @@ export function validateAttachment(file: Express.Multer.File): ValidAttachment {
   ) {
     throw new BadRequestException({
       code: SupportErrorCode.AttachmentTooLarge,
-      message: 'File too large. Max 5MB.',
+      message: TOO_LARGE_MESSAGE,
     });
   }
   return {

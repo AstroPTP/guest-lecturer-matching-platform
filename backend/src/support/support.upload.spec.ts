@@ -127,6 +127,25 @@ describe('POST /support/threads/:id/messages (multipart)', () => {
     expect(service.postMine).not.toHaveBeenCalled();
   });
 
+  it('tells the user the file is too large, in the support error code and message', async () => {
+    const tooBig = Buffer.concat([
+      PDF,
+      Buffer.alloc(MAX_ATTACHMENT_BYTES + 1 - PDF.length),
+    ]);
+
+    const response = await request(app.getHttpServer())
+      .post('/support/threads/7/messages')
+      .attach('attachment', tooBig, {
+        filename: 'big.pdf',
+        contentType: 'application/pdf',
+      })
+      .expect(413);
+
+    const body = response.body as { code: string; message: string };
+    expect(body.code).toBe('SUPPORT_ATTACHMENT_TOO_LARGE');
+    expect(body.message).toBe('File too large. Max 5MB.');
+  });
+
   it('refuses a second file', async () => {
     await request(app.getHttpServer())
       .post('/support/threads/7/messages')

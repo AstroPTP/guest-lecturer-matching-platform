@@ -440,9 +440,17 @@ export class SettingsService {
   }
 
   /**
-   * Deletes the Auth0 user, then the caller's rows: profiles, profile photos,
-   * topics, availability, notifications, and the requests for details sent to
-   * them with their messages and attached files.
+   * Removes the caller's rows (profiles, profile photos, topics, availability,
+   * notifications, and the requests for details sent to them with their
+   * messages and attached files), then deletes the Auth0 user, then marks the
+   * users row.
+   *
+   * The database goes first, in one transaction, so a failure there leaves
+   * Auth0 untouched and the person can still sign in to try again. If the
+   * Auth0 call then fails, the account still exists in Auth0 and the users row
+   * is not yet marked deleted, so the person can sign in and delete again,
+   * which repeats the Auth0 step; the cleanup before it finds nothing left.
+   * Marking the row earlier would make JwtAuthGuard refuse that retry.
    *
    * The users row itself is kept with deletedat set and personal fields
    * cleared. JwtAuthGuard refuses any token whose subject has that marker, so
@@ -450,22 +458,23 @@ export class SettingsService {
    * unexpired.
    */
   async deleteAccount(id: string) {
-    await this.management(this.userPath(id), 'DELETE', undefined, true);
+    // Fetched before anything is removed, so an unconfigured or unreachable
+    // identity service fails here with nothing changed.
+    await this.managementAccessToken();
 
     const userId = await resolveUserId(id);
     await prisma.$transaction(async (tx) => {
       // The photos hang off the profiles, so their ids are read before the
       // profiles go. Deleting the profile alone would leave the image bytes
       // behind with nothing pointing at them.
-      const guest = await tx.guests.findUnique({
-        where: { user_id: userId },
-        select: { profile_image_id: true },
+      const owner = await tx.users.findUnique({
+        where: { userid: userId },
+        select: {
+          guest: { select: { profile_image_id: true } },
+          coordinator: { select: { profile_image_id: true } },
+        },
       });
-      const coordinator = await tx.coordinators.findUnique({
-        where: { user_id: userId },
-        select: { profile_image_id: true },
-      });
-      const photoIds = [guest, coordinator].flatMap((profile) =>
+      const photoIds = [owner?.guest, owner?.coordinator].flatMap((profile) =>
         profile?.profile_image_id == null ? [] : [profile.profile_image_id],
       );
 
@@ -498,16 +507,25 @@ export class SettingsService {
       if (photoIds.length > 0) {
         await tx.images.deleteMany({ where: { image_id: { in: photoIds } } });
       }
-      await tx.users.update({
-        where: { userid: userId },
-        data: {
-          email: null,
-          role: null,
-          consentstate: false,
-          lastloginat: null,
-          deletedat: new Date(),
-        },
-      });
+    });
+
+    try {
+      await this.management(this.userPath(id), 'DELETE', undefined, true);
+    } catch {
+      throw new ServiceUnavailableException(
+        'Your data was removed, but your sign-in account could not be deleted. Please try again.',
+      );
+    }
+
+    await prisma.users.update({
+      where: { userid: userId },
+      data: {
+        email: null,
+        role: null,
+        consentstate: false,
+        lastloginat: null,
+        deletedat: new Date(),
+      },
     });
 
     return { success: true };
