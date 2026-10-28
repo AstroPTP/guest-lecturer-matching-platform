@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
@@ -7,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { AppService } from './app.service';
 import { CcaeAdministratorsModule } from './ccae-administrators/ccae-administrators.module';
 import { GuestSpeakersModule } from './guest-speakers/guest-speakers.module';
+import { HealthModule } from './health/health.module';
 import { MatchRequestsModule } from './match-requests/match-requests.module';
 import { MessagesModule } from './messages/messages.module';
 import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.module';
@@ -16,6 +18,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { SettingsModule } from './settings/settings.module';
 import { DismissalsModule } from './dismissals/dismissals.module';
 import { ImagesModule } from './images/images.module';
+import { RetentionModule } from './retention/retention.module';
 
 @Module({
   imports: [
@@ -29,6 +32,7 @@ import { ImagesModule } from './images/images.module';
     ]),
     CcaeAdministratorsModule,
     GuestSpeakersModule,
+    HealthModule,
     MatchRequestsModule,
     MessagesModule,
     UnitCoordinatorsModule,
@@ -38,6 +42,9 @@ import { ImagesModule } from './images/images.module';
     SettingsModule,
     DismissalsModule,
     ImagesModule,
+    // Registered once here; modules only declare @Cron methods.
+    ScheduleModule.forRoot(),
+    RetentionModule,
   ],
   controllers: [AppController],
   providers: [

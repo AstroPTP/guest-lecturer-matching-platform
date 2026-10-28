@@ -13,6 +13,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AdminService } from './admin.service';
 import { GovernanceService } from './governance.service';
+import { SystemService } from './system.service';
 import { ResolveReportDto } from './dto/resolve-report.dto';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { SetUserStatusDto } from './dto/set-user-status.dto';
@@ -27,6 +28,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly governance: GovernanceService,
+    private readonly systemHealth: SystemService,
   ) {}
 
   @Get('overview')
@@ -114,5 +116,15 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.governance.resolveReport(id, dto.outcome, user.id);
+  }
+
+  @Get('system')
+  systemSnapshot() {
+    return this.systemHealth.snapshot();
+  }
+
+  @Get('system/security')
+  systemSecurity() {
+    return this.systemHealth.security();
   }
 }

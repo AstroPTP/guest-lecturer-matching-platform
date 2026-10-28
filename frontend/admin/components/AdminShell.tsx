@@ -17,6 +17,7 @@ import infoIcon from "@/assets/info.png";
 import schoolIcon from "@/assets/school.png";
 import settingsIcon from "@/assets/settings.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
+import visibilityIcon from "@/assets/visibility.png";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 
 interface NavigationItem {
@@ -39,6 +40,7 @@ const navigation: NavigationItem[] = [
   { href: "/dashboard/coordinators", label: "Coordinators", icon: checkIcon },
   { href: "/dashboard/events", label: "Events", icon: eventIcon },
   { href: "/dashboard/analytics", label: "Analytics", icon: analyticsIcon },
+  { href: "/dashboard/system", label: "System", icon: visibilityIcon },
   { href: "/dashboard/reports", label: "Reports", icon: descriptionIcon },
   { href: "/dashboard/audit_log", label: "Audit Log", icon: historyIcon },
   { href: "/dashboard/settings", label: "Settings", icon: settingsIcon },

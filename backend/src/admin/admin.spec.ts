@@ -1,9 +1,18 @@
 import 'reflect-metadata';
-import { NotFoundException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+  RequestMethod,
+} from '@nestjs/common';
+import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
+import { Reflector } from '@nestjs/core';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { prisma } from '../prisma';
+import { IS_PUBLIC_KEY } from '../auth/public.decorator';
 import { ROLES_KEY } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { AppRole } from '../auth/roles';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
@@ -16,6 +25,62 @@ describe('AdminController access', () => {
     expect(Reflect.getMetadata(ROLES_KEY, AdminController)).toEqual([
       AppRole.CcaeAdmin,
     ]);
+  });
+});
+
+describe('AdminController system routes', () => {
+  const routes = [
+    ['systemSnapshot', 'system'],
+    ['systemSecurity', 'system/security'],
+  ] as const;
+
+  it.each(routes)('%s is GET /admin/%s', (handler, path) => {
+    const route = AdminController.prototype[handler];
+
+    expect(Reflect.getMetadata(PATH_METADATA, route)).toBe(path);
+    expect(Reflect.getMetadata(METHOD_METADATA, route)).toBe(RequestMethod.GET);
+  });
+
+  it.each(routes)(
+    '%s sets no role or public override, so the class-level ccae_admin applies',
+    (handler) => {
+      const route = AdminController.prototype[handler];
+
+      // A method-level @Roles would replace the class one, and a @Public would
+      // skip authentication. Neither is present.
+      expect(Reflect.getMetadata(ROLES_KEY, route)).toBeUndefined();
+      expect(Reflect.getMetadata(IS_PUBLIC_KEY, route)).toBeUndefined();
+      expect(
+        Reflect.getMetadata(IS_PUBLIC_KEY, AdminController),
+      ).toBeUndefined();
+    },
+  );
+
+  describe.each(routes)('RolesGuard on %s', (handler) => {
+    const guard = new RolesGuard(new Reflector());
+    const contextFor = (roles: AppRole[]) =>
+      ({
+        getHandler: () => AdminController.prototype[handler],
+        getClass: () => AdminController,
+        switchToHttp: () => ({
+          getRequest: () => ({ user: { id: 'auth0|someone', roles } }),
+        }),
+      }) as unknown as ExecutionContext;
+
+    it('admits a CCAE administrator', () => {
+      expect(guard.canActivate(contextFor([AppRole.CcaeAdmin]))).toBe(true);
+    });
+
+    it.each([
+      [[AppRole.UnitCoordinator]],
+      [[AppRole.GuestSpeaker]],
+      [[AppRole.UnitCoordinator, AppRole.GuestSpeaker]],
+      [[]],
+    ])('refuses a caller holding %j', (roles) => {
+      expect(() => guard.canActivate(contextFor(roles))).toThrow(
+        ForbiddenException,
+      );
+    });
   });
 });
 

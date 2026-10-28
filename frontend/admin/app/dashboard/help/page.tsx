@@ -57,6 +57,81 @@ const GUIDES: Guide[] = [
   },
 ];
 
+interface SystemTopic {
+  title: string;
+  paragraphs: { lead?: string; text: string }[];
+}
+
+const SYSTEM_TOPICS: SystemTopic[] = [
+  {
+    title: "What Healthy, Warning, Unavailable and Unknown mean",
+    paragraphs: [
+      { lead: "Healthy.", text: "The check ran and the result is inside its limits. Nothing needs doing." },
+      {
+        lead: "Warning.",
+        text: "The result is slow, near or past a limit, or overdue. The system still works, but it is worth looking into soon, before it becomes a problem.",
+      },
+      {
+        lead: "Unavailable.",
+        text: "A required part of the system is not responding, such as the database. Something needs doing now.",
+      },
+      {
+        lead: "Unknown.",
+        text: "This host cannot measure it, for example because the server does not report that figure or nothing is set up to measure it. Unknown is not a fault in itself. The message on the card says why.",
+      },
+      { text: "Every status shows a word and a shape as well as a colour, so it can be read without telling colours apart." },
+    ],
+  },
+  {
+    title: "What the storage and usage numbers mean",
+    paragraphs: [
+      {
+        lead: "Database size",
+        text: "is the space the platform's data takes up. When a size limit is set, the bar shows how much of it is used. Photos storage is the space taken by uploaded profile photos.",
+      },
+      {
+        lead: "Disk and Memory",
+        text: "show how full the server's disk and memory are. The memory figure also says how much of it this server process uses on its own.",
+      },
+      {
+        lead: "Largest tables",
+        text: "lists the biggest database tables by size, with their row counts. It shows where the space is going.",
+      },
+      {
+        lead: "Usage",
+        text: "counts people who were active in the last 24 hours and 7 days, and the new accounts, match requests and messages of the last 7 days, plus the photos stored. Not available means the figure could not be read. It does not mean zero.",
+      },
+    ],
+  },
+  {
+    title: "What the security counts mean, and when they reset",
+    paragraphs: [
+      {
+        text: "Failed authentications are requests refused because the sign-in token was missing or not valid. Admin access denied counts requests for administrator pages from people without the administrator role. Rate limited counts requests refused for arriving too fast. Server errors counts requests that failed inside the platform.",
+      },
+      {
+        lead: "The counts reset when the server restarts.",
+        text: "They are kept in the server's memory, not in the database. A low count soon after a restart does not mean things have been quiet. The page says when the server started, and the totals count from then.",
+      },
+      {
+        lead: "Failed sign-ins are seen in Auth0.",
+        text: "Signing in happens at the identity provider, not in this platform, so a wrong password or a blocked account is recorded there. Open the Auth0 dashboard and go to Monitoring, then Logs.",
+      },
+    ],
+  },
+  {
+    title: "Who sets the limits, and how often the page updates",
+    paragraphs: [
+      {
+        text: "The warning and critical limits are set by environment variables on the server, by whoever hosts the system. This page only shows them and cannot change them. To change a limit, ask the host.",
+      },
+      {
+        text: "The page reads the system when it opens, once a minute while the tab is open and visible, and whenever you choose Refresh. It pauses while the tab is hidden.",
+      },
+    ],
+  },
+];
+
 const FAQS = [
   {
     question: "Who can open this portal?",
@@ -109,6 +184,21 @@ export default function AdminHelpPage() {
                 <li key={step}>{step}</li>
               ))}
             </ol>
+          </details>
+        ))}
+      </section>
+
+      <section aria-labelledby="admin-system" className="help-card">
+        <h2 id="admin-system">System Analytics</h2>
+        {SYSTEM_TOPICS.map((topic) => (
+          <details key={topic.title}>
+            <summary>{topic.title}</summary>
+            {topic.paragraphs.map((paragraph) => (
+              <p key={paragraph.text}>
+                {paragraph.lead ? <strong>{paragraph.lead} </strong> : null}
+                {paragraph.text}
+              </p>
+            ))}
           </details>
         ))}
       </section>
