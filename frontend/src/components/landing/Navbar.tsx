@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import BrandLogo from "@/components/brand/BrandLogo";
-import ThemeToggle from "@/components/theme/ThemeToggle";
 
 /**
  * Scrolls to the role cards without adding #role-cards to the URL. A hash link
@@ -34,7 +33,6 @@ export default function Navbar() {
           </Link>
         </nav>
         <nav aria-label="Account actions" className="flex items-center gap-2 md:flex">
-          <ThemeToggle className="hidden sm:inline-flex" />
           <button
             type="button"
             onClick={showRoleCards}
