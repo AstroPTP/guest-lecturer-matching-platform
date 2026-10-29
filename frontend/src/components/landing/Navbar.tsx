@@ -25,7 +25,7 @@ export default function Navbar() {
             Lectures
           </Link>
         </nav>
-        <nav aria-label="Account actions" className="flex gap-2 md:flex">
+        <nav aria-label="Account actions" className="flex items-center gap-2 md:flex">
           <button
             type="button"
             onClick={showRoleCards}
