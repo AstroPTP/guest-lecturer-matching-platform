@@ -1,19 +1,43 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
 import { isUniqueViolation } from '../common/prisma-errors';
+import { personLabel } from '../notifications/person-label';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
-import { assertGuestCanBeContacted } from '../admin/platform-rules';
+import {
+  assertGuestCanBeContacted,
+  visibleCoordinatorsWhere,
+  visibleGuestsWhere,
+} from '../admin/platform-rules';
 import {
   isConversationPaused,
   loadModerationState,
 } from '../admin/open-reports';
 
 export type Side = 'coordinator' | 'guest';
+
+/** The title of the notice that tells someone a new request came in. */
+const INTEREST_NOTICE_TITLE = 'New interest';
+
+/**
+ * Where the notice about a request leads: the sender's card in the
+ * recipient's Discovery. The id after "from" is the sender's profile, so
+ * requests from two people are two notices, and the same pair always
+ * produces the same link.
+ */
+function interestHref(
+  pair: { coordinator_id: bigint; guest_id: bigint },
+  senderSide: Side,
+): string {
+  return senderSide === 'coordinator'
+    ? '/guest_lecturer/discovery?from=' + String(pair.coordinator_id)
+    : '/unit_coordinator/discovery?from=' + String(pair.guest_id);
+}
 
 interface CallerSide {
   side: Side;
@@ -48,6 +72,8 @@ interface MatchRequestRow {
  */
 @Injectable()
 export class MatchRequestsService {
+  private readonly logger = new Logger(MatchRequestsService.name);
+
   constructor(private readonly notificationsService: NotificationsService) {}
 
   async findMine(auth0Id: string): Promise<MatchRequest[]> {
@@ -66,12 +92,13 @@ export class MatchRequestsService {
   /**
    * Raises a request against another profile. When the other side already sent
    * one, this accepts it instead, which is what makes a match. Asking twice
-   * returns the request that already exists.
+   * returns the request that already exists. A caller who is on hold can do
+   * neither: they are refused before a request is saved or accepted.
    */
   async create(auth0Id: string, targetId: string): Promise<MatchRequest> {
     const caller = await this.resolveSide(auth0Id);
     const target = toId(targetId, 'targetId');
-    await this.assertTargetExists(caller.side, target);
+    await this.assertCanRequest(caller, auth0Id, target);
 
     const pair = this.toPair(caller, target);
     const now = new Date();
@@ -93,6 +120,7 @@ export class MatchRequestsService {
             updated_at: now,
           },
         });
+        await this.notifyInterest(pair, caller.side);
         return this.toMatchRequest(caller, row);
       } catch (error) {
         // A request for the same pair landed first; go again against its row.
@@ -216,9 +244,12 @@ export class MatchRequestsService {
     };
   }
 
-  /** Withdraws a request or ends a match; the messages under it cascade. */
   /**
    * Withdraws a request that is not a match yet, or ends a match.
+   *
+   * Withdrawing deletes the request and the other person's "New interest"
+   * notice about it, so their list does not keep a link to a request that is
+   * gone and asking again is told to them afresh.
    *
    * Ending a match keeps the row as UNMATCHED rather than deleting it, so the
    * pair stays hidden from each other's Discovery and their event history is
@@ -236,6 +267,7 @@ export class MatchRequestsService {
 
     if (existing.status !== 'ACCEPTED') {
       await prisma.match_requests.deleteMany({ where: pair });
+      await this.retractInterest(pair, this.senderOf(existing));
       return;
     }
 
@@ -437,6 +469,117 @@ export class MatchRequestsService {
     }
   }
 
+  /**
+   * Tells the person a new request was made to that someone is interested.
+   * Only a request that starts a pair comes here: accepting the other side's
+   * request makes a match, which notifyMatch announces instead.
+   *
+   * The request is already saved by now, so a notice that cannot be saved is
+   * logged and dropped rather than failing a request that went through.
+   */
+  private async notifyInterest(
+    pair: { coordinator_id: bigint; guest_id: bigint },
+    senderSide: Side,
+  ): Promise<void> {
+    try {
+      const profile = {
+        first_name: true,
+        last_name: true,
+        role: true,
+        users: { select: { auth0Id: true } },
+      };
+      const [coordinator, guest] = await Promise.all([
+        prisma.coordinators.findUnique({
+          where: { coordinator_id: pair.coordinator_id },
+          select: profile,
+        }),
+        prisma.guests.findUnique({
+          where: { guest_id: pair.guest_id },
+          select: profile,
+        }),
+      ]);
+
+      const fromCoordinator = senderSide === 'coordinator';
+      const sender = fromCoordinator ? coordinator : guest;
+      const recipientId = (fromCoordinator ? guest : coordinator)?.users
+        ?.auth0Id;
+      if (!recipientId) {
+        return;
+      }
+
+      // Someone who dismissed this profile has hidden it from their Discovery,
+      // so a notice about it would put it back in front of them. The request
+      // itself still stands; only the notice is held back.
+      const dismissed = await prisma.dismissals.findUnique({
+        where: {
+          coordinator_id_guest_id_dismissed_by: {
+            ...pair,
+            dismissed_by: fromCoordinator ? 'guest' : 'coordinator',
+          },
+        },
+        select: { dismissal_id: true },
+      });
+      if (dismissed) {
+        return;
+      }
+
+      // Discovery is where they answer: the sender's card is still there to
+      // accept, which makes the match, or to dismiss. The link opens on that
+      // card, and a repeat from someone else is not mistaken for this one.
+      await this.notificationsService.createUnlessRecent({
+        recipientId,
+        type: 'match',
+        title: INTEREST_NOTICE_TITLE,
+        description: personLabel(sender) + ' is interested in working with you',
+        actionLabel: 'View',
+        href: interestHref(pair, senderSide),
+      });
+    } catch (error) {
+      // Only the error's name: a database error's message can quote the
+      // names and ids it was working with, and none of that belongs in a log.
+      this.logger.warn(
+        'Could not notify about a new request: ' +
+          (error instanceof Error ? error.name : 'UnknownError'),
+      );
+    }
+  }
+
+  /**
+   * Deletes the "New interest" notice a request raised, whether the recipient
+   * has read it or not. A notice that stayed would lead to a request that no
+   * longer exists, and would also count as a repeat of the next request from
+   * the same person within a day, so that one would send nothing.
+   *
+   * The request is already deleted by now, so a notice that cannot be removed
+   * is logged and dropped rather than failing a withdrawal that went through.
+   */
+  private async retractInterest(
+    pair: { coordinator_id: bigint; guest_id: bigint },
+    senderSide: Side,
+  ): Promise<void> {
+    try {
+      const parties = await this.loadParties(pair);
+      const recipientId =
+        parties[senderSide === 'coordinator' ? 'guest' : 'coordinator'].auth0Id;
+      if (!recipientId) {
+        return;
+      }
+
+      await this.notificationsService.deleteMatching({
+        recipientId,
+        type: 'match',
+        title: INTEREST_NOTICE_TITLE,
+        href: interestHref(pair, senderSide),
+      });
+    } catch (error) {
+      // Only the error's name, as when a notice cannot be sent.
+      this.logger.warn(
+        'Could not remove the notice for a withdrawn request: ' +
+          (error instanceof Error ? error.name : 'UnknownError'),
+      );
+    }
+  }
+
   /** Tells the other person that the caller ended the match. */
   private async notifyUnmatch(
     pair: { coordinator_id: bigint; guest_id: bigint },
@@ -465,20 +608,76 @@ export class MatchRequestsService {
     });
   }
 
-  /** A coordinator requests guests, and a guest requests coordinators. */
-  private async assertTargetExists(side: Side, target: bigint): Promise<void> {
-    const exists =
-      side === 'coordinator'
-        ? await prisma.guests.findUnique({
-            where: { guest_id: target },
-            select: { guest_id: true },
-          })
-        : await prisma.coordinators.findUnique({
-            where: { coordinator_id: target },
-            select: { coordinator_id: true },
-          });
-    if (!exists) {
+  /**
+   * A coordinator requests guests, and a guest requests coordinators.
+   *
+   * Refused with the same 404 as a profile that does not exist when either end
+   * is one Discovery hides from the caller: the target, or the caller's own
+   * profile. That is the shared visibility rule, so a profile that is
+   * deactivated, not yet approved while approval is required, on hold, or
+   * reported by or against the caller cannot be reached by guessing its id,
+   * and the 404 does not say which of those it was.
+   *
+   * The one exception is the caller being on hold themselves: that is refused
+   * with a 403 that says so, because the problem is their account and not the
+   * profile they asked for. It applies to accepting a request as much as to
+   * sending one, since both come through here.
+   */
+  private async assertCanRequest(
+    caller: CallerSide,
+    auth0Id: string,
+    target: bigint,
+  ): Promise<void> {
+    const [guestsWhere, coordinatorsWhere] = await Promise.all([
+      visibleGuestsWhere(auth0Id),
+      visibleCoordinatorsWhere(auth0Id),
+    ]);
+
+    const [own, other] =
+      caller.side === 'coordinator'
+        ? await Promise.all([
+            prisma.coordinators.findFirst({
+              where: { coordinator_id: caller.ownId, ...coordinatorsWhere },
+              select: { coordinator_id: true },
+            }),
+            prisma.guests.findFirst({
+              where: { guest_id: target, ...guestsWhere },
+              select: { guest_id: true },
+            }),
+          ])
+        : await Promise.all([
+            prisma.guests.findFirst({
+              where: { guest_id: caller.ownId, ...guestsWhere },
+              select: { guest_id: true },
+            }),
+            prisma.coordinators.findFirst({
+              where: { coordinator_id: target, ...coordinatorsWhere },
+              select: { coordinator_id: true },
+            }),
+          ]);
+    if (!own) {
+      await this.assertCallerNotOnHold(caller);
+    }
+    if (!own || !other) {
       throw new NotFoundException('That profile does not exist.');
+    }
+  }
+
+  /**
+   * Refuses with a message about the caller's own account when they are on
+   * hold. Their own profile is hidden from them like everyone else's, so
+   * without this the refusal would read as a problem with the profile they
+   * clicked. Only asked once the caller's own profile has failed to load, so
+   * the usual request pays for no extra read.
+   */
+  private async assertCallerNotOnHold(caller: CallerSide): Promise<void> {
+    const state = await loadModerationState();
+    if (state.held.has(caller.userId)) {
+      throw new ForbiddenException({
+        code: ErrorCode.AccountOnHold,
+        message:
+          "Your account is on hold while CCAE reviews a report, so you can't send or accept requests right now.",
+      });
     }
   }
 

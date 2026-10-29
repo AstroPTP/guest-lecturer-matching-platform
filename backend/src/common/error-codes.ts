@@ -11,6 +11,8 @@ export const ErrorCode = {
   AuthInvalidToken: 'AUTH_INVALID_TOKEN',
   /** Token is valid, but the caller's roles do not permit this route. */
   AuthzInsufficientRole: 'AUTHZ_INSUFFICIENT_ROLE',
+  /** The caller's own account is on hold, so they cannot send or accept requests. */
+  AccountOnHold: 'ACCOUNT_ON_HOLD',
   /** Request body failed validation. */
   ValidationFailed: 'VALIDATION_FAILED',
   /** Rate limit exceeded. */
