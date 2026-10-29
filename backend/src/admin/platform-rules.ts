@@ -1,5 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { prisma } from '../prisma';
+import { notHiddenWhere } from './open-reports';
 import type { Prisma } from '../../generated/prisma/client';
 
 /**
@@ -8,7 +9,7 @@ import type { Prisma } from '../../generated/prisma/client';
  * apply a rule need one import, not a module dependency.
  */
 
-/** The settings row. Upserted so the first read cannot race another. */
+/** The settings row. Written as an upsert so the first read cannot race another. */
 export function readSettings() {
   return prisma.admin_settings.upsert({
     where: { id: 1 },
@@ -27,26 +28,47 @@ export const notDeactivatedWhere: Prisma.guestsWhereInput &
 };
 
 /**
- * Which guest lecturers coordinators may see: never a deactivated account,
- * and only approved profiles while approval is required.
+ * Which guest lecturers a viewer may see: never a deactivated account, only
+ * approved profiles while approval is required, and never someone on hold after
+ * reports or someone the viewer has an open report with (whoever made it).
+ *
+ * Shared by the discovery list and by the profile photo route, so a photo is
+ * served to exactly the people the profile is listed to. `keepReportedPair`
+ * keeps the people the viewer has an open report with, for the viewer's own
+ * matches.
  */
-export async function visibleGuestsWhere(): Promise<Prisma.guestsWhereInput> {
+export async function visibleGuestsWhere(
+  viewerAuth0Id?: string,
+  options: { keepReportedPair?: boolean } = {},
+): Promise<Prisma.guestsWhereInput> {
   const { require_admin_approval: approvalRequired } = await readSettings();
   return {
     ...notDeactivatedWhere,
+    AND: [await notHiddenWhere(viewerAuth0Id, options)],
     ...(approvalRequired ? { approved_at: { not: null } } : {}),
   };
 }
 
 /**
- * Which coordinators other people may see: never one whose account has been
- * deactivated.
+ * Which coordinators a viewer may see: never one whose account an
+ * administrator has deactivated, as with guest lecturers, nor one who is on
+ * hold after reports, nor one the viewer has an open report with (whoever made
+ * it).
  *
  * Shared by the discovery list and by the profile photo route, so a photo is
- * served to exactly the people the profile is listed to.
+ * served to exactly the people the profile is listed to. `keepReportedPair`
+ * keeps the people the viewer has an open report with, for the viewer's own
+ * matches.
  */
-export const visibleCoordinatorsWhere: Prisma.coordinatorsWhereInput =
-  notDeactivatedWhere;
+export async function visibleCoordinatorsWhere(
+  viewerAuth0Id?: string,
+  options: { keepReportedPair?: boolean } = {},
+): Promise<Prisma.coordinatorsWhereInput> {
+  return {
+    ...notDeactivatedWhere,
+    AND: [await notHiddenWhere(viewerAuth0Id, options)],
+  };
+}
 
 /**
  * Refuses a coordinator's request to a guest lecturer who was already
@@ -85,15 +107,17 @@ export async function recordAudit(
   action: string,
   target: { type?: string; id?: string },
   detail?: Prisma.InputJsonValue,
+  /** A transaction's client, to write the entry as part of that transaction. */
+  db: Prisma.TransactionClient = prisma,
 ) {
   const actor = actorAuth0Id
-    ? await prisma.users.findFirst({
+    ? await db.users.findFirst({
         where: { auth0Id: actorAuth0Id },
         select: { userid: true },
       })
     : null;
 
-  return prisma.audit_entries.create({
+  return db.audit_entries.create({
     data: {
       actor_user_id: actor?.userid ?? null,
       action,

@@ -2,6 +2,10 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import * as prismaModule from '../prisma';
 import { prisma } from '../prisma';
 import {
+  stubOpenReportsAlways,
+  type ReportFixture,
+} from '../testing/open-reports';
+import {
   ImagesService,
   MAX_IMAGE_SIZE_BYTES,
   profileImageUrl,
@@ -449,6 +453,9 @@ function matches(row: Row, where: Row): boolean {
       if ('not' in condition) {
         return value !== condition.not;
       }
+      if ('notIn' in condition) {
+        return !(condition.notIn as unknown[]).includes(value);
+      }
       throw new Error(`Unsupported filter on ${key}`);
     }
     return value === condition;
@@ -462,8 +469,12 @@ const deactivated = (auth0Id: string): Row => ({
 });
 
 /** A profile row as the photo query sees it: the owner's account is joined on. */
-const profile = (owner: Row | null, approved = true): Row => ({
-  user_id: owner ? 1n : null,
+const profile = (
+  owner: Row | null,
+  approved = true,
+  userId: bigint | null = owner ? 1n : null,
+): Row => ({
+  user_id: userId,
   users: owner,
   approved_at: approved ? new Date('2026-09-01T00:00:00Z') : null,
 });
@@ -489,6 +500,8 @@ const UNAPPROVED_GUEST = 60n;
 const GUEST_WITHOUT_ACCOUNT = 70n;
 const ORPHAN = 80n;
 const UNKNOWN = 999n;
+const REPORTED_GUEST = 90n;
+const REPORTED_COORDINATOR = 91n;
 
 const stored = [
   photo(MINE, { guests: [profile(active('auth0|me'), false)] }),
@@ -506,6 +519,14 @@ const stored = [
   photo(GUEST_WITHOUT_ACCOUNT, { guests: [profile(null)] }),
   // Uploaded, then no longer on any profile.
   photo(ORPHAN, {}),
+  // People other tests report. Their account ids are 101 and 102; the test
+  // double signs every viewer in as user 1.
+  photo(REPORTED_GUEST, {
+    guests: [profile(active('auth0|reported-g'), true, 101n)],
+  }),
+  photo(REPORTED_COORDINATOR, {
+    coordinators: [profile(active('auth0|reported-c'), true, 102n)],
+  }),
 ];
 
 function serveStoredImages(approvalRequired: boolean) {
@@ -630,6 +651,155 @@ describe('ImagesService.getVisibleTo', () => {
 
     expect(query.mock.calls[0][0]).toMatchObject({
       where: { image_id: OTHER_GUEST },
+    });
+  });
+});
+
+describe('ImagesService.getVisibleTo after reports', () => {
+  const service = new ImagesService();
+  const asMe = (id: bigint) => service.getVisibleTo(id, 'auth0|me');
+
+  afterEach(() => jest.restoreAllMocks());
+
+  /** An open report by `reporter` about `reported`, raised from a match. */
+  const report = (id: bigint, reporter: bigint, reported: bigint) => ({
+    entry_id: id,
+    actor_user_id: reporter,
+    target_id: reported.toString(),
+    detail: { reason: 'asked for money', matchId: '6001' },
+    actor: null,
+  });
+
+  /**
+   * The audit trail, answering whichever read the code makes: the open-reports
+   * query, which leaves out the decided reports, and the administrator's holds.
+   */
+  function auditTrail(
+    reports: ReportFixture[],
+    options: { resolved?: string[]; held?: bigint[] } = {},
+  ) {
+    const resolved = new Set(options.resolved ?? []);
+    stubOpenReportsAlways(
+      reports.filter((r) => !resolved.has(r.entry_id.toString())),
+    );
+    jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValue(
+      // A hold names the reports open about that person when it was placed.
+      (options.held ?? []).map((person) => ({
+        action: 'user.held',
+        target_id: person.toString(),
+        detail: {
+          reportIds: reports
+            .filter((r) => r.target_id === person.toString())
+            .map((r) => r.entry_id.toString()),
+        },
+      })) as never,
+    );
+    serveStoredImages(false);
+  }
+
+  describe('a pair with an open report between them', () => {
+    // Their conversation stays in both Messages lists, and it shows the photo.
+    it('still serves the reported guest lecturer’s photo to the reporter', async () => {
+      auditTrail([report(1n, 1n, 101n)]);
+
+      await expect(asMe(REPORTED_GUEST)).resolves.toMatchObject({
+        image_id: REPORTED_GUEST,
+      });
+    });
+
+    it('still serves the reported coordinator’s photo to the reporter', async () => {
+      auditTrail([report(1n, 1n, 102n)]);
+
+      await expect(asMe(REPORTED_COORDINATOR)).resolves.toMatchObject({
+        image_id: REPORTED_COORDINATOR,
+      });
+    });
+
+    it('still serves the reporter’s photo to the person reported', async () => {
+      // Person 101 reported the viewer (user 1).
+      auditTrail([report(1n, 101n, 1n)]);
+
+      await expect(asMe(REPORTED_GUEST)).resolves.toMatchObject({
+        image_id: REPORTED_GUEST,
+      });
+    });
+
+    it('leaves every other photo available to both of them', async () => {
+      auditTrail([report(1n, 1n, 101n)]);
+
+      await expect(asMe(OTHER_GUEST)).resolves.toBeDefined();
+      await expect(asMe(OTHER_COORDINATOR)).resolves.toBeDefined();
+      await expect(asMe(MINE)).resolves.toBeDefined();
+    });
+
+    it('does not affect a third person, who can still fetch the photo', async () => {
+      // The viewer (user 1) is not part of the report between 300 and 101.
+      auditTrail([report(1n, 300n, 101n)]);
+
+      await expect(asMe(REPORTED_GUEST)).resolves.toMatchObject({
+        image_id: REPORTED_GUEST,
+      });
+    });
+
+    it('still hides the photo when the reported person is also on hold', async () => {
+      auditTrail([report(1n, 1n, 101n), report(2n, 300n, 101n)]);
+
+      await expect(asMe(REPORTED_GUEST)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('a person on hold', () => {
+    it('is hidden from everyone once two different people have reported them', async () => {
+      auditTrail([report(1n, 300n, 101n), report(2n, 301n, 101n)]);
+
+      await expect(asMe(REPORTED_GUEST)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('is hidden when the held person is a coordinator', async () => {
+      auditTrail([report(1n, 300n, 102n), report(2n, 301n, 102n)]);
+
+      await expect(asMe(REPORTED_COORDINATOR)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('is hidden when an administrator holds them', async () => {
+      auditTrail([report(1n, 300n, 101n)], { held: [101n] });
+
+      await expect(asMe(REPORTED_GUEST)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
+
+    it('still gets their own photo', async () => {
+      auditTrail([report(1n, 300n, 101n), report(2n, 301n, 101n)]);
+
+      await expect(
+        service.getVisibleTo(REPORTED_GUEST, 'auth0|reported-g'),
+      ).resolves.toMatchObject({ image_id: REPORTED_GUEST });
+    });
+
+    it('is served again when a dismissal takes the reports under the threshold', async () => {
+      auditTrail([report(1n, 300n, 101n), report(2n, 301n, 101n)], {
+        resolved: ['1'],
+      });
+
+      await expect(asMe(REPORTED_GUEST)).resolves.toBeDefined();
+    });
+
+    it('answers a held person’s photo exactly as it answers one that does not exist', async () => {
+      auditTrail([report(1n, 300n, 101n), report(2n, 301n, 101n)]);
+
+      const hidden = await asMe(REPORTED_GUEST).catch((e: unknown) => e);
+      const missing = await asMe(UNKNOWN).catch((e: unknown) => e);
+
+      expect((hidden as NotFoundException).getResponse()).toEqual(
+        (missing as NotFoundException).getResponse(),
+      );
     });
   });
 });

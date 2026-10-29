@@ -13,6 +13,7 @@ import type { AuthenticatedUser } from '../auth/authenticated-user';
 
 describe('GuestSpeakersController', () => {
   let controller: GuestSpeakersController;
+  let service: GuestSpeakersService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -20,12 +21,36 @@ describe('GuestSpeakersController', () => {
       providers: [GuestSpeakersService],
     }).compile();
 
+    service = module.get<GuestSpeakersService>(GuestSpeakersService);
     controller = module.get<GuestSpeakersController>(GuestSpeakersController);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
+  it('lists guest lecturers as seen by the person asking, so a report between them applies', async () => {
+    const findAll = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+
+    await controller.findAll({ id: 'auth0|viewer', roles: [] });
+
+    expect(findAll).toHaveBeenCalledWith('auth0|viewer', false);
+  });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+    ['yes', false],
+    [undefined, false],
+  ])(
+    'lists the caller’s matched profiles only for forMatches=%s',
+    async (value, expected) => {
+      const findAll = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+
+      await controller.findAll({ id: 'auth0|viewer', roles: [] }, value);
+
+      expect(findAll).toHaveBeenCalledWith('auth0|viewer', expected);
+    },
+  );
 });
 
 describe('GuestSpeakersController behaviour', () => {
@@ -36,7 +61,7 @@ describe('GuestSpeakersController behaviour', () => {
 
   // The caller's id comes from the verified token, never the request, so
   // every route must pass user.id through rather than anything from the body.
-  it('acts as the signed-in user on every profile route, and lists all speakers without needing one', async () => {
+  it('acts as the signed-in user on every profile route, including the speaker list, which depends on who is asking', async () => {
     const find = jest.spyOn(service, 'findByUserId').mockResolvedValue(null);
     const basic = jest
       .spyOn(service, 'saveBasicInformation')
@@ -56,14 +81,14 @@ describe('GuestSpeakersController behaviour', () => {
     await controller.saveExpertise(dto, user);
     await controller.saveEngagement(dto, user);
     await controller.saveConsent(dto, user);
-    await expect(controller.findAll()).resolves.toEqual([]);
+    await expect(controller.findAll(user)).resolves.toEqual([]);
 
     expect(find).toHaveBeenCalledWith('auth0|jane');
     expect(basic).toHaveBeenCalledWith('auth0|jane', dto);
     expect(expertise).toHaveBeenCalledWith('auth0|jane', dto);
     expect(engagement).toHaveBeenCalledWith('auth0|jane', dto);
     expect(consent).toHaveBeenCalledWith('auth0|jane', dto);
-    expect(list).toHaveBeenCalledWith();
+    expect(list).toHaveBeenCalledWith('auth0|jane', false);
   });
 
   describe('request validation', () => {

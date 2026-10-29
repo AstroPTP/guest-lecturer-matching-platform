@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { prisma, toId } from '../prisma';
 import { recordAudit } from './platform-rules';
+import type { Prisma } from '../../generated/prisma/client';
 
 /** Eight weekly buckets ending now, oldest first, for the registrations chart. */
 function lastWeeks(count: number): { label: string; start: Date; end: Date }[] {
@@ -192,21 +193,25 @@ export class AdminService {
    * Uses the same `deletedat` marker as account deletion, which JwtAuthGuard
    * already refuses, so a deactivated user is locked out on their next request
    * without a second mechanism. Reactivating clears it.
+   *
+   * Pass a transaction's client as `db` to make the status change and its audit
+   * entry part of that transaction, as deciding a report does.
    */
   async setStatus(
     id: string,
     status: 'active' | 'deactivated',
     actor: string | null = null,
+    db: Prisma.TransactionClient = prisma,
   ) {
     const userid = toId(id, 'id');
-    const exists = await prisma.users.findUnique({
+    const exists = await db.users.findUnique({
       where: { userid },
       select: { userid: true },
     });
     if (!exists) {
       throw new NotFoundException('No user with that id.');
     }
-    const updated = await prisma.users.update({
+    const updated = await db.users.update({
       where: { userid },
       data: { deletedat: status === 'deactivated' ? new Date() : null },
       select: { userid: true, deletedat: true },
@@ -215,6 +220,8 @@ export class AdminService {
       actor,
       status === 'deactivated' ? 'user.deactivated' : 'user.reactivated',
       { type: 'user', id: updated.userid.toString() },
+      undefined,
+      db,
     );
     return {
       id: updated.userid.toString(),

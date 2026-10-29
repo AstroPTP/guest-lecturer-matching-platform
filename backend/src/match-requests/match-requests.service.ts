@@ -8,12 +8,18 @@ import { isUniqueViolation } from '../common/prisma-errors';
 import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { assertGuestCanBeContacted } from '../admin/platform-rules';
+import {
+  isConversationPaused,
+  loadModerationState,
+} from '../admin/open-reports';
 
 export type Side = 'coordinator' | 'guest';
 
 interface CallerSide {
   side: Side;
   ownId: bigint;
+  /** users.userid of the caller. */
+  userId: bigint;
 }
 
 /** A match request as the caller sees it: who it is with, and where it stands. */
@@ -126,14 +132,7 @@ export class MatchRequestsService {
     statuses: string[] = ['ACCEPTED'],
   ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
     const caller = await this.resolveSide(auth0Id);
-    const rows = await prisma.match_requests.findMany({
-      where: {
-        status: { in: statuses },
-        ...(caller.side === 'coordinator'
-          ? { coordinator_id: caller.ownId }
-          : { guest_id: caller.ownId }),
-      },
-    });
+    const rows = await this.matchRowsOf(caller, statuses);
 
     return {
       side: caller.side,
@@ -144,28 +143,77 @@ export class MatchRequestsService {
     };
   }
 
-  /** The caller's match with one profile; refused unless both sides agreed. */
+  /**
+   * The caller's match with one profile, for acting on it, such as sending a
+   * message. Refused unless both sides agreed, and refused while the two have
+   * an open report between them, or either of them is on hold, until an
+   * administrator decides.
+   */
   async findAcceptedMatch(
     auth0Id: string,
     targetId: string,
   ): Promise<{ side: Side; matchId: bigint }> {
     const caller = await this.resolveSide(auth0Id);
-    const row = await prisma.match_requests.findUnique({
-      where: {
-        coordinator_id_guest_id: this.toPair(
-          caller,
-          toId(targetId, 'targetId'),
-        ),
-      },
-    });
-    if (row?.status !== 'ACCEPTED') {
-      throw new ForbiddenException({
-        code: ErrorCode.AuthzInsufficientRole,
-        message: 'You can only message people you have matched with.',
-      });
-    }
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only message people you have matched with.',
+    );
+    await this.assertConversationNotPaused(caller, row);
 
     return { side: caller.side, matchId: row.match_id };
+  }
+
+  /**
+   * The caller's match with one profile, for reading what was already said.
+   * Refused unless both sides agreed, but not refused for an open report or a
+   * hold: a pause stops new messages only, so neither person loses the
+   * conversation, and the one reported is not told by it.
+   */
+  async findReadableMatch(
+    auth0Id: string,
+    targetId: string,
+  ): Promise<{ side: Side; matchId: bigint }> {
+    const caller = await this.resolveSide(auth0Id);
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only message people you have matched with.',
+    );
+
+    return { side: caller.side, matchId: row.match_id };
+  }
+
+  /**
+   * The person on the other side of the caller's match, for acting on them
+   * rather than messaging them, such as reporting. The match may be accepted
+   * or since ended (UNMATCHED): ending a match must not stop someone reporting
+   * what happened in it. A pause does not refuse this either: someone already
+   * reported can be reported by others, and a person on hold can still report.
+   * The counterpart's user id is null for a profile that was never linked to an
+   * account.
+   */
+  async findAcceptedCounterpart(
+    auth0Id: string,
+    targetId: string,
+  ): Promise<{
+    matchId: bigint;
+    callerUserId: bigint;
+    counterpartUserId: bigint | null;
+  }> {
+    const caller = await this.resolveSide(auth0Id);
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only report someone you have matched with.',
+      ['ACCEPTED', 'UNMATCHED'],
+    );
+
+    return {
+      matchId: row.match_id,
+      callerUserId: caller.userId,
+      counterpartUserId: await this.counterpartUserId(caller, row),
+    };
   }
 
   /** Withdraws a request or ends a match; the messages under it cascade. */
@@ -212,6 +260,89 @@ export class MatchRequestsService {
     await this.notifyUnmatch(pair, caller.side);
   }
 
+  /**
+   * The caller's row with one profile, refused with `message` unless its
+   * status is one of `statuses` (ACCEPTED by default).
+   */
+  private async requireAcceptedRow(
+    caller: CallerSide,
+    targetId: string,
+    message: string,
+    statuses: string[] = ['ACCEPTED'],
+  ): Promise<MatchRequestRow> {
+    const row = await prisma.match_requests.findUnique({
+      where: {
+        coordinator_id_guest_id: this.toPair(
+          caller,
+          toId(targetId, 'targetId'),
+        ),
+      },
+    });
+    if (!row?.status || !statuses.includes(row.status)) {
+      throw new ForbiddenException({
+        code: ErrorCode.AuthzInsufficientRole,
+        message,
+      });
+    }
+    return row;
+  }
+
+  /** Every row the caller is in whose status is one of `statuses`. */
+  private matchRowsOf(
+    caller: CallerSide,
+    statuses: string[],
+  ): Promise<MatchRequestRow[]> {
+    return prisma.match_requests.findMany({
+      where: {
+        status: { in: statuses },
+        ...(caller.side === 'coordinator'
+          ? { coordinator_id: caller.ownId }
+          : { guest_id: caller.ownId }),
+      },
+    });
+  }
+
+  /** users.userid of the other side of a match, if their profile has one. */
+  private async counterpartUserId(
+    caller: CallerSide,
+    row: MatchRequestRow,
+  ): Promise<bigint | null> {
+    const profile =
+      caller.side === 'coordinator'
+        ? await prisma.guests.findUnique({
+            where: { guest_id: row.guest_id },
+            select: { user_id: true },
+          })
+        : await prisma.coordinators.findUnique({
+            where: { coordinator_id: row.coordinator_id },
+            select: { user_id: true },
+          });
+    return profile?.user_id ?? null;
+  }
+
+  /**
+   * Refuses a new message between the two while it is paused: an open report
+   * between them, or either of them on hold. The message does not say why, or
+   * that a report exists at all, so the person reported is not told they were.
+   */
+  private async assertConversationNotPaused(
+    caller: CallerSide,
+    row: MatchRequestRow,
+  ): Promise<void> {
+    const state = await loadModerationState();
+    if (state.reports.length === 0) {
+      return;
+    }
+
+    const counterpart = await this.counterpartUserId(caller, row);
+    if (isConversationPaused(state, caller.userId, counterpart)) {
+      throw new ForbiddenException({
+        code: 'CONVERSATION_PAUSED',
+        message: "You can't send messages in this conversation right now.",
+      });
+    }
+  }
+
   private async resolveSide(auth0Id: string): Promise<CallerSide> {
     const userId = await resolveUserId(auth0Id);
 
@@ -220,7 +351,11 @@ export class MatchRequestsService {
       select: { coordinator_id: true },
     });
     if (coordinator) {
-      return { side: 'coordinator', ownId: coordinator.coordinator_id };
+      return {
+        side: 'coordinator',
+        ownId: coordinator.coordinator_id,
+        userId,
+      };
     }
 
     const guest = await prisma.guests.findUnique({
@@ -228,7 +363,7 @@ export class MatchRequestsService {
       select: { guest_id: true },
     });
     if (guest) {
-      return { side: 'guest', ownId: guest.guest_id };
+      return { side: 'guest', ownId: guest.guest_id, userId };
     }
 
     throw new ForbiddenException(

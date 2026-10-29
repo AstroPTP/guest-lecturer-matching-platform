@@ -6,6 +6,7 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import * as prismaModule from '../prisma';
 import { prisma } from '../prisma';
+import { stubOpenReports } from '../testing/open-reports';
 
 describe('GuestSpeakersService', () => {
   let service: GuestSpeakersService;
@@ -195,6 +196,119 @@ describe('GuestSpeakersService', () => {
         },
       });
       query.mockRestore();
+    });
+
+    describe('after reports', () => {
+      /** Open reports as [reporter, reported] pairs; the double's viewer is user 1. */
+      function reports(pairs: [reporter: bigint, reported: string][]) {
+        stubOpenReports(
+          pairs.map(([actor, target], i) => ({
+            entry_id: BigInt(40 + i),
+            actor_user_id: actor,
+            target_id: target,
+            detail: { reason: 'asked for money', matchId: '6001' },
+          })),
+        );
+      }
+
+      async function hiddenFromViewer() {
+        const query = jest.spyOn(prisma.guests, 'findMany');
+        await service.findAll('auth0|viewer');
+        const { where } = query.mock.calls[0][0] as {
+          where: { OR: unknown[]; AND: unknown[] };
+        };
+        query.mockRestore();
+        return where;
+      }
+
+      it('leaves out a guest the viewer has reported, but not guests with no account', async () => {
+        reports([[1n, '7']]);
+
+        const where = await hiddenFromViewer();
+
+        expect(where.AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+        ]);
+        // The deactivated-account rule is still there beside it.
+        expect(where.OR).toEqual([
+          { user_id: null },
+          { users: { is: { deletedat: null } } },
+        ]);
+      });
+
+      it('leaves out a guest who reported the viewer', async () => {
+        reports([[7n, '1']]);
+
+        expect((await hiddenFromViewer()).AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+        ]);
+      });
+
+      it('keeps a guest in for everyone else when only one person reported them', async () => {
+        reports([[8n, '7']]);
+
+        expect((await hiddenFromViewer()).AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [] } }] },
+        ]);
+      });
+
+      it('leaves a guest out for everyone once two different people reported them', async () => {
+        reports([
+          [8n, '7'],
+          [9n, '7'],
+        ]);
+
+        expect((await hiddenFromViewer()).AND).toEqual([
+          { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+        ]);
+      });
+
+      describe('listing the viewer’s own matches', () => {
+        async function matchesOfViewer() {
+          const query = jest.spyOn(prisma.guests, 'findMany');
+          await service.findAll('auth0|viewer', true);
+          const { where } = query.mock.calls[0][0] as {
+            where: { AND: unknown[] };
+          };
+          query.mockRestore();
+          return where;
+        }
+
+        it('keeps a guest the viewer has reported, so their conversation stays', async () => {
+          reports([[1n, '7']]);
+
+          expect((await matchesOfViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [] } }] },
+          ]);
+        });
+
+        it('keeps a guest who reported the viewer', async () => {
+          reports([[7n, '1']]);
+
+          expect((await matchesOfViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [] } }] },
+          ]);
+        });
+
+        it('still leaves out a guest who is on hold for everyone', async () => {
+          reports([
+            [8n, '7'],
+            [9n, '7'],
+          ]);
+
+          expect((await matchesOfViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+          ]);
+        });
+
+        it('leaves Discovery as it was when the flag is not set', async () => {
+          reports([[1n, '7']]);
+
+          expect((await hiddenFromViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+          ]);
+        });
+      });
     });
   });
 });

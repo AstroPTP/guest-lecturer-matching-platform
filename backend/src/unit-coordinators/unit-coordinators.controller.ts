@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Body } from '@nestjs/common';
+import { Controller, Get, Patch, Body, Query } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { AppRole } from '../auth/roles';
@@ -58,8 +58,12 @@ export class UnitCoordinatorsController {
     return this.unitCoordinatorsService.saveConsent(user.id, dto);
   }
 
+  /** `?forMatches=true` lists the caller's matched profiles instead of Discovery's. */
   @Get()
-  findAll() {
-    return this.unitCoordinatorsService.findAll();
+  findAll(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('forMatches') forMatches?: string,
+  ) {
+    return this.unitCoordinatorsService.findAll(user.id, forMatches === 'true');
   }
 }
