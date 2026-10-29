@@ -1,6 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { backendUrl } from '@/lib/auth/config';
+import {
+  forwardedHeaders,
+  unreachableBackendLogLine,
+} from '@/lib/api/proxyRequest';
 import { readAccessToken } from '@/lib/auth/session';
 
 /**
@@ -24,18 +28,11 @@ import { readAccessToken } from '@/lib/auth/session';
  * is a 405 rather than an open pass-through.
  */
 
-const HOP_BY_HOP = new Set([
-  'connection',
-  'keep-alive',
-  'transfer-encoding',
-  'upgrade',
-  'host',
-  // Never forward a client-supplied Authorization header. The token comes from
-  // the cookie; accepting one from the caller would let the browser choose its
-  // own credentials and defeat the whole arrangement.
-  'authorization',
-  'cookie',
-]);
+/** The id the backend gave the request, to hand back so the browser can quote it. */
+function correlationHeader(response: Response): Record<string, string> {
+  const id = response.headers.get('x-correlation-id');
+  return id ? { 'x-correlation-id': id } : {};
+}
 
 async function forward(request: NextRequest, path: string[]) {
   const token = await readAccessToken();
@@ -50,42 +47,48 @@ async function forward(request: NextRequest, path: string[]) {
     );
   }
 
-  const headers = new Headers();
-  request.headers.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) {
-      headers.set(key, value);
-    }
-  });
+  const headers = forwardedHeaders(request.headers);
 
   headers.set('Authorization', `Bearer ${token}`);
 
-  // Echoed back by the backend's GlobalExceptionFilter, so an id on a user's
-  // error screen matches the server log line that produced it (REP-06).
-  if (!headers.has('x-correlation-id')) {
-    headers.set('x-correlation-id', randomUUID());
-  }
+  // The backend gives the request its id and sends it back in the response,
+  // and the proxy passes it on. This one is only for the 502 below, when there
+  // is no backend response to take an id from. It is shown to the user and
+  // written to the log, so the two can be matched.
+  const proxyId = randomUUID();
 
   const target = `${backendUrl()}/${path.join('/')}${request.nextUrl.search}`;
 
-  const response = await fetch(target, {
-    cache: 'no-store',
-    method: request.method,
-    headers,
-    body: ['GET', 'HEAD'].includes(request.method)
-      ? undefined
-      : await request.arrayBuffer(),
-    redirect: 'manual',
-  }).catch(() => null);
+  const body = ['GET', 'HEAD'].includes(request.method)
+    ? undefined
+    : await request.arrayBuffer();
 
-  if (!response) {
+  let response: Response;
+  try {
+    response = await fetch(target, {
+      cache: 'no-store',
+      method: request.method,
+      headers,
+      body,
+      redirect: 'manual',
+    });
+  } catch (error) {
+    console.error(
+      unreachableBackendLogLine({
+        correlationId: proxyId,
+        method: request.method,
+        path: `/${path.join('/')}`,
+        error,
+      }),
+    );
     return NextResponse.json(
       {
         code: 'BACKEND_UNREACHABLE',
         message: 'The API is not responding.',
-        correlationId: headers.get('x-correlation-id') ?? '',
+        correlationId: proxyId,
         timestamp: new Date().toISOString(),
       },
-      { status: 502 },
+      { status: 502, headers: { 'x-correlation-id': proxyId } },
     );
   }
 
@@ -97,6 +100,7 @@ async function forward(request: NextRequest, path: string[]) {
       'Content-Type': response.headers.get('content-type') ?? 'application/json',
       // Per-user data; no shared cache may keep it.
       'Cache-Control': 'no-store',
+      ...correlationHeader(response),
     },
   });
 }

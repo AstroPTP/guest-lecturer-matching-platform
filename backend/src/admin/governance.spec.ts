@@ -218,6 +218,169 @@ describe('AdminController hold route', () => {
   });
 });
 
+describe('AdminController audit list route', () => {
+  const routeWith = () => {
+    const auditEntries = jest.fn().mockResolvedValue([]);
+    const auditEntriesByCorrelationId = jest.fn().mockResolvedValue([]);
+    const controller = new AdminController(
+      {} as never,
+      { auditEntries, auditEntriesByCorrelationId } as never,
+      {} as never,
+    );
+    return { controller, auditEntries, auditEntriesByCorrelationId };
+  };
+
+  it('looks a correlation id up with the limit and the action', async () => {
+    const { controller, auditEntries, auditEntriesByCorrelationId } =
+      routeWith();
+
+    await controller.auditEntries(
+      '50',
+      'user.signed_in',
+      '01HZX3K9QJ0000000000000000',
+    );
+
+    expect(auditEntriesByCorrelationId).toHaveBeenCalledWith(
+      '01HZX3K9QJ0000000000000000',
+      50,
+      'user.signed_in',
+    );
+    expect(auditEntries).not.toHaveBeenCalled();
+  });
+
+  it('lists the newest entries when the query has no correlation id', async () => {
+    const { controller, auditEntries, auditEntriesByCorrelationId } =
+      routeWith();
+
+    await controller.auditEntries();
+
+    expect(auditEntries).toHaveBeenCalledWith(undefined, undefined);
+    expect(auditEntriesByCorrelationId).not.toHaveBeenCalled();
+  });
+
+  it('treats an empty correlation id as none', async () => {
+    const { controller, auditEntries, auditEntriesByCorrelationId } =
+      routeWith();
+
+    await controller.auditEntries('50', undefined, '');
+
+    expect(auditEntries).toHaveBeenCalledWith(50, undefined);
+    expect(auditEntriesByCorrelationId).not.toHaveBeenCalled();
+  });
+});
+
+describe('GovernanceService audit list', () => {
+  const service = new GovernanceService(
+    new AdminService(),
+    new MatchRequestsService(new NotificationsService()),
+  );
+  const ID = '01HZX3K9QJ0000000000000000';
+
+  const entry = (overrides: Record<string, unknown> = {}) => ({
+    entry_id: 7n,
+    action: 'user.signed_in',
+    target_type: 'user',
+    target_id: '42',
+    detail: { correlationId: ID },
+    occurred_at: new Date('2026-10-20T01:00:00.000Z'),
+    actor: { email: 'ann@example.com', role: 'unit_coordinator' },
+    ...overrides,
+  });
+
+  /** The arguments of the one findMany the list made. */
+  const queried = (findMany: jest.SpyInstance) =>
+    (
+      findMany.mock.calls as [
+        { where: unknown; take: number; orderBy: unknown },
+      ][]
+    )[0][0];
+
+  let findMany: jest.SpyInstance;
+  beforeEach(() => {
+    findMany = jest.spyOn(prisma.audit_entries, 'findMany');
+  });
+
+  it('applies no filter when none is given', async () => {
+    await service.auditEntries();
+
+    expect(queried(findMany).where).toEqual({});
+  });
+
+  it('filters on the action alone', async () => {
+    await service.auditEntries(200, 'user.signed_in');
+
+    expect(queried(findMany).where).toEqual({ action: 'user.signed_in' });
+  });
+
+  it('looks the correlation id up in the entry detail, whatever its age', async () => {
+    await service.auditEntriesByCorrelationId(ID);
+
+    expect(queried(findMany).where).toEqual({
+      detail: { path: ['correlationId'], equals: ID },
+    });
+  });
+
+  it('applies the action and the correlation id together', async () => {
+    await service.auditEntriesByCorrelationId(ID, 200, 'user.signed_in');
+
+    expect(queried(findMany).where).toEqual({
+      action: 'user.signed_in',
+      detail: { path: ['correlationId'], equals: ID },
+    });
+  });
+
+  it.each([
+    ['a space', 'has space'],
+    ['a line break', 'abc\nFAKE'],
+    ['markup', '<script>'],
+    ['a JSON fragment', '{"a":1}'],
+    ['more than 64 characters', 'a'.repeat(65)],
+  ])(
+    'refuses a correlation id with %s, without querying',
+    async (_label, id) => {
+      await expect(
+        service.auditEntriesByCorrelationId(id),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(findMany).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['a ULID', ID],
+    ['a UUID', 'c0ffee00-0000-4000-8000-000000000001'],
+    ['64 characters', 'a'.repeat(64)],
+  ])('accepts %s as a correlation id', async (_label, id) => {
+    await service.auditEntriesByCorrelationId(id);
+
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('still returns newest first and never more than 500 rows', async () => {
+    await service.auditEntriesByCorrelationId(ID, 10_000);
+
+    expect(queried(findMany).orderBy).toEqual({ occurred_at: 'desc' });
+    expect(queried(findMany).take).toBe(500);
+  });
+
+  it('returns the entries the lookup found, with the stored detail', async () => {
+    findMany.mockResolvedValue([entry()] as never);
+
+    await expect(service.auditEntriesByCorrelationId(ID)).resolves.toEqual([
+      {
+        id: '7',
+        action: 'user.signed_in',
+        targetType: 'user',
+        targetId: '42',
+        detail: { correlationId: ID },
+        actorEmail: 'ann@example.com',
+        actorRole: 'unit_coordinator',
+        occurredAt: '2026-10-20T01:00:00.000Z',
+      },
+    ]);
+  });
+});
+
 /**
  * A transaction client of its own, as a real transaction hands its callback.
  * It answers from the same doubles as `prisma`, but records what ran on it, in

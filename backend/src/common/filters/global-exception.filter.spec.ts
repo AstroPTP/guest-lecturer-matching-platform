@@ -1,13 +1,16 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   HttpException,
   HttpStatus,
   Logger,
+  NotFoundException,
   UnauthorizedException,
   type ArgumentsHost,
 } from '@nestjs/common';
 import { monitoringStore } from '../../monitoring/monitoring.store';
+import { runInRequestContext } from '../request-context';
 import { GlobalExceptionFilter } from './global-exception.filter';
 
 /** A minimal Express request/response pair, enough for the filter. */
@@ -111,6 +114,71 @@ describe('GlobalExceptionFilter', () => {
     expect(sent.body?.code).toBe('VALIDATION_FAILED');
   });
 
+  it('gives a 404 the code NOT_FOUND, not INTERNAL_ERROR', () => {
+    const sent = run(new NotFoundException('No user with that id.'));
+
+    expect(sent.status).toBe(404);
+    expect(sent.body).toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'The requested resource was not found',
+    });
+    expect(Object.keys(sent.body ?? {}).sort()).toEqual([
+      'code',
+      'correlationId',
+      'message',
+      'timestamp',
+    ]);
+  });
+
+  it('gives a 409 the code CONFLICT', () => {
+    const sent = run(new ConflictException('duplicate key value'));
+
+    expect(sent.status).toBe(409);
+    expect(sent.body?.code).toBe('CONFLICT');
+    expect(JSON.stringify(sent.body)).not.toContain('duplicate key');
+  });
+
+  it('keeps a code a service supplied on a 404 or a 409', () => {
+    const missing = run(
+      new NotFoundException({
+        code: 'GUEST_NOT_FOUND',
+        message: 'No such guest',
+      }),
+    );
+    const clash = run(
+      new ConflictException({
+        code: 'CONTACT_LIMIT_REACHED',
+        message: 'Contacted recently',
+      }),
+    );
+
+    expect(missing.body).toMatchObject({
+      code: 'GUEST_NOT_FOUND',
+      message: 'No such guest',
+    });
+    expect(clash.body).toMatchObject({
+      code: 'CONTACT_LIMIT_REACHED',
+      message: 'Contacted recently',
+    });
+  });
+
+  it.each([
+    [400, 'VALIDATION_FAILED'],
+    [401, 'AUTH_INVALID_TOKEN'],
+    [403, 'AUTHZ_INSUFFICIENT_ROLE'],
+    [404, 'NOT_FOUND'],
+    [409, 'CONFLICT'],
+    [413, 'PAYLOAD_TOO_LARGE'],
+    [429, 'RATE_LIMIT_EXCEEDED'],
+    [500, 'INTERNAL_ERROR'],
+    [503, 'INTERNAL_ERROR'],
+  ])('answers a plain HttpException with status %i as %s', (status, code) => {
+    const sent = run(new HttpException('anything', status));
+
+    expect(sent.status).toBe(status);
+    expect(sent.body?.code).toBe(code);
+  });
+
   it('tells a rate-limited client when to retry', () => {
     const sent = run(
       new HttpException('Too Many Requests', HttpStatus.TOO_MANY_REQUESTS),
@@ -142,18 +210,12 @@ describe('GlobalExceptionFilter', () => {
     expect(sent.body?.code).toBe('INTERNAL_ERROR');
   });
 
-  it('reuses a well-formed inbound correlation id', () => {
-    const sent = run(new BadRequestException(), {
-      'x-correlation-id': 'abc-123_DEF',
-    });
-    expect(sent.body?.correlationId).toBe('abc-123_DEF');
-  });
-
   it.each([
+    ['well-formed', 'abc-123_DEF'],
     ['too long', 'a'.repeat(65)],
     ['a log-injection attempt', 'abc\nFAKE LOG LINE'],
     ['unexpected characters', '<script>'],
-  ])('replaces an inbound correlation id that is %s', (_label, inbound) => {
+  ])('ignores an inbound correlation id that is %s', (_label, inbound) => {
     const sent = run(new BadRequestException(), {
       'x-correlation-id': inbound,
     });
@@ -165,6 +227,59 @@ describe('GlobalExceptionFilter', () => {
     run(new BadRequestException());
     expect(logged.join('\n')).toContain('POST /settings/password');
     expect(logged.join('\n')).not.toContain('secret-in-query');
+  });
+});
+
+describe('GlobalExceptionFilter request context', () => {
+  const inContext = (id: string, work: () => void) =>
+    runInRequestContext({ correlationId: id }, work);
+
+  it('answers with the id the request middleware settled on', () => {
+    let sent: ReturnType<typeof run> | undefined;
+    inContext('01HZX3K9QJ0000000000000000', () => {
+      sent = run(new BadRequestException());
+    });
+
+    expect(sent?.body?.correlationId).toBe('01HZX3K9QJ0000000000000000');
+  });
+
+  it('answers with the context id whatever header the caller sent, so envelope and log line agree', () => {
+    let sent: ReturnType<typeof run> | undefined;
+    inContext('from-context', () => {
+      sent = run(new BadRequestException(), {
+        'x-correlation-id': 'from-header',
+      });
+    });
+
+    expect(sent?.body?.correlationId).toBe('from-context');
+  });
+
+  it('puts the context id in the server log line too', () => {
+    inContext('from-context', () => {
+      run(new Error('boom'));
+    });
+
+    expect(logged.join('\n')).toContain('[from-context]');
+  });
+
+  it('keeps the four-field envelope when it takes the id from the context', () => {
+    let sent: ReturnType<typeof run> | undefined;
+    inContext('from-context', () => {
+      sent = run(new Error('boom'));
+    });
+
+    expect(Object.keys(sent?.body ?? {}).sort()).toEqual([
+      'code',
+      'correlationId',
+      'message',
+      'timestamp',
+    ]);
+  });
+
+  it('falls back to a UUID when there is no request context', () => {
+    const sent = run(new BadRequestException());
+
+    expect(sent.body?.correlationId).toMatch(/^[0-9a-f-]{36}$/);
   });
 });
 

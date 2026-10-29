@@ -19,6 +19,14 @@ import {
 import { readSettings, recordAudit } from './platform-rules';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
+import type { Prisma } from '../../generated/prisma/client';
+
+/**
+ * What a correlation id can look like: letters, digits, hyphens and
+ * underscores, at most 64. Anything else cannot be an id the API made, and is
+ * refused rather than put into a query.
+ */
+const CORRELATION_ID_PATTERN = /^[\w-]{1,64}$/;
 
 const fullName = (
   p?: { first_name?: string | null; last_name?: string | null } | null,
@@ -133,8 +141,41 @@ export class GovernanceService {
 
   /** Newest first. `action` narrows to one kind, e.g. "user.deactivated". */
   async auditEntries(limit = 200, action?: string) {
+    return this.listAuditEntries(action ? { action } : {}, limit);
+  }
+
+  /**
+   * The entries written while one request was served, newest first. This is
+   * how an id quoted from an error screen or a log line finds its entry however
+   * long ago it was written. It is matched exactly against the id stored in
+   * each entry's detail, so it reads the table rather than an index.
+   */
+  async auditEntriesByCorrelationId(
+    correlationId: string,
+    limit = 200,
+    action?: string,
+  ) {
+    if (!CORRELATION_ID_PATTERN.test(correlationId)) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'The correlation id is not valid.',
+      });
+    }
+    return this.listAuditEntries(
+      {
+        ...(action ? { action } : {}),
+        detail: { path: ['correlationId'], equals: correlationId },
+      },
+      limit,
+    );
+  }
+
+  private async listAuditEntries(
+    where: Prisma.audit_entriesWhereInput,
+    limit: number,
+  ) {
     const rows = await prisma.audit_entries.findMany({
-      where: action ? { action } : undefined,
+      where,
       orderBy: { occurred_at: 'desc' },
       take: Math.min(Math.max(limit, 1), 500),
       include: { actor: { select: { email: true, role: true } } },

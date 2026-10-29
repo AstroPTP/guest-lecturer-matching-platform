@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import { currentCorrelationId } from '../common/request-context';
 import { prisma } from '../prisma';
 import { notHiddenWhere } from './open-reports';
 import type { Prisma } from '../../generated/prisma/client';
@@ -101,6 +102,11 @@ export async function assertGuestCanBeContacted(guestId: bigint) {
 /**
  * Appends to the audit trail. Never updates or deletes, so an entry cannot be
  * quietly rewritten by whoever it is about.
+ *
+ * When written during a request, the entry also carries that request's
+ * correlation id in its detail, which is what ties it to the request log line
+ * and to the id on any error the caller saw. Read before the first
+ * await, while the request is certainly still the current one.
  */
 export async function recordAudit(
   actorAuth0Id: string | null,
@@ -110,6 +116,8 @@ export async function recordAudit(
   /** A transaction's client, to write the entry as part of that transaction. */
   db: Prisma.TransactionClient = prisma,
 ) {
+  const linkedDetail = withCorrelationId(detail, currentCorrelationId());
+
   const actor = actorAuth0Id
     ? await db.users.findFirst({
         where: { auth0Id: actorAuth0Id },
@@ -123,7 +131,31 @@ export async function recordAudit(
       action,
       target_type: target.type,
       target_id: target.id,
-      detail: detail ?? undefined,
+      detail: linkedDetail ?? undefined,
     },
   });
+}
+
+/**
+ * The detail with the correlation id added, or the detail untouched when there
+ * is no id (a scheduled job or the retention command, where no request exists).
+ *
+ * A key the caller already set is never overwritten. A detail that is not an
+ * object (a string, a number, an array) has nowhere to put a key, so it is
+ * kept whole under `value` rather than dropped or the id being lost.
+ */
+function withCorrelationId(
+  detail: Prisma.InputJsonValue | undefined,
+  correlationId: string | undefined,
+): Prisma.InputJsonValue | undefined {
+  if (!correlationId) return detail;
+  if (detail === undefined) return { correlationId };
+  if (isPlainObject(detail)) return { correlationId, ...detail };
+  return { correlationId, value: detail };
+}
+
+function isPlainObject(value: unknown): value is Prisma.InputJsonObject {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
 }

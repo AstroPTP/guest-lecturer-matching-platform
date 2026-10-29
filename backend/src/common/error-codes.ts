@@ -15,6 +15,10 @@ export const ErrorCode = {
   AccountOnHold: 'ACCOUNT_ON_HOLD',
   /** Request body failed validation. */
   ValidationFailed: 'VALIDATION_FAILED',
+  /** The route or the record it names does not exist. */
+  NotFound: 'NOT_FOUND',
+  /** The request is well-formed but clashes with the current state of the record. */
+  Conflict: 'CONFLICT',
   /** Rate limit exceeded. */
   RateLimitExceeded: 'RATE_LIMIT_EXCEEDED',
   /** Request body exceeded the configured size limit. */
@@ -31,7 +35,7 @@ export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /**
  * The response envelope. Exactly these four fields reach the client: no stack,
- * no path, no SQL, no dependency name (INF-01).
+ * no path, no SQL, no dependency name.
  */
 export interface ErrorEnvelope {
   code: ErrorCode;
