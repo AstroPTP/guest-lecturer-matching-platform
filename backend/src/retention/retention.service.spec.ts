@@ -1,3 +1,4 @@
+// cspell:ignore timestamptz
 import 'reflect-metadata';
 import { Logger } from '@nestjs/common';
 import { prisma } from '../prisma';
@@ -73,24 +74,70 @@ function fakeDatabase(
     /** One answer per lock attempt, then `locked` for any after that. */
     lockResults?: boolean[];
     expired?: number;
+    /** What the count of support messages past the cut-off answers. */
+    supportExpired?: number;
     unsent?: number;
     batches?: number[];
+    /**
+     * One entry per support batch: the attachment_id of each support message
+     * that batch deleted, null for a message with no file.
+     */
+    supportBatches?: (bigint | null)[][];
+    /**
+     * For each support batch, the thread of each message it deleted, in the
+     * same order. Every message is in thread 7 unless this says otherwise.
+     */
+    supportThreads?: bigint[][];
   } = {},
 ) {
   const remaining = [...(options.batches ?? [])];
+  const remainingSupport = [...(options.supportBatches ?? [])];
+  const remainingThreads = [...(options.supportThreads ?? [])];
   const lockResults = [...(options.lockResults ?? [])];
+  const lock = jest.fn((..._args: unknown[]) =>
+    Promise.resolve([
+      { acquired: lockResults.shift() ?? options.locked ?? true },
+    ]),
+  );
+  const supportDelete = jest.fn((..._args: unknown[]) => {
+    const threads = remainingThreads.shift() ?? [];
+    return Promise.resolve(
+      (remainingSupport.shift() ?? []).map((id, index) => ({
+        attachment_id: id,
+        thread_id: threads[index] ?? 7n,
+      })),
+    );
+  });
+  const messagesDelete = jest.fn((..._args: unknown[]) =>
+    Promise.resolve(remaining.shift() ?? 0),
+  );
+  const attachmentDelete = jest.fn((..._args: unknown[]) => Promise.resolve(0));
+  const threadDelete = jest.fn((..._args: unknown[]) => Promise.resolve(0));
+  const textOf = (strings: TemplateStringsArray) => strings.join('?');
   const tx = {
-    $queryRaw: jest.fn(() =>
-      Promise.resolve([
-        { acquired: lockResults.shift() ?? options.locked ?? true },
-      ]),
+    // The lock and the support delete both come through $queryRaw; they are
+    // told apart by their SQL, and each answers to its own mock.
+    $queryRaw: jest.fn((strings: TemplateStringsArray, ...values: unknown[]) =>
+      textOf(strings).includes('support_messages')
+        ? supportDelete(strings, ...values)
+        : lock(strings, ...values),
     ),
-    $executeRaw: jest.fn(() => Promise.resolve(remaining.shift() ?? 0)),
+    $executeRaw: jest.fn(
+      (strings: TemplateStringsArray, ...values: unknown[]) =>
+        textOf(strings).includes('support_attachments')
+          ? attachmentDelete(strings, ...values)
+          : textOf(strings).includes('support_threads')
+            ? threadDelete(strings, ...values)
+            : messagesDelete(strings, ...values),
+    ),
   };
   const queryRaw = jest.spyOn(prisma, '$queryRaw').mockImplementation(((
     strings: TemplateStringsArray,
   ) => {
     const text = strings.join('?');
+    if (text.includes('support_messages')) {
+      return Promise.resolve([{ count: options.supportExpired ?? 0 }]);
+    }
     if (text.includes('IS NULL')) {
       return Promise.resolve([{ count: options.unsent ?? 0 }]);
     }
@@ -108,10 +155,16 @@ function fakeDatabase(
     .mockResolvedValue({} as never);
   const db = {
     queryRaw,
-    /** The delete, as run on the transaction client. */
-    executeRaw: tx.$executeRaw,
+    /** The match messages delete, as run on the transaction client. */
+    executeRaw: messagesDelete,
+    /** The support messages delete, as run on the transaction client. */
+    supportDelete,
+    /** The delete of files no support message refers to any more. */
+    attachmentDelete,
+    /** The delete of support threads left with no messages. */
+    threadDelete,
     /** The lock, as run on the transaction client. */
-    lockQuery: tx.$queryRaw,
+    lockQuery: lock,
     rootExecuteRaw,
     transaction,
     audit,
@@ -313,6 +366,238 @@ describe('RetentionService dry run', () => {
   });
 });
 
+describe('RetentionService support messages', () => {
+  const service = new RetentionService();
+
+  it('deletes support messages past the cut-off in the same transaction as the lock', async () => {
+    const db = fakeDatabase({ batches: [0], supportBatches: [[null, null]] });
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({
+      outcome: 'completed',
+      deleted: 0,
+      supportDeleted: 2,
+      batches: 1,
+    });
+    const { text, values } = sqlOf(db.supportDelete.mock.calls[0]);
+    expect(text).toMatch(
+      /^DELETE FROM support_messages WHERE message_id IN \(/,
+    );
+    expect(text).toContain('sent_at < ?::timestamptz');
+    expect(text).toContain('LIMIT ?');
+    expect(text).toContain('RETURNING attachment_id');
+    expect(values).toEqual([daysAgo(365), 5000]);
+    // One lock and one transaction cover the batch, support messages included.
+    expect(db.lockQuery).toHaveBeenCalledTimes(2);
+    expect(db.transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('follows RETENTION_DAYS_MESSAGE_LOG and RETENTION_BATCH_SIZE like the match messages', async () => {
+    process.env.RETENTION_DAYS_MESSAGE_LOG = '90';
+    process.env.RETENTION_BATCH_SIZE = '200';
+    const db = fakeDatabase({ supportBatches: [[null], []] });
+
+    await service.purge();
+
+    expect(sqlOf(db.supportDelete.mock.calls[0]).values).toEqual([
+      daysAgo(90),
+      200,
+    ]);
+  });
+
+  it('keeps going while either kind of message is still being removed', async () => {
+    const db = fakeDatabase({
+      batches: [10, 0, 0],
+      supportBatches: [[null], [null, null], []],
+    });
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({
+      outcome: 'completed',
+      deleted: 10,
+      supportDeleted: 3,
+      batches: 2,
+    });
+    expect(db.transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops after one empty batch when there is nothing of either kind to delete', async () => {
+    const db = fakeDatabase({ batches: [], supportBatches: [] });
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({ deleted: 0, supportDeleted: 0, batches: 0 });
+    expect(db.transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes the files the removed messages pointed at, in the same transaction', async () => {
+    const db = fakeDatabase({ supportBatches: [[11n, null, 12n], []] });
+
+    await service.purge();
+
+    expect(db.attachmentDelete).toHaveBeenCalledTimes(1);
+    const { text, values } = sqlOf(db.attachmentDelete.mock.calls[0]);
+    expect(text).toMatch(/^DELETE FROM support_attachments a WHERE/);
+    expect(values).toEqual([[11n, 12n]]);
+    // Only files nothing else refers to.
+    expect(text).toContain('NOT EXISTS');
+    expect(text).toContain('m.attachment_id = a.attachment_id');
+    expect(db.rootExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('deletes the threads the removed messages leave empty, in the same transaction', async () => {
+    const db = fakeDatabase({
+      supportBatches: [[null, null, null], []],
+      supportThreads: [[7n, 7n, 8n]],
+    });
+
+    await service.purge();
+
+    expect(db.threadDelete).toHaveBeenCalledTimes(1);
+    const { text, values } = sqlOf(db.threadDelete.mock.calls[0]);
+    expect(text).toMatch(/^DELETE FROM support_threads t WHERE/);
+    // Each thread once, however many of its messages went.
+    expect(values).toEqual([[7n, 8n]]);
+    // Only a thread with no message left; one still holding newer messages stays.
+    expect(text).toContain('NOT EXISTS');
+    expect(text).toContain('m.thread_id = t.thread_id');
+    expect(db.rootExecuteRaw).not.toHaveBeenCalled();
+  });
+
+  it('deletes the empty threads after the messages and the files', async () => {
+    const db = fakeDatabase({ supportBatches: [[11n], []] });
+
+    await service.purge();
+
+    const order = (mock: jest.Mock) => mock.mock.invocationCallOrder[0];
+    expect(order(db.supportDelete)).toBeLessThan(order(db.attachmentDelete));
+    expect(order(db.attachmentDelete)).toBeLessThan(order(db.threadDelete));
+  });
+
+  it('does not look for empty threads when no support message was removed', async () => {
+    const db = fakeDatabase({ batches: [4, 0], supportBatches: [] });
+
+    await service.purge();
+
+    expect(db.threadDelete).not.toHaveBeenCalled();
+  });
+
+  it('does not touch the attachments table when no removed message had a file', async () => {
+    const db = fakeDatabase({ supportBatches: [[null, null], []] });
+
+    await service.purge();
+
+    expect(db.attachmentDelete).not.toHaveBeenCalled();
+  });
+
+  it('deletes nothing at all when another instance holds the lock', async () => {
+    const db = fakeDatabase({ locked: false, supportBatches: [[1n, 2n]] });
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({ outcome: 'skipped', supportDeleted: 0 });
+    expect(db.supportDelete).not.toHaveBeenCalled();
+    expect(db.attachmentDelete).not.toHaveBeenCalled();
+  });
+
+  it('counts support messages in a partial run when the lock is lost afterwards', async () => {
+    fakeDatabase({
+      lockResults: [true, false],
+      batches: [3],
+      supportBatches: [[null, null]],
+    });
+    const log = jest.spyOn(Logger.prototype, 'log');
+
+    const run = await service.purge();
+
+    expect(run).toMatchObject({
+      outcome: 'partial',
+      deleted: 3,
+      supportDeleted: 2,
+    });
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining('another instance took over after 5 rows'),
+    );
+  });
+
+  it('reports a partial run on support messages alone', async () => {
+    fakeDatabase({
+      lockResults: [true, false],
+      supportBatches: [[null]],
+    });
+
+    await expect(service.purge()).resolves.toMatchObject({
+      outcome: 'partial',
+      deleted: 0,
+      supportDeleted: 1,
+    });
+  });
+
+  it('records how many support messages were deleted in the audit row, as a count only', async () => {
+    const db = fakeDatabase({ supportBatches: [[5n, 6n], []] });
+
+    await service.purge();
+
+    const { detail } = auditedRow(db.audit);
+    expect(detail.supportDeleted).toBe(2);
+    expect(detail).not.toHaveProperty('supportWouldDelete');
+    expect(JSON.stringify(detail)).not.toMatch(/attachment|filename|subject/i);
+  });
+
+  describe('in a dry run', () => {
+    beforeEach(() => {
+      process.env.RETENTION_DRY_RUN = 'true';
+    });
+
+    it('counts the support messages that would be deleted and deletes none', async () => {
+      const db = fakeDatabase({
+        expired: 4,
+        supportExpired: 9,
+        supportBatches: [[1n]],
+      });
+
+      const run = await service.purge();
+
+      expect(run).toMatchObject({
+        dryRun: true,
+        wouldDelete: 4,
+        supportWouldDelete: 9,
+        deleted: 0,
+        supportDeleted: 0,
+      });
+      expect(db.supportDelete).not.toHaveBeenCalled();
+      expect(db.attachmentDelete).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('counts with the same predicate the delete uses', async () => {
+      const db = fakeDatabase({ supportExpired: 1 });
+
+      await service.purge();
+
+      const count = db.queryRaw.mock.calls
+        .map(sqlOf)
+        .find((sql) => sql.text.includes('FROM support_messages'));
+      expect(count?.text).toContain('sent_at < ?::timestamptz');
+      expect(count?.values).toEqual([daysAgo(365)]);
+    });
+
+    it('puts the support count in the audit row', async () => {
+      const db = fakeDatabase({ supportExpired: 9 });
+
+      await service.purge();
+
+      expect(auditedRow(db.audit).detail).toMatchObject({
+        dryRun: true,
+        supportDeleted: 0,
+        supportWouldDelete: 9,
+      });
+    });
+  });
+});
+
 describe('RetentionService locking', () => {
   const service = new RetentionService();
 
@@ -464,6 +749,7 @@ describe('RetentionService audit', () => {
         'outcome',
         'retentionDays',
         'skippedNullSentAt',
+        'supportDeleted',
       ].sort(),
     );
     expect(detail).toMatchObject({
@@ -471,6 +757,7 @@ describe('RetentionService audit', () => {
       retentionDays: 365,
       cutoff: daysAgo(365).toISOString(),
       deleted: 5010,
+      supportDeleted: 0,
       skippedNullSentAt: 2,
       batches: 2,
       outcome: 'completed',
@@ -640,13 +927,14 @@ describe('RetentionService preview', () => {
 
   it('returns the preview shape using the configured window', async () => {
     process.env.RETENTION_DAYS_MESSAGE_LOG = '120';
-    fakeDatabase({ expired: 31, unsent: 4 });
+    fakeDatabase({ expired: 31, supportExpired: 8, unsent: 4 });
 
     await expect(service.preview()).resolves.toEqual({
       dryRun: true,
       retentionDays: 120,
       cutoff: daysAgo(120).toISOString(),
       wouldDelete: 31,
+      supportWouldDelete: 8,
       skippedNullSentAt: 4,
     });
   });
@@ -657,6 +945,8 @@ describe('RetentionService preview', () => {
     await service.preview();
 
     expect(db.executeRaw).not.toHaveBeenCalled();
+    expect(db.supportDelete).not.toHaveBeenCalled();
+    expect(db.attachmentDelete).not.toHaveBeenCalled();
     expect(db.lockQuery).not.toHaveBeenCalled();
     expect(db.transaction).not.toHaveBeenCalled();
     expect(db.audit).not.toHaveBeenCalled();

@@ -15,6 +15,13 @@ const NOT_FORWARDED = new Set([
   // own credentials and defeat the whole arrangement.
   'authorization',
   'cookie',
+  // Conditional requests would let the API answer 304 with no body, which is
+  // not what a no-store response should be built from.
+  'if-none-match',
+  'if-modified-since',
+  'if-match',
+  'if-unmodified-since',
+  'if-range',
 ]);
 
 /** The browser's headers, less the ones the proxy sets or refuses to pass on. */
@@ -26,6 +33,18 @@ export function forwardedHeaders(incoming: Headers): Headers {
     }
   });
   return headers;
+}
+
+/**
+ * The path to append to the API's address, from the segments the browser sent.
+ *
+ * Each segment is percent-encoded first. Next hands the route its segments
+ * already decoded, so a `#` or `?` that arrived as %23 or %3F would otherwise
+ * end the path or start a query when the segments are joined into a URL, and
+ * the API would be asked for a different route from the one named.
+ */
+export function upstreamPath(segments: string[]): string {
+  return segments.map(encodeURIComponent).join('/');
 }
 
 /**

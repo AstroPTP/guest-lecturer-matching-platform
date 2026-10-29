@@ -1,4 +1,5 @@
 import { backendFetch } from '@/lib/api/backendClient';
+import { isThreadId } from '@/lib/requestFormat';
 import {
   AccountStatus,
   VerificationStatus,
@@ -263,6 +264,10 @@ const ACTION_LABELS: Record<string, { label: AuditAction; category: AuditCategor
   'user.released': { label: 'Account Released', category: 'Account Management' },
   'guest.approved': { label: 'Profile Approved', category: 'Account Management' },
   'settings.updated': { label: 'Settings Changed', category: 'Account Management' },
+  'support.requested': { label: 'Details Requested', category: 'Account Management' },
+  'support.replied': { label: 'Request Replied', category: 'Account Management' },
+  'support.closed': { label: 'Request Closed', category: 'Account Management' },
+  'support.reopened': { label: 'Request Reopened', category: 'Account Management' },
   'user.signed_in': { label: 'Signed In', category: 'Security' },
   'retention.purge': { label: 'Retention Purge', category: 'System' },
 };
@@ -447,4 +452,135 @@ export async function getSystemSnapshot(): Promise<SystemSnapshot> {
 /** Failed sign-ins, refused admin requests, rate limiting and server errors. */
 export async function getSecuritySignals(): Promise<SecuritySignals> {
   return backendFetch<SecuritySignals>('/admin/system/security', { cache: 'no-store' });
+}
+
+// ---------------------------------------------------------------------------
+// Requests for further details
+// ---------------------------------------------------------------------------
+
+export type RequestStatus = 'open' | 'closed';
+
+export interface RequestThreadSummary {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string | null;
+  userRole: string | null;
+  subject: string;
+  status: RequestStatus;
+  /** Messages from the user that no administrator has opened yet. */
+  unreadFromUser: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RequestAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+export interface RequestMessage {
+  id: string;
+  sender: 'admin' | 'user';
+  content: string;
+  sentAt: string;
+  attachment: RequestAttachment | null;
+}
+
+export interface RequestThread {
+  id: string;
+  subject: string;
+  status: RequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  user: { id: string; name: string; email: string | null; role: string | null };
+  messages: RequestMessage[];
+}
+
+/** Asks one user for further details. The user is told in their Messages page. */
+export async function requestDetails(input: {
+  userId: string;
+  subject: string;
+  message: string;
+}): Promise<{ id: string }> {
+  return backendFetch<{ id: string }>('/admin/support/threads', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId: numericId(input.userId),
+      subject: input.subject,
+      message: input.message,
+    }),
+  });
+}
+
+/** The code the API answers with when the person already has an open request. */
+export const REQUEST_ALREADY_OPEN = 'SUPPORT_REQUEST_ALREADY_OPEN';
+
+/**
+ * The id of the open request with this user, if they have one. Asks the API
+ * for that user's open request, rather than searching the list of recent
+ * requests, so an old request is found as well as a recent one.
+ */
+export async function findOpenRequestId(userId: string): Promise<string | null> {
+  const id = numericId(userId);
+  const threads = await getRequestThreads({ userId: id, status: 'open' });
+  return threads.find((thread) => thread.userId === id && thread.status === 'open')?.id ?? null;
+}
+
+/** The API path of one request, refusing an id that is not a number. */
+function threadPath(id: string): string {
+  if (!isThreadId(id)) {
+    throw new Error('That request could not be found.');
+  }
+  return `/admin/support/threads/${id}`;
+}
+
+/** Narrows the list on the server: one user's requests, only open ones, or both. */
+export interface RequestThreadFilter {
+  userId?: string;
+  status?: RequestStatus;
+}
+
+export async function getRequestThreads(filter: RequestThreadFilter = {}): Promise<RequestThreadSummary[]> {
+  const query = new URLSearchParams();
+  if (filter.userId) query.set('userId', numericId(filter.userId));
+  if (filter.status) query.set('status', filter.status);
+  const search = query.toString();
+  return backendFetch<RequestThreadSummary[]>(`/admin/support/threads${search ? `?${search}` : ''}`, {
+    cache: 'no-store',
+  });
+}
+
+/** Opening a request counts as reading what the user sent. */
+export async function getRequestThread(id: string): Promise<RequestThread> {
+  return backendFetch<RequestThread>(threadPath(id), {
+    cache: 'no-store',
+  });
+}
+
+export async function replyToRequest(id: string, content: string): Promise<RequestMessage> {
+  return backendFetch<RequestMessage>(`${threadPath(id)}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function setRequestStatus(
+  id: string,
+  status: RequestStatus,
+): Promise<{ id: string; status: RequestStatus }> {
+  return backendFetch(threadPath(id), {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
+/**
+ * Where an attached file is served. Through the portal's own server route, so
+ * the access token is added there and the link needs nothing from the page.
+ */
+export function requestAttachmentHref(attachmentId: string): string {
+  return `/api/backend/support/attachments/${encodeURIComponent(attachmentId)}`;
 }

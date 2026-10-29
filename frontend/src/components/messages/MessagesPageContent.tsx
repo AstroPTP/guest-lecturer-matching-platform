@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import attachIcon from "@/assets/attach.png";
 import closeIcon from "@/assets/close.png";
 import deleteIcon from "@/assets/delete.png";
 import infoIcon from "@/assets/info.png";
@@ -10,10 +11,21 @@ import searchIcon from "@/assets/search.png";
 import sendIcon from "@/assets/send.png";
 import type { ChatMessage, Conversation, ConversationParticipant, ConversationSeed } from "@/types/messages/messageTypes";
 import type { UserRole } from "@/types/shared/userRole";
+import { ServiceError } from "@/lib/serviceErrors";
 import { deleteConversation, ensureConversations, getConversations, getMessages, sendMessage } from "@/services/messages/messageService";
 import { unmatchUsers } from "@/services/discovery/matchService";
-import { BackendError } from "@/lib/api/backendClient";
 import { reportUser } from "@/services/reports/reportService";
+import {
+  ATTACHMENT_ACCEPT,
+  checkAttachment,
+  formatFileSize,
+  getSupportMessages,
+  getSupportThreads,
+  markSupportRead,
+  sendSupportMessage,
+  toSupportConversation,
+  type SupportThread,
+} from "@/services/support/supportService";
 import { getInitials } from "@/utils/displayFormatters";
 const CURRENT_USER_PLACEHOLDER_ID = "";
 
@@ -21,6 +33,41 @@ interface MessagesPageContentProps {
   userType: UserRole;
   conversationSeeds: ConversationSeed[];
   participantProfileHref: string;
+}
+
+/**
+ * What to tell the user when a call fails. A service that is not connected to
+ * the API keeps its own wording; otherwise the API's message is shown, since
+ * it says why in terms the user can act on (for example that a conversation is
+ * paused, or that a request is closed).
+ */
+function errorText(error: unknown, notIntegratedText: string): string {
+  if (error instanceof ServiceError && error.code === "API_NOT_INTEGRATED") {
+    return notIntegratedText;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return "Something went wrong, please try again.";
+}
+
+/**
+ * The user's requests from CCAE. A failure here must not take the matched
+ * conversations down with it, so it is logged and treated as having none.
+ */
+async function loadSupportThreads(): Promise<SupportThread[]> {
+  try {
+    return await getSupportThreads();
+  } catch (error) {
+    console.error("Unable to load requests from CCAE:", error);
+    return [];
+  }
+}
+
+/** The list with the conversation with CCAE pinned first, or without it when there is none. */
+function withSupport(conversations: Conversation[], support: Conversation | null): Conversation[] {
+  const others = conversations.filter((conversation) => conversation.kind !== "support");
+  return support ? [support, ...others] : others;
 }
 
 export default function MessagesPageContent({ userType, conversationSeeds, participantProfileHref }: MessagesPageContentProps) {
@@ -35,21 +82,37 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
   const [actionError, setActionError] = useState<string | null>(null);
   // Unmatching takes several seconds; this stops a second click sending it again.
   const [isUnmatching, setIsUnmatching] = useState(false);
+  // Requests for details from CCAE, and the one file chosen for the next reply.
+  const [supportThreads, setSupportThreads] = useState<SupportThread[]>([]);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
   useEffect(() => {
     let cancelled = false;
 
     async function loadConversations() {
       setErrorMessage(null);
       try {
-        const nextConversations = await ensureConversations(userType, conversationSeeds);
+        // With no matches there is nothing to ask the API for, and an account
+        // with no profile yet is refused if it does.
+        const [matchConversations, threads] = await Promise.all([
+          conversationSeeds.length === 0 ? Promise.resolve([]) : ensureConversations(userType, conversationSeeds),
+          loadSupportThreads(),
+        ]);
         if (cancelled) {
           return;
         }
+        const support = toSupportConversation(threads);
+        const nextConversations = withSupport(matchConversations, support);
+        setSupportThreads(threads);
         setConversations(nextConversations);
         setSelectedConversation((currentConversation) => {
           const retainedConversation = currentConversation ? nextConversations.find((conversation) => conversation.id === currentConversation.id) : undefined;
-          const nextSelectedConversation = retainedConversation ?? nextConversations[0] ?? null;
-          void loadMessages(nextSelectedConversation);
+          // CCAE is pinned first, but only opens by itself when it is waiting
+          // for an answer; otherwise the first match is what the user came for.
+          const nextSelectedConversation =
+            retainedConversation ?? (support?.actionRequired ? support : (matchConversations[0] ?? support ?? null));
+          void loadMessages(nextSelectedConversation, threads);
           return nextSelectedConversation;
         });
       } catch (error) {
@@ -63,9 +126,13 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         }
       }
     }
-    async function loadMessages(conversation: Conversation | null) {
+    async function loadMessages(conversation: Conversation | null, threads: SupportThread[]) {
       try {
-        const nextMessages = conversation ? await getMessages(conversation.id) : [];
+        const nextMessages = !conversation
+          ? []
+          : conversation.kind === "support"
+            ? await getSupportMessages(threads)
+            : await getMessages(conversation.id);
         if (!cancelled) {
           setMessages(nextMessages);
         }
@@ -82,6 +149,35 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       cancelled = true;
     };
   }, [userType, conversationSeeds]);
+
+  // Looking at the conversation with CCAE counts as reading what it sent. The
+  // list is fetched again afterwards so the unread figure is the server's.
+  const viewingSupport = selectedConversation?.kind === "support";
+  const unreadFromAdmin = supportThreads.reduce((total, thread) => total + thread.unreadFromAdmin, 0);
+  useEffect(() => {
+    if (!viewingSupport || unreadFromAdmin === 0) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        await markSupportRead(supportThreads);
+        const fresh = await getSupportThreads();
+        if (cancelled) {
+          return;
+        }
+        const support = toSupportConversation(fresh);
+        setSupportThreads(fresh);
+        setConversations((current) => withSupport(current, support));
+        setSelectedConversation((current) => (current?.kind === "support" && support ? support : current));
+      } catch (error) {
+        console.error("Unable to mark requests from CCAE as read:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [viewingSupport, unreadFromAdmin, supportThreads]);
 
   if (isLoading) {
     return (
@@ -106,19 +202,77 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
     return conversation.participant.fullName.toLowerCase().includes(searchText);
   });
 
+  // CCAE can only be answered on a request that is still open.
+  const replyThread = supportThreads.find((thread) => thread.status === "open");
+
   async function selectConversation(conversation: Conversation) {
     setActionError(null);
     setSelectedConversation(conversation);
+    setAttachment(null);
+    setAttachmentError(null);
     try {
-      setMessages(await getMessages(conversation.id));
-    } catch {
-      setActionError("This isn't connected to a backend yet, so messages couldn't be loaded.");
+      if (conversation.kind === "support") {
+        const threads = await getSupportThreads();
+        setSupportThreads(threads);
+        setMessages(await getSupportMessages(threads));
+      } else {
+        setMessages(await getMessages(conversation.id));
+      }
+    } catch (error) {
+      setActionError(errorText(error, "This isn't connected to a backend yet, so messages couldn't be loaded."));
       return;
     }
     setShowInfoPanel(false);
   }
+
+  /** Fetches the requests again and updates the pinned conversation to match. */
+  async function refreshSupport(): Promise<SupportThread[]> {
+    const fresh = await getSupportThreads();
+    const support = toSupportConversation(fresh);
+    setSupportThreads(fresh);
+    setConversations((current) => withSupport(current, support));
+    setSelectedConversation((current) => (current?.kind === "support" && support ? support : current));
+    return fresh;
+  }
+
+  async function handleSupportSubmit() {
+    if (!replyThread || isSending || (!messageText.trim() && !attachment)) {
+      return;
+    }
+    setActionError(null);
+    setIsSending(true);
+    try {
+      const newMessage = await sendSupportMessage(replyThread, messageText, attachment);
+      setMessages((currentMessages) => [...currentMessages, newMessage]);
+      setMessageText("");
+      setAttachment(null);
+      setAttachmentError(null);
+      await refreshSupport();
+    } catch (error) {
+      setActionError(errorText(error, "This isn't connected to a backend yet, so your message couldn't be sent."));
+      // The request may have been closed since the page loaded; show it as it is now.
+      try {
+        setMessages(await getSupportMessages(await refreshSupport()));
+      } catch {
+        // The error above is what the user needs to see.
+      }
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  function chooseAttachment(file: File) {
+    const problem = checkAttachment(file);
+    setAttachment(problem ? null : file);
+    setAttachmentError(problem);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (selectedConversation?.kind === "support") {
+      await handleSupportSubmit();
+      return;
+    }
     if (!selectedConversation || !messageText.trim()) {
       return;
     }
@@ -128,15 +282,10 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       setMessages((currentMessages) => [...currentMessages, newMessage]);
       setMessageText("");
       const updatedConversations = await getConversations(userType);
-      setConversations(updatedConversations);
+      setConversations((current) => withSupport(updatedConversations, current.find((conversation) => conversation.kind === "support") ?? null));
       setSelectedConversation(updatedConversations.find((conversation) => conversation.id === selectedConversation.id) ?? selectedConversation);
     } catch (error) {
-      // A refusal for this conversation is worded for the person, so it is shown as sent.
-      setActionError(
-        error instanceof BackendError && error.status === 403
-          ? error.message
-          : "This isn't connected to a backend yet, so your message couldn't be sent.",
-      );
+      setActionError(errorText(error, "This isn't connected to a backend yet, so your message couldn't be sent."));
     }
   }
 
@@ -149,8 +298,7 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         reason,
       });
     } catch (error) {
-      // reportUser words every failure for the person, including "you have already reported this person".
-      setActionError(error instanceof Error ? error.message : "Your report couldn't be submitted. Please try again.");
+      setActionError(errorText(error, "This isn't connected to a backend yet, so your report couldn't be submitted."));
       return;
     }
 
@@ -166,8 +314,8 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
     try {
       await unmatchUsers(conversation.participant.id);
       await deleteConversation(conversation.id);
-    } catch {
-      setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
+    } catch (error) {
+      setActionError(errorText(error, "This isn't connected to a backend yet, so that action couldn't be saved."));
       return;
     } finally {
       setIsUnmatching(false);
@@ -177,7 +325,7 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
     setConversations(remainingConversations);
     setSelectedConversation(nextConversation);
     try {
-      setMessages(nextConversation ? await getMessages(nextConversation.id) : []);
+      setMessages(nextConversation ? await (nextConversation.kind === "support" ? getSupportMessages(supportThreads) : getMessages(nextConversation.id)) : []);
     } catch {
       setMessages([]);
     }
@@ -209,13 +357,22 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
             setMessageText={setMessageText}
             onSubmit={handleSubmit}
             onShowInfo={() => setShowInfoPanel(true)}
+            canReply={selectedConversation.kind !== "support" || Boolean(replyThread)}
+            attachment={attachment}
+            attachmentError={attachmentError}
+            onChooseAttachment={chooseAttachment}
+            onRemoveAttachment={() => {
+              setAttachment(null);
+              setAttachmentError(null);
+            }}
+            isSending={isSending}
           />
         ) : (
           <EmptyChatState />
         )}
       </div>
 
-      {showInfoPanel && selectedConversation && (
+      {showInfoPanel && selectedConversation && selectedConversation.kind !== "support" && (
         <ChatInfoPanel
           conversation={selectedConversation}
           participantProfileHref={participantProfileHref}
@@ -258,6 +415,7 @@ function ConversationList({conversations,selectedConversationId, search,setSearc
         ) : (
           conversations.map((conversation) => {
             const selected = conversation.id === selectedConversationId;
+            const isSupport = conversation.kind === "support";
             return (
               <button
                 key={conversation.id}
@@ -265,7 +423,7 @@ function ConversationList({conversations,selectedConversationId, search,setSearc
                 onClick={() => onSelect(conversation)}
                 className={
                   "flex w-full items-start gap-3 border-l-4 px-4 py-4 text-left transition " +
-                  (selected ? "border-[#156874] bg-gray-100" : "border-transparent hover:bg-gray-50")
+                  (selected ? "border-[#156874] bg-gray-100" : isSupport && conversation.actionRequired ? "border-amber-500 bg-amber-50 hover:bg-amber-100" : "border-transparent hover:bg-gray-50")
                 }
               >
                 <ProfilePhoto participant={conversation.participant} size="medium" />
@@ -274,6 +432,14 @@ function ConversationList({conversations,selectedConversationId, search,setSearc
                     <h3 className="truncate font-bold text-[#2d2d2d]">{conversation.participant.fullName}</h3>
                     <span className="shrink-0 text-xs text-gray-500">{conversation.lastMessageTime}</span>
                   </div>
+                  {isSupport && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-600">Pinned</span>
+                      {conversation.actionRequired && (
+                        <span className="rounded-full border border-amber-700 bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">Action required</span>
+                      )}
+                    </div>
+                  )}
 
                   <p className="mt-1 line-clamp-2 text-sm leading-5 text-gray-600">{conversation.lastMessage}</p>
                 </div>
@@ -286,14 +452,47 @@ function ConversationList({conversations,selectedConversationId, search,setSearc
   );
 }
 
-function ChatThread({ conversation, messages, messageText, setMessageText,onSubmit,onShowInfo}: {
+function ChatThread({
+  conversation,
+  messages,
+  messageText,
+  setMessageText,
+  onSubmit,
+  onShowInfo,
+  canReply,
+  attachment,
+  attachmentError,
+  onChooseAttachment,
+  onRemoveAttachment,
+  isSending,
+}: {
   conversation: Conversation;
   messages: ChatMessage[];
   messageText: string;
   setMessageText: (value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onShowInfo: () => void;
+  /** False for a closed request, which takes no further replies. */
+  canReply: boolean;
+  attachment: File | null;
+  attachmentError: string | null;
+  onChooseAttachment: (file: File) => void;
+  onRemoveAttachment: () => void;
+  isSending: boolean;
 }) {
+  const fileInput = useRef<HTMLInputElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Newest at the bottom, in view. A request thread can run long enough that
+  // the reply being waited for would otherwise be off screen.
+  useEffect(() => {
+    const list = scroller.current;
+    if (list) {
+      list.scrollTop = list.scrollHeight;
+    }
+  }, [messages, conversation.id]);
+  const isSupport = conversation.kind === "support";
+  const canSend = canReply && !isSending && (Boolean(messageText.trim()) || (isSupport && attachment !== null));
+
   return (
     <section className="flex h-full min-w-0 flex-col bg-[#fafafa]">
       <header className="flex h-24 shrink-0 items-center justify-between border-b border-gray-100 bg-white px-8">
@@ -302,22 +501,27 @@ function ChatThread({ conversation, messages, messageText, setMessageText,onSubm
 
           <div>
             <h2 className="text-xl font-bold text-[#2d2d2d]">{conversation.participant.fullName}</h2>
+            {isSupport && conversation.actionRequired && (
+              <span className="mt-1 inline-block rounded-full border border-amber-700 bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900">Action required</span>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            aria-label="Conversation information"
-            onClick={onShowInfo}
-            className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-gray-600 hover:bg-gray-100 hover:text-black"
-          >
-            <Image src={infoIcon} alt="" width={22} height={22} />
-          </button>
-        </div>
+        {!isSupport && (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              aria-label="Conversation information"
+              onClick={onShowInfo}
+              className="flex h-10 w-10 items-center justify-center rounded-full text-lg text-gray-600 hover:bg-gray-100 hover:text-black"
+            >
+              <Image src={infoIcon} alt="" width={22} height={22} />
+            </button>
+          </div>
+        )}
       </header>
 
-      <div className="flex-1 space-y-6 overflow-y-auto px-8 py-8">
+      <div ref={scroller} className="flex-1 space-y-6 overflow-y-auto px-8 py-8">
         <div className="flex justify-center">
           <span className="rounded-full bg-gray-100 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-gray-600">Today</span>
         </div>
@@ -327,31 +531,101 @@ function ChatThread({ conversation, messages, messageText, setMessageText,onSubm
             Start the conversation with {conversation.participant.fullName}.
           </div>
         ) : (
-          messages.map((message) => <MessageBubble key={message.id} message={message} participant={conversation.participant} />)
+          messages.map((message, index) => (
+            <div key={message.id} className="space-y-6">
+              {message.requestId && message.requestId !== messages[index - 1]?.requestId && (
+                <div className="flex justify-center">
+                  <span className="rounded-full border border-gray-300 bg-white px-4 py-1.5 text-xs font-semibold text-gray-700">
+                    Request: {message.requestSubject} · {message.requestStatus === "closed" ? "Closed" : "Open"}
+                  </span>
+                </div>
+              )}
+              <MessageBubble message={message} participant={conversation.participant} />
+            </div>
+          ))
         )}
       </div>
 
       <form onSubmit={onSubmit} className="shrink-0 border-t border-gray-100 bg-white p-6">
+        {isSupport && attachment && (
+          <div className="mb-3 flex">
+            <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-gray-300 bg-gray-50 py-1 pl-3 pr-1 text-sm text-[#2d2d2d]">
+              <span className="truncate">{attachment.name}</span>
+              <span className="shrink-0 text-xs text-gray-600">({formatFileSize(attachment.size)})</span>
+              <button
+                type="button"
+                onClick={onRemoveAttachment}
+                aria-label={"Remove attached file " + attachment.name}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full hover:bg-gray-200"
+              >
+                <Image src={closeIcon} alt="" width={12} height={12} aria-hidden="true" />
+              </button>
+            </span>
+          </div>
+        )}
+        {isSupport && attachmentError && (
+          <p className="mb-3 text-sm font-medium text-red-700" role="alert">
+            {attachmentError}
+          </p>
+        )}
+
         <div className="flex items-end gap-3 rounded-xl bg-gray-100 p-2">
+          {isSupport && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                accept={ATTACHMENT_ACCEPT}
+                className="hidden"
+                tabIndex={-1}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  // Cleared so choosing the same file again still registers.
+                  event.target.value = "";
+                  if (file) {
+                    onChooseAttachment(file);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Attach a file"
+                onClick={() => fileInput.current?.click()}
+                disabled={!canReply || isSending}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Image src={attachIcon} alt="" width={22} height={22} />
+              </button>
+            </>
+          )}
           <textarea
             rows={1}
             value={messageText}
             onChange={(event) => setMessageText(event.target.value)}
-            placeholder="Type a message..."
-            className="min-h-11 flex-1 resize-none border-0 bg-transparent px-2 py-3 outline-none"
+            placeholder={canReply ? "Type a message..." : "This request is closed."}
+            disabled={!canReply}
+            maxLength={isSupport ? 2000 : undefined}
+            aria-label="Message"
+            className="min-h-11 flex-1 resize-none border-0 bg-transparent px-2 py-3 outline-none disabled:cursor-not-allowed"
           />
 
           <button
             type="submit"
             aria-label="Send message"
-            disabled={!messageText.trim()}
+            disabled={!canSend}
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#2d2d2d] text-xl text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Image src={sendIcon} alt="" width={22} height={22} className="invert" />
           </button>
         </div>
 
-        <p className="mt-2 px-2 text-xs text-gray-500">Press the send button to send your message.</p>
+        <p className="mt-2 px-2 text-xs text-gray-600">
+          {isSupport
+            ? canReply
+              ? "You can attach one file (JPEG, PNG, WebP or PDF, up to 5MB). Only you and CCAE can see it."
+              : "CCAE has closed this request, so it can no longer take a reply."
+            : "Press the send button to send your message."}
+        </p>
       </form>
     </section>
   );
@@ -366,13 +640,39 @@ function MessageBubble({ message, participant,}: {
     <div className={"flex max-w-3xl items-start gap-4 " + (isCurrentUser ? "ml-auto justify-end" : "")}>
       {!isCurrentUser && <ProfilePhoto participant={participant} size="small" />}
       <div className={isCurrentUser ? "text-right" : ""}>
+        {!isCurrentUser && message.senderLabel && (
+          <span className="mb-1 block px-1 text-xs font-bold text-[#2d2d2d]">{message.senderLabel}</span>
+        )}
         <div
           className={
             "inline-block max-w-2xl rounded-2xl px-5 py-4 text-left text-[15px] leading-7 shadow-sm " +
             (isCurrentUser ? "rounded-tr-sm bg-[#2d2d2d] text-white" : "rounded-tl-sm bg-gray-100 text-[#2d2d2d]")
           }
         >
-          {message.text}
+          {message.text && <span className="whitespace-pre-wrap break-words">{message.text}</span>}
+          {message.attachment && (
+            <a
+              href={message.attachment.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={
+                "flex items-center gap-2 text-sm font-semibold underline " +
+                (message.text ? "mt-2 " : "") +
+                (isCurrentUser ? "text-white" : "text-[#156874]")
+              }
+            >
+              <Image
+                src={attachIcon}
+                alt=""
+                width={16}
+                height={16}
+                aria-hidden="true"
+                className={isCurrentUser ? "invert" : ""}
+              />
+              <span className="break-all">{message.attachment.filename}</span>
+              <span className="shrink-0 font-normal no-underline">({formatFileSize(message.attachment.sizeBytes)})</span>
+            </a>
+          )}
         </div>
         <span className="mt-1 block px-1 text-xs text-gray-500">{formatMessageTime(message.sentAt)}</span>
       </div>

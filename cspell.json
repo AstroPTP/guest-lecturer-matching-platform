@@ -56,6 +56,7 @@
     "supabase",
     "tenant",
     "throttler",
+    "topbar",
     "unparseable",
     "unvetted",
     "xact"

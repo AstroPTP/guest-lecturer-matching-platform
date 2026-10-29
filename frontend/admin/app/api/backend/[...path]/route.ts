@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
+import { isSafeProxyPath } from '@/lib/api/proxyPath';
 import { backendUrl } from '@/lib/auth/config';
 import {
   forwardedHeaders,
   unreachableBackendLogLine,
+  upstreamPath,
 } from '@/lib/api/proxyRequest';
 import { readAccessToken } from '@/lib/auth/session';
 
@@ -39,7 +41,38 @@ function correlationHeader(response: Response): Record<string, string> {
   return id ? { 'x-correlation-id': id } : {};
 }
 
-async function forward(request: NextRequest, path: string[]) {
+/**
+ * Everything this route returns is per-user and must not be kept by a shared
+ * cache, so every response, including the errors built here, says so. The
+ * headers passed through from the API are chosen one by one below; nothing
+ * that would allow shared caching (Cache-Control, ETag, Last-Modified) is
+ * among them.
+ */
+const NO_SHARED_CACHE = 'private, no-store';
+
+/** A response built here rather than passed through from the API. */
+function refuse(
+  body: Record<string, string>,
+  status: number,
+  extraHeaders: Record<string, string> = {},
+) {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'Cache-Control': NO_SHARED_CACHE, ...extraHeaders },
+  });
+}
+
+async function forward(request: NextRequest, path: string[] | null) {
+  // Checked before anything else, and before the API is called. A segment that
+  // is a dot segment or holds a separator could make this server request a
+  // different route from the one the browser asked for.
+  if (!path || !isSafeProxyPath(path)) {
+    return refuse(
+      { code: 'VALIDATION_FAILED', message: 'The request path is not valid.' },
+      400,
+    );
+  }
+
   const token = await readAccessToken();
 
   const headers = forwardedHeaders(request.headers);
@@ -54,7 +87,7 @@ async function forward(request: NextRequest, path: string[]) {
   // written to the log, so the two can be matched.
   const proxyId = randomUUID();
 
-  const target = `${backendUrl()}/${path.join('/')}${request.nextUrl.search}`;
+  const target = `${backendUrl()}/${upstreamPath(path)}${request.nextUrl.search}`;
 
   const body = ['GET', 'HEAD'].includes(request.method)
     ? undefined
@@ -63,6 +96,7 @@ async function forward(request: NextRequest, path: string[]) {
   let response: Response;
   try {
     response = await fetch(target, {
+      cache: 'no-store',
       method: request.method,
       headers,
       body,
@@ -77,46 +111,69 @@ async function forward(request: NextRequest, path: string[]) {
         error,
       }),
     );
-    return NextResponse.json(
+    return refuse(
       {
         code: 'BACKEND_UNREACHABLE',
         message: 'The API is not responding.',
         correlationId: proxyId,
         timestamp: new Date().toISOString(),
       },
-      { status: 502, headers: { 'x-correlation-id': proxyId } },
+      502,
+      { 'x-correlation-id': proxyId },
     );
   }
 
   // Pass the body and status straight through so the error envelope the
   // backend produced reaches the client unchanged.
+  const passed: Record<string, string> = {
+    'Content-Type': response.headers.get('content-type') ?? 'application/json',
+    'Cache-Control': NO_SHARED_CACHE,
+  };
+  // A downloaded file arrives with how it may be shown (a PDF is a download,
+  // never displayed in the page) and a ban on type sniffing. Dropping either
+  // would let the browser decide for itself what the file is.
+  for (const name of ['content-disposition', 'x-content-type-options']) {
+    const value = response.headers.get(name);
+    if (value) passed[name] = value;
+  }
+  Object.assign(passed, correlationHeader(response));
   return new NextResponse(response.body, {
     status: response.status,
-    headers: {
-      'Content-Type': response.headers.get('content-type') ?? 'application/json',
-      ...correlationHeader(response),
-    },
+    headers: passed,
   });
 }
 
 type Context = { params: Promise<{ path: string[] }> };
 
+/**
+ * The path segments, or null when they cannot be read, for instance because
+ * one is not valid percent-encoding. Null is answered with a 400 like any
+ * other path that is not valid.
+ */
+async function pathOf(context: Context): Promise<string[] | null> {
+  try {
+    return (await context.params).path;
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function POST(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function PATCH(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function PUT(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
 
 export async function DELETE(request: NextRequest, context: Context) {
-  return forward(request, (await context.params).path);
+  return forward(request, await pathOf(context));
 }
