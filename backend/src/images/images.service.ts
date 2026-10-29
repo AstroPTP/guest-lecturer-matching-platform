@@ -4,8 +4,14 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { prisma, resolveUserId } from '../prisma';
+import {
+  visibleCoordinatorsWhere,
+  visibleGuestsWhere,
+} from '../admin/platform-rules';
 
 export const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
+
+const MAX_IMAGE_ID = 2n ** 63n - 1n;
 
 const SIGNATURES: Record<string, (bytes: Buffer) => boolean> = {
   'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
@@ -22,9 +28,37 @@ type Owner = 'coordinator' | 'guest';
 
 @Injectable()
 export class ImagesService {
-  async get(imageId: bigint) {
-    const image = await prisma.images.findUnique({
-      where: { image_id: imageId },
+  /**
+   * The image, but only to someone who may see it: the owner of the profile it
+   * belongs to, or anyone signed in while that profile is listed on the
+   * discovery pages.
+   *
+   * Every other case is reported as missing, the same as an id that does not
+   * exist, so a caller cannot tell which ids are in use or whose photo a
+   * deactivated or unapproved profile holds. The check is part of the query,
+   * so the bytes are only read when the caller may have them.
+   */
+  async getVisibleTo(imageId: bigint, viewerAuth0Id: string) {
+    // The column is a signed 64-bit integer; a larger number would make the
+    // query itself fail with a server error instead of finding nothing.
+    if (imageId < 1n || imageId > MAX_IMAGE_ID) {
+      throw new NotFoundException('Image not found');
+    }
+    const ownProfile = { users: { is: { auth0Id: viewerAuth0Id } } };
+    const image = await prisma.images.findFirst({
+      where: {
+        image_id: imageId,
+        OR: [
+          {
+            guests: { some: { OR: [ownProfile, await visibleGuestsWhere()] } },
+          },
+          {
+            coordinators: {
+              some: { OR: [ownProfile, visibleCoordinatorsWhere] },
+            },
+          },
+        ],
+      },
     });
     if (!image) throw new NotFoundException('Image not found');
     return image;
