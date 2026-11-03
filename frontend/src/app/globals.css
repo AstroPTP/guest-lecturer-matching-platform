@@ -5,10 +5,13 @@
   --foreground: #171717;
 
   /* Curtin GLMP brand colours, used by components/brand/BrandLogo. The dark
-     set is in the dark-theme blocks below. */
+     values are defined once here and the dark-theme blocks below point at
+     them. The gold is the same in both themes. */
   --brand-navy: #0e3b66;
   --brand-gold: #e9a93b;
   --brand-subtitle: #5f6368;
+  --brand-navy-dark: #8fbceb;
+  --brand-subtitle-dark: #aeb4bd;
 }
 
 @theme inline {
@@ -38,9 +41,8 @@ body {
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
     color-scheme: dark;
-    --brand-navy: #8fbceb;
-    --brand-gold: #e9a93b;
-    --brand-subtitle: #aeb4bd;
+    --brand-navy: var(--brand-navy-dark);
+    --brand-subtitle: var(--brand-subtitle-dark);
     --background: #0d0f13;
     --foreground: #f2f4f7;
     --color-white: #171a20;
@@ -138,9 +140,8 @@ body {
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --brand-navy: #8fbceb;
-  --brand-gold: #e9a93b;
-  --brand-subtitle: #aeb4bd;
+  --brand-navy: var(--brand-navy-dark);
+  --brand-subtitle: var(--brand-subtitle-dark);
   --background: #0d0f13;
   --foreground: #f2f4f7;
   --color-white: #171a20;
