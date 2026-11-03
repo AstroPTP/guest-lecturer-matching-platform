@@ -20,7 +20,7 @@ import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFor
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import CustomTopicsField from "@/components/shared/CustomTopicsField";
-import { expertiseWithFixedTopicSpelling } from "@/utils/customTopics";
+import { expertiseWithCleanTopics } from "@/utils/customTopics";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
   value: level.value,
@@ -58,7 +58,7 @@ export default function UnitCoordinatorMyProfilePage() {
 
         setProfile(savedProfile);
         setBasicDraft(cloneData(savedProfile.basicInformation));
-        setExpertiseDraft(expertiseWithFixedTopicSpelling(cloneData(savedProfile.expertise)));
+        setExpertiseDraft(expertiseWithCleanTopics(cloneData(savedProfile.expertise)));
         setEngagementDraft(cloneData(savedProfile.engagementProfile));
       } catch {
         if (!cancelled) {
@@ -80,7 +80,7 @@ export default function UnitCoordinatorMyProfilePage() {
       return;
     }
     setBasicDraft(cloneData(profile.basicInformation));
-    setExpertiseDraft(expertiseWithFixedTopicSpelling(cloneData(profile.expertise)));
+    setExpertiseDraft(expertiseWithCleanTopics(cloneData(profile.expertise)));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(section);
     setSavedMessage("");
@@ -91,7 +91,7 @@ export default function UnitCoordinatorMyProfilePage() {
       return;
     }
     setBasicDraft(cloneData(profile.basicInformation));
-    setExpertiseDraft(expertiseWithFixedTopicSpelling(cloneData(profile.expertise)));
+    setExpertiseDraft(expertiseWithCleanTopics(cloneData(profile.expertise)));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(null);
   }

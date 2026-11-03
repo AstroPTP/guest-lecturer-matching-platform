@@ -28,23 +28,44 @@ function asciiLowerCase(text: string): string {
   return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
+// Lower case (A to Z only), with "&", the word "and", hyphens and spaces left
+// out, so "banking-finance" and "Banking and Finance" both match "Banking &
+// Finance". The backend matches stored topics to the fixed list the same way.
+function looseTopicKey(topic: string): string {
+  return asciiLowerCase(topic).replace(/&|\band\b/g, "").replace(/[-\s]+/g, "");
+}
+
 function findFixedTopic(topic: string): string | undefined {
-  const name = asciiLowerCase(topic);
-  return expertiseTopics.find((fixed) => asciiLowerCase(fixed) === name);
+  const key = looseTopicKey(topic);
+  return expertiseTopics.find((fixed) => looseTopicKey(fixed) === key);
 }
 
 export function isCustomTopic(topic: string): boolean {
   return findFixedTopic(topic) === undefined;
 }
 
-// Spells each fixed topic as the list does, so a topic saved as "ACCOUNTING"
-// shows as the selected "Accounting" chip.
-export function withFixedTopicSpelling(topics: string[]): string[] {
-  return topics.map((topic) => findFixedTopic(topic) ?? topic);
+// Tidies the topics of a saved profile before they go into a form, so a list
+// saved under older rules still saves. A fixed topic is spelled as the list
+// spells it ("ACCOUNTING" shows as the selected "Accounting" chip), repeats are
+// dropped, and the list is cut to the topic limits with fixed topics kept
+// first. The saved profile only changes when the person saves.
+export function cleanStoredTopics(topics: string[]): string[] {
+  const tidy = topics.map(tidyTopic);
+  const fixed = Array.from(new Set(tidy.map(findFixedTopic).filter((topic): topic is string => topic !== undefined)));
+  const seen = new Set(fixed.map(topicKey));
+  const custom: string[] = [];
+  for (const topic of tidy) {
+    const key = topicKey(topic);
+    if (key !== "" && findFixedTopic(topic) === undefined && !seen.has(key)) {
+      seen.add(key);
+      custom.push(topic);
+    }
+  }
+  return [...fixed, ...custom.slice(0, MAX_CUSTOM_TOPICS)].slice(0, MAX_TOPICS);
 }
 
-export function expertiseWithFixedTopicSpelling<T extends { selectedTopics: string[] }>(expertise: T): T {
-  return { ...expertise, selectedTopics: withFixedTopicSpelling(expertise.selectedTopics) };
+export function expertiseWithCleanTopics<T extends { selectedTopics: string[] }>(expertise: T): T {
+  return { ...expertise, selectedTopics: cleanStoredTopics(expertise.selectedTopics) };
 }
 
 // Why a new custom topic cannot be added to the selected ones, or "" if it can.
@@ -65,7 +86,7 @@ export function customTopicError(topic: string, selectedTopics: string[]): strin
   if (key === "") {
     return "A topic must include a letter or number.";
   }
-  const fixedMatch = expertiseTopics.find((fixed) => topicKey(fixed) === key);
+  const fixedMatch = findFixedTopic(topic) ?? expertiseTopics.find((fixed) => topicKey(fixed) === key);
   if (fixedMatch) {
     return "\"" + fixedMatch + "\" is already in the list. Select it there instead.";
   }
