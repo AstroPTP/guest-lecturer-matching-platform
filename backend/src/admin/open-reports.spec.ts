@@ -461,6 +461,40 @@ describe('notHiddenWhere', () => {
     });
   });
 
+  describe('for the viewer’s own matches', () => {
+    it('keeps the people the viewer has an open report with, whoever made it', async () => {
+      stubAudit([report(4n, 1n, '7'), report(5n, 8n, '1')]);
+
+      await expect(
+        notHiddenWhere('auth0|viewer', { keepReportedPair: true }),
+      ).resolves.toEqual({
+        OR: [{ user_id: null }, { user_id: { notIn: [] } }],
+      });
+    });
+
+    it('still hides a held person', async () => {
+      stubAudit([
+        report(4n, 1n, '7'),
+        report(5n, 3n, '7'),
+        report(6n, 4n, '7'),
+      ]);
+
+      await expect(
+        notHiddenWhere('auth0|viewer', { keepReportedPair: true }),
+      ).resolves.toEqual({
+        OR: [{ user_id: null }, { user_id: { notIn: [7n] } }],
+      });
+    });
+
+    it('hides the reported pair from Discovery when the option is not given', async () => {
+      stubAudit([report(4n, 1n, '7')]);
+
+      await expect(notHiddenWhere('auth0|viewer', {})).resolves.toEqual({
+        OR: [{ user_id: null }, { user_id: { notIn: [7n] } }],
+      });
+    });
+  });
+
   it('hides only held people when there is no viewer', async () => {
     stubAudit([report(4n, 1n, '7'), report(5n, 4n, '9'), report(6n, 5n, '9')]);
 

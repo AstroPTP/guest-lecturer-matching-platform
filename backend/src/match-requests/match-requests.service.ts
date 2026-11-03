@@ -15,15 +15,33 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { prisma, resolveUserId, toId } from '../prisma';
 import {
   assertGuestCanBeContacted,
+  visibleCoordinatorsWhere,
   visibleGuestsWhere,
 } from '../admin/platform-rules';
-import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
 import {
   isConversationPaused,
   loadModerationState,
 } from '../admin/open-reports';
 
 export type Side = 'coordinator' | 'guest';
+
+/** The title of the notice that tells someone a new request came in. */
+const INTEREST_NOTICE_TITLE = 'New interest';
+
+/**
+ * Where the notice about a request leads: the sender's card in the
+ * recipient's Discovery. The id after "from" is the sender's profile, so
+ * requests from two people are two notices, and the same pair always
+ * produces the same link.
+ */
+function interestHref(
+  pair: { coordinator_id: bigint; guest_id: bigint },
+  senderSide: Side,
+): string {
+  return senderSide === 'coordinator'
+    ? '/guest_lecturer/discovery?from=' + String(pair.coordinator_id)
+    : '/unit_coordinator/discovery?from=' + String(pair.guest_id);
+}
 
 interface CallerSide {
   side: Side;
@@ -78,7 +96,8 @@ export class MatchRequestsService {
   /**
    * Raises a request against another profile. When the other side already sent
    * one, this accepts it instead, which is what makes a match. Asking twice
-   * returns the request that already exists.
+   * returns the request that already exists. A caller who is on hold can do
+   * neither: they are refused before a request is saved or accepted.
    */
   async create(auth0Id: string, targetId: string): Promise<MatchRequest> {
     const caller = await this.resolveSide(auth0Id);
@@ -157,45 +176,10 @@ export class MatchRequestsService {
   }
 
   /**
-   * The caller's accepted matches whose conversation is not paused, for lists
-   * that must not show a thread the caller cannot open. Uses the same rule as
-   * `findAcceptedMatch`. However many matches there are, it reads the open
-   * reports once and, only when there are any, looks the other profiles up in
-   * one query.
-   */
-  async findUnpausedMatches(
-    auth0Id: string,
-  ): Promise<{ side: Side; matches: { matchId: bigint; targetId: string }[] }> {
-    const caller = await this.resolveSide(auth0Id);
-    const rows = await this.matchRowsOf(caller, ['ACCEPTED']);
-    const state = rows.length > 0 ? await loadModerationState() : null;
-
-    let open = rows;
-    if (state && state.reports.length > 0) {
-      const accounts = await this.accountsOfCounterparts(caller, rows);
-      open = rows.filter(
-        (row) =>
-          !isConversationPaused(
-            state,
-            caller.userId,
-            accounts.get(this.counterpartProfileId(caller, row)) ?? null,
-          ),
-      );
-    }
-
-    return {
-      side: caller.side,
-      matches: open.map((row) => ({
-        matchId: row.match_id,
-        targetId: this.toMatchRequest(caller, row).targetId,
-      })),
-    };
-  }
-
-  /**
-   * The caller's match with one profile; refused unless both sides agreed, and
-   * refused while the two have an open report between them, or either of them
-   * is on hold, until an administrator decides.
+   * The caller's match with one profile, for acting on it, such as sending a
+   * message. Refused unless both sides agreed, and refused while the two have
+   * an open report between them, or either of them is on hold, until an
+   * administrator decides.
    */
   async findAcceptedMatch(
     auth0Id: string,
@@ -208,6 +192,26 @@ export class MatchRequestsService {
       'You can only message people you have matched with.',
     );
     await this.assertConversationNotPaused(caller, row);
+
+    return { side: caller.side, matchId: row.match_id };
+  }
+
+  /**
+   * The caller's match with one profile, for reading what was already said.
+   * Refused unless both sides agreed, but not refused for an open report or a
+   * hold: a pause stops new messages only, so neither person loses the
+   * conversation, and the one reported is not told by it.
+   */
+  async findReadableMatch(
+    auth0Id: string,
+    targetId: string,
+  ): Promise<{ side: Side; matchId: bigint }> {
+    const caller = await this.resolveSide(auth0Id);
+    const row = await this.requireAcceptedRow(
+      caller,
+      targetId,
+      'You can only message people you have matched with.',
+    );
 
     return { side: caller.side, matchId: row.match_id };
   }
@@ -244,9 +248,12 @@ export class MatchRequestsService {
     };
   }
 
-  /** Withdraws a request or ends a match; the messages under it cascade. */
   /**
    * Withdraws a request that is not a match yet, or ends a match.
+   *
+   * Withdrawing deletes the request and the other person's "New interest"
+   * notice about it, so their list does not keep a link to a request that is
+   * gone and asking again is told to them afresh.
    *
    * Ending a match keeps the row as UNMATCHED rather than deleting it, so the
    * pair stays hidden from each other's Discovery and their event history is
@@ -264,6 +271,7 @@ export class MatchRequestsService {
 
     if (existing.status !== 'ACCEPTED') {
       await prisma.match_requests.deleteMany({ where: pair });
+      await this.retractInterest(pair, this.senderOf(existing));
       return;
     }
 
@@ -366,44 +374,6 @@ export class MatchRequestsService {
     });
   }
 
-  /** The profile id of the other side of a row. */
-  private counterpartProfileId(
-    caller: CallerSide,
-    row: MatchRequestRow,
-  ): bigint {
-    return caller.side === 'coordinator' ? row.guest_id : row.coordinator_id;
-  }
-
-  /**
-   * users.userid for each other side's profile, in one query. A profile that
-   * was never linked to an account is left out.
-   */
-  private async accountsOfCounterparts(
-    caller: CallerSide,
-    rows: MatchRequestRow[],
-  ): Promise<Map<bigint, bigint>> {
-    const ids = rows.map((row) => this.counterpartProfileId(caller, row));
-    const accounts = new Map<bigint, bigint>();
-    if (caller.side === 'coordinator') {
-      const guests = await prisma.guests.findMany({
-        where: { guest_id: { in: ids } },
-        select: { guest_id: true, user_id: true },
-      });
-      for (const g of guests) {
-        if (g.user_id !== null) accounts.set(g.guest_id, g.user_id);
-      }
-    } else {
-      const coordinators = await prisma.coordinators.findMany({
-        where: { coordinator_id: { in: ids } },
-        select: { coordinator_id: true, user_id: true },
-      });
-      for (const c of coordinators) {
-        if (c.user_id !== null) accounts.set(c.coordinator_id, c.user_id);
-      }
-    }
-    return accounts;
-  }
-
   /** users.userid of the other side of a match, if their profile has one. */
   private async counterpartUserId(
     caller: CallerSide,
@@ -423,9 +393,9 @@ export class MatchRequestsService {
   }
 
   /**
-   * Refuses when messaging between the two is paused: an open report between
-   * them, or either of them on hold. The message does not say why, or that a
-   * report exists at all, so the person reported is not told they were.
+   * Refuses a new message between the two while it is paused: an open report
+   * between them, or either of them on hold. The message does not say why, or
+   * that a report exists at all, so the person reported is not told they were.
    */
   private async assertConversationNotPaused(
     caller: CallerSide,
@@ -440,8 +410,7 @@ export class MatchRequestsService {
     if (isConversationPaused(state, caller.userId, counterpart)) {
       throw new ForbiddenException({
         code: 'CONVERSATION_PAUSED',
-        message:
-          'Messaging with this person is paused for now. Please try again later.',
+        message: "You can't send messages in this conversation right now.",
       });
     }
   }
@@ -595,26 +564,57 @@ export class MatchRequestsService {
       }
 
       // Discovery is where they answer: the sender's card is still there to
-      // accept, which makes the match, or to dismiss. The id after "from" is
-      // that card, so Discovery opens on it and a repeat from someone else is
-      // not mistaken for this one.
-      const senderId = fromCoordinator ? pair.coordinator_id : pair.guest_id;
-      const discovery = fromCoordinator
-        ? '/guest_lecturer/discovery'
-        : '/unit_coordinator/discovery';
+      // accept, which makes the match, or to dismiss. The link opens on that
+      // card, and a repeat from someone else is not mistaken for this one.
       await this.notificationsService.createUnlessRecent({
         recipientId,
         type: 'match',
-        title: 'New interest',
+        title: INTEREST_NOTICE_TITLE,
         description: personLabel(sender) + ' is interested in working with you',
         actionLabel: 'View',
-        href: discovery + '?from=' + String(senderId),
+        href: interestHref(pair, senderSide),
       });
     } catch (error) {
       // Only the error's name: a database error's message can quote the
       // names and ids it was working with, and none of that belongs in a log.
       this.logger.warn(
         'Could not notify about a new request: ' +
+          (error instanceof Error ? error.name : 'UnknownError'),
+      );
+    }
+  }
+
+  /**
+   * Deletes the "New interest" notice a request raised, whether the recipient
+   * has read it or not. A notice that stayed would lead to a request that no
+   * longer exists, and would also count as a repeat of the next request from
+   * the same person within a day, so that one would send nothing.
+   *
+   * The request is already deleted by now, so a notice that cannot be removed
+   * is logged and dropped rather than failing a withdrawal that went through.
+   */
+  private async retractInterest(
+    pair: { coordinator_id: bigint; guest_id: bigint },
+    senderSide: Side,
+  ): Promise<void> {
+    try {
+      const parties = await this.loadParties(pair);
+      const recipientId =
+        parties[senderSide === 'coordinator' ? 'guest' : 'coordinator'].auth0Id;
+      if (!recipientId) {
+        return;
+      }
+
+      await this.notificationsService.deleteMatching({
+        recipientId,
+        type: 'match',
+        title: INTEREST_NOTICE_TITLE,
+        href: interestHref(pair, senderSide),
+      });
+    } catch (error) {
+      // Only the error's name, as when a notice cannot be sent.
+      this.logger.warn(
+        'Could not remove the notice for a withdrawn request: ' +
           (error instanceof Error ? error.name : 'UnknownError'),
       );
     }
@@ -657,6 +657,11 @@ export class MatchRequestsService {
    * deactivated, not yet approved while approval is required, on hold, or
    * reported by or against the caller cannot be reached by guessing its id,
    * and the 404 does not say which of those it was.
+   *
+   * The one exception is the caller being on hold themselves: that is refused
+   * with a 403 that says so, because the problem is their account and not the
+   * profile they asked for. It applies to accepting a request as much as to
+   * sending one, since both come through here.
    */
   private async assertCanRequest(
     caller: CallerSide,
@@ -690,8 +695,29 @@ export class MatchRequestsService {
               select: { coordinator_id: true },
             }),
           ]);
+    if (!own) {
+      await this.assertCallerNotOnHold(caller);
+    }
     if (!own || !other) {
       throw new NotFoundException('That profile does not exist.');
+    }
+  }
+
+  /**
+   * Refuses with a message about the caller's own account when they are on
+   * hold. Their own profile is hidden from them like everyone else's, so
+   * without this the refusal would read as a problem with the profile they
+   * clicked. Only asked once the caller's own profile has failed to load, so
+   * the usual request pays for no extra read.
+   */
+  private async assertCallerNotOnHold(caller: CallerSide): Promise<void> {
+    const state = await loadModerationState();
+    if (state.held.has(caller.userId)) {
+      throw new ForbiddenException({
+        code: ErrorCode.AccountOnHold,
+        message:
+          "Your account is on hold while CCAE reviews a report, so you can't send or accept requests right now.",
+      });
     }
   }
 

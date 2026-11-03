@@ -37,6 +37,10 @@ export class ImagesController {
   /**
    * Serves raw image bytes. Used as the `src` of an <img> tag. Any signed-in
    * role may ask, but only for a photo the service says they may see.
+   *
+   * Sent with no-store: visibility can change at any time (a deactivated or
+   * unapproved profile), and a cached copy would keep showing the photo to
+   * people who already loaded it.
    */
   @Get('images/:id')
   async getImage(
@@ -46,7 +50,7 @@ export class ImagesController {
   ) {
     const image = await this.images.getVisibleTo(toId(id, 'id'), user.id);
     res.setHeader('Content-Type', image.mime_type);
-    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.setHeader('Cache-Control', 'no-store');
     res.send(image.image_data);
   }
 

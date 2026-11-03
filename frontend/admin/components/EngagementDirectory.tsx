@@ -1,6 +1,4 @@
-import Image from "next/image";
 import Link from "next/link";
-import arrowBackIcon from "@/assets/arrow_back.png";
 
 export interface EngagementDirectoryRow {
   id: string;
@@ -32,10 +30,6 @@ export function EngagementDirectory({
 
   return (
     <div className="engagement-directory-page">
-      <Link className="profile-back-link" href="/dashboard/analytics">
-        <Image alt="" aria-hidden="true" height={14} src={arrowBackIcon} width={14} />
-        Back to Analytics
-      </Link>
       <header className="engagement-directory-heading">
         <div>
           <h1>{title}</h1>

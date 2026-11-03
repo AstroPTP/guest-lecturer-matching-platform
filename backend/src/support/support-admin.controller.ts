@@ -1,8 +1,17 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import { Roles } from '../auth/roles.decorator';
 import { AppRole } from '../auth/roles';
+import { ListSupportThreadsQueryDto } from './dto/list-support-threads-query.dto';
 import { OpenSupportThreadDto } from './dto/open-support-thread.dto';
 import { SetSupportStatusDto } from './dto/set-support-status.dto';
 import { SupportReplyDto } from './dto/support-reply.dto';
@@ -27,8 +36,8 @@ export class SupportAdminController {
   }
 
   @Get('threads')
-  list() {
-    return this.support.listThreads();
+  list(@Query() query: ListSupportThreadsQueryDto) {
+    return this.support.listThreads(query);
   }
 
   @Get('threads/:id')

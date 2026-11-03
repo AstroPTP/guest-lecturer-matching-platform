@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import notificationIcon from "@/assets/notification.png";
-import { getUnreadNotificationCount } from "@/services/notifications/notificationService";
+import { getUnreadNotificationSummary } from "@/services/notifications/notificationService";
 import { startUnreadCountPolling, UNREAD_COUNT_CHANGED_EVENT } from "@/utils/unreadCountPoller";
 import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
@@ -41,9 +41,9 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
   const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
     return startUnreadCountPolling({
-      fetchCount: getUnreadNotificationCount,
+      fetchCount: getUnreadNotificationSummary,
       onCount: setUnreadCount,
-      onChange: () => window.dispatchEvent(new Event(UNREAD_COUNT_CHANGED_EVENT)),
+      onChange: (summary) => window.dispatchEvent(new CustomEvent(UNREAD_COUNT_CHANGED_EVENT, { detail: summary })),
     });
   }, []);
   return (

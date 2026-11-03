@@ -18,8 +18,10 @@ type Db = Prisma.TransactionClient;
  * An open report does two separate things:
  *
  *  - It blocks the pair at once. The reporter and the person reported stop
- *    seeing each other in Discovery and cannot message each other. Nobody
- *    else is affected, so a report alone cannot take someone off the platform.
+ *    seeing each other in Discovery and cannot send each other new messages.
+ *    Their conversation stays in both Messages lists and stays readable, so
+ *    neither is told anything by it. Nobody else is affected, so a report
+ *    alone cannot take someone off the platform.
  *
  *  - It can put the person on hold, which hides them from everyone and stops
  *    them sending or receiving messages. That needs open reports from at least
@@ -55,14 +57,19 @@ async function lockPerson(tx: Db, namespace: number, person: bigint) {
 /**
  * Serialises one person's reports, so that two sent together cannot both pass
  * the limit check before either is stored.
+ *
+ * Whenever a transaction takes both locks it takes this one first, then
+ * `lockReported`, so two transactions can never each hold one and wait for the
+ * other.
  */
 export function lockReporter(tx: Db, reporter: bigint) {
   return lockPerson(tx, REPORTER_LOCK_NAMESPACE, reporter);
 }
 
 /**
- * Serialises holding, deciding and releasing for one person who has been
- * reported, so that the steps of one decision cannot interleave with another's.
+ * Serialises reporting, holding, deciding and releasing for one person who has
+ * been reported, so that the steps of one decision cannot interleave with
+ * another decision, or with a new report about the same person.
  */
 export function lockReported(tx: Db, reported: bigint) {
   return lockPerson(tx, REPORTED_LOCK_NAMESPACE, reported);
@@ -254,7 +261,10 @@ export async function loadModerationState(
   return state;
 }
 
-/** Whether two people may not message each other right now. */
+/**
+ * Whether two people may not send each other new messages right now. Reading
+ * what they already sent is not affected.
+ */
 export function isConversationPaused(
   state: ModerationState,
   caller: bigint,
@@ -273,11 +283,23 @@ export function isConversationPaused(
  * out everyone who is held, and everyone the viewer has an open report with,
  * whichever of them made it. Profiles with no user_id stay, because a NOT IN
  * alone would drop them (NULL is never "not in").
+ *
+ * With `keepReportedPair` the people the viewer has an open report with are
+ * kept, for lists of the viewer's own matches: a report blocks new messages
+ * and Discovery, but the conversation stays where it was. Held people are
+ * still left out.
  */
-export async function notHiddenWhere(viewerAuth0Id?: string) {
+export async function notHiddenWhere(
+  viewerAuth0Id?: string,
+  options: { keepReportedPair?: boolean } = {},
+) {
   const state = await loadModerationState();
   const hidden = new Set(state.held.keys());
-  if (viewerAuth0Id && state.blockedWith.size > 0) {
+  if (
+    viewerAuth0Id &&
+    !options.keepReportedPair &&
+    state.blockedWith.size > 0
+  ) {
     const viewer = await resolveUserId(viewerAuth0Id);
     for (const other of state.blockedWith.get(viewer) ?? []) hidden.add(other);
   }

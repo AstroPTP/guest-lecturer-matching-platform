@@ -576,7 +576,7 @@ describe('MatchRequestsService', () => {
       expect(interest).toHaveBeenCalledTimes(1);
     });
 
-    it('notifies once when the same person withdraws and asks again within a day', async () => {
+    it('notifies once when the same person asks twice within a day without withdrawing', async () => {
       const ask = () =>
         askAs('coordinator', {
           coordinator: coordinatorProfile,
@@ -594,6 +594,70 @@ describe('MatchRequestsService', () => {
       ask();
       await service.create(userId, '7');
       expect(stored).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a fresh notice when the same person withdraws and asks again within a day', async () => {
+      // A notifications table that keeps what is stored and honours the
+      // equality filters, so the withdrawal's delete is what the second ask sees.
+      const table: Record<string, unknown>[] = [];
+      const matching = (where: Record<string, unknown>) =>
+        table.filter((row) =>
+          Object.entries(where).every(
+            ([key, value]) => key === 'created_at' || row[key] === value,
+          ),
+        );
+      const stored = jest
+        .spyOn(prisma.notifications, 'create')
+        .mockImplementation(((...args: unknown[]) => {
+          const { data } = args[0] as { data: Record<string, unknown> };
+          table.push(data);
+          return Promise.resolve(data);
+        }) as never);
+      jest.spyOn(prisma.notifications, 'findFirst').mockImplementation(((
+        ...args: unknown[]
+      ) => {
+        const { where } = args[0] as { where: Record<string, unknown> };
+        return Promise.resolve(
+          matching(where).length > 0 ? { notification_id: 10n } : null,
+        );
+      }) as never);
+      jest.spyOn(prisma.notifications, 'deleteMany').mockImplementation(((
+        ...args: unknown[]
+      ) => {
+        const { where } = args[0] as { where: Record<string, unknown> };
+        const gone = matching(where);
+        gone.forEach((row) => table.splice(table.indexOf(row), 1));
+        return Promise.resolve({ count: gone.length });
+      }) as never);
+      const ask = () =>
+        askAs('coordinator', {
+          coordinator: coordinatorProfile,
+          guest: guestProfile,
+        });
+
+      ask();
+      await service.create(userId, '7');
+      expect(table).toHaveLength(1);
+
+      // The coordinator withdraws: their own profile, then both parties for the notice.
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValueOnce({ coordinator_id: 5n } as never)
+        .mockResolvedValueOnce(coordinatorProfile as never);
+      jest
+        .spyOn(prisma.guests, 'findUnique')
+        .mockResolvedValueOnce(guestProfile as never);
+      jest
+        .spyOn(prisma.match_requests, 'findUnique')
+        .mockResolvedValue(newRow('coordinator'));
+      await service.remove(userId, '7');
+      expect(table).toHaveLength(0);
+
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue(null);
+      ask();
+      await service.create(userId, '7');
+      expect(stored).toHaveBeenCalledTimes(2);
+      expect(table).toHaveLength(1);
     });
 
     it('still returns the request when the notice cannot be saved', async () => {
@@ -742,6 +806,32 @@ describe('MatchRequestsService', () => {
       expect(interest).not.toHaveBeenCalled();
     }
 
+    const onHold = {
+      status: 403,
+      response: {
+        code: 'ACCOUNT_ON_HOLD',
+        message:
+          "Your account is on hold while CCAE reviews a report, so you can't send or accept requests right now.",
+      },
+    };
+
+    /** Refused with a 403 about the caller's own account, and nothing is saved or sent. */
+    async function expectCallerOnHold(targetId: string) {
+      const create = jest.spyOn(prisma.match_requests, 'create');
+      const update = jest.spyOn(prisma.match_requests, 'updateMany');
+      const notify = jest.spyOn(notifications, 'create');
+      const interest = jest.spyOn(notifications, 'createUnlessRecent');
+
+      const attempt = service.create(userId, targetId);
+
+      await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(attempt).rejects.toMatchObject(onHold);
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+      expect(interest).not.toHaveBeenCalled();
+    }
+
     async function expectAllowed(targetId: string) {
       const create = jest.spyOn(prisma.match_requests, 'create');
 
@@ -822,8 +912,62 @@ describe('MatchRequestsService', () => {
         await expectRefused('5');
       });
 
-      it('cannot ask', async () => {
+      it('cannot ask, and is told it is their own account', async () => {
         reports(twoReportsAbout('1'));
+        setUp('coordinator', me, them);
+        await expectCallerOnHold('7');
+      });
+
+      it('is told so from the guest side too', async () => {
+        reports(twoReportsAbout('1'));
+        setUp('guest', me, { userId: 55n });
+        await expectCallerOnHold('5');
+      });
+
+      it('is held by an administrator the same way', async () => {
+        // One reporter is under the threshold; the administrator's hold covers report 40.
+        stubOpenReportsAlways([
+          {
+            entry_id: 40n,
+            actor_user_id: 900n,
+            target_id: '1',
+            detail: { reason: 'asked for money', matchId: '1' },
+          },
+        ]);
+        jest.spyOn(prisma.audit_entries, 'findMany').mockResolvedValue([
+          {
+            action: 'user.held',
+            target_id: '1',
+            detail: { reportIds: ['40'] },
+          },
+        ] as never);
+        setUp('coordinator', me, them);
+        await expectCallerOnHold('7');
+      });
+
+      it('cannot accept a request that is waiting for them either', async () => {
+        reports(twoReportsAbout('1'));
+        setUp('guest', me, { userId: 55n });
+        jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+          match_id: 6031n,
+          coordinator_id: 5n,
+          guest_id: 7n,
+          status: 'PENDING',
+          requested_at: requestedAt,
+          requested_by: 'coordinator',
+        } as never);
+
+        await expectCallerOnHold('5');
+      });
+
+      it('is told about their own account even when the profile they asked for is hidden', async () => {
+        reports([...twoReportsAbout('1'), ...twoReportsAbout('77')]);
+        setUp('coordinator', me, them);
+        await expectCallerOnHold('7');
+      });
+
+      it('keeps the missing-profile message for a target that is on hold', async () => {
+        reports(twoReportsAbout('77'));
         setUp('coordinator', me, them);
         await expectRefused('7');
       });
@@ -888,6 +1032,187 @@ describe('MatchRequestsService', () => {
       await service.remove(userId, '2001');
       expect(deleteMany).toHaveBeenCalledWith({
         where: { coordinator_id: 2001n, guest_id: 7n },
+      });
+    });
+
+    describe('the notice about a withdrawn request', () => {
+      const coordinatorProfile = {
+        first_name: 'Ada',
+        last_name: 'Lee',
+        users: { auth0Id: 'auth0|coordinator' },
+      };
+      const guestProfile = {
+        first_name: 'Sam',
+        last_name: 'Tran',
+        users: { auth0Id: 'auth0|guest' },
+      };
+
+      /** Queues the two profiles read after the withdrawal, behind the caller's own sign-in. */
+      function profilesFound(profiles: {
+        coordinator: object | null;
+        guest: object | null;
+      }) {
+        jest
+          .spyOn(prisma.coordinators, 'findUnique')
+          .mockResolvedValueOnce(profiles.coordinator as never);
+        jest
+          .spyOn(prisma.guests, 'findUnique')
+          .mockResolvedValueOnce(profiles.guest as never);
+      }
+
+      function pendingRow(requestedBy: string | null) {
+        jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+          match_id: 6008n,
+          coordinator_id: 2001n,
+          guest_id: 7n,
+          status: 'PENDING',
+          requested_at: requestedAt,
+          requested_by: requestedBy,
+        } as never);
+      }
+
+      it("deletes the coordinator's New interest notice when a guest withdraws", async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).toHaveBeenCalledTimes(1);
+        expect(deleteMatching).toHaveBeenCalledWith({
+          recipientId: 'auth0|coordinator',
+          type: 'match',
+          title: 'New interest',
+          href: '/unit_coordinator/discovery?from=7',
+        });
+      });
+
+      it("deletes the guest's New interest notice when a coordinator withdraws", async () => {
+        signInAsCoordinator(2001n);
+        pendingRow('coordinator');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '7');
+        expect(deleteMatching).toHaveBeenCalledWith({
+          recipientId: 'auth0|guest',
+          type: 'match',
+          title: 'New interest',
+          href: '/guest_lecturer/discovery?from=2001',
+        });
+      });
+
+      it('treats an older request with no sender as sent by the coordinator', async () => {
+        signInAsCoordinator(2001n);
+        pendingRow(null);
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '7');
+        expect(deleteMatching).toHaveBeenCalledWith(
+          expect.objectContaining({
+            recipientId: 'auth0|guest',
+            href: '/guest_lecturer/discovery?from=2001',
+          }),
+        );
+      });
+
+      it('removes the notice for whoever sent the request, even when the person it was sent to deletes it', async () => {
+        signInAsGuest(7n);
+        pendingRow('coordinator');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMatching = jest
+          .spyOn(notifications, 'deleteMatching')
+          .mockResolvedValue();
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).toHaveBeenCalledWith({
+          recipientId: 'auth0|guest',
+          type: 'match',
+          title: 'New interest',
+          href: '/guest_lecturer/discovery?from=2001',
+        });
+      });
+
+      it('deletes the request before its notice', async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const order: string[] = [];
+        jest
+          .spyOn(prisma.match_requests, 'deleteMany')
+          .mockImplementation((() => {
+            order.push('request');
+            return Promise.resolve({ count: 1 });
+          }) as never);
+        jest.spyOn(notifications, 'deleteMatching').mockImplementation(() => {
+          order.push('notice');
+          return Promise.resolve();
+        });
+
+        await service.remove(userId, '2001');
+        expect(order).toEqual(['request', 'notice']);
+      });
+
+      it('has no notice to delete when the other person has no account', async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({
+          coordinator: { ...coordinatorProfile, users: null },
+          guest: guestProfile,
+        });
+        const deleteMatching = jest.spyOn(notifications, 'deleteMatching');
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).not.toHaveBeenCalled();
+      });
+
+      it('leaves every notice alone when ending a match', async () => {
+        signInAsGuest(7n);
+        existingRow('ACCEPTED');
+        jest
+          .spyOn(prisma.match_requests, 'updateMany')
+          .mockResolvedValue({ count: 1 });
+        jest.spyOn(notifications, 'create').mockResolvedValue({} as never);
+        const deleteMatching = jest.spyOn(notifications, 'deleteMatching');
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).not.toHaveBeenCalled();
+      });
+
+      it('leaves every notice alone when there is no request to withdraw', async () => {
+        signInAsGuest(7n);
+        const deleteMatching = jest.spyOn(notifications, 'deleteMatching');
+
+        await service.remove(userId, '2001');
+        expect(deleteMatching).not.toHaveBeenCalled();
+      });
+
+      it('still withdraws the request when the notice cannot be removed, and logs only the error name', async () => {
+        signInAsGuest(7n);
+        pendingRow('guest');
+        profilesFound({ coordinator: coordinatorProfile, guest: guestProfile });
+        const deleteMany = jest
+          .spyOn(prisma.match_requests, 'deleteMany')
+          .mockResolvedValue({ count: 1 });
+        jest.spyOn(notifications, 'deleteMatching').mockRejectedValue(
+          Object.assign(new Error('failed for ada.lee@example.com'), {
+            name: 'PrismaClientKnownRequestError',
+          }),
+        );
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+        await expect(service.remove(userId, '2001')).resolves.toBeUndefined();
+        expect(deleteMany).toHaveBeenCalledTimes(1);
+        expect((warn.mock.calls as [string][]).map(([line]) => line)).toEqual([
+          'Could not remove the notice for a withdrawn request: PrismaClientKnownRequestError',
+        ]);
       });
     });
 
@@ -1175,8 +1500,7 @@ describe('MatchRequestsService', () => {
         await expect(attempt).rejects.toMatchObject(paused);
         await expect(attempt).rejects.toMatchObject({
           response: {
-            message:
-              'Messaging with this person is paused for now. Please try again later.',
+            message: "You can't send messages in this conversation right now.",
           },
         });
         const { message } = (
@@ -1315,134 +1639,69 @@ describe('MatchRequestsService', () => {
     });
   });
 
-  describe('findUnpausedMatches', () => {
-    /** Coordinator 5 (user 1 in the double), matched with guests 3001 (user 77) and 3002 (user 78). */
-    function coordinatorWithMatches() {
-      signInAsCoordinator(5n);
-      jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue(
-        [6001n, 6002n].map((match_id, i) => ({
-          match_id,
-          coordinator_id: 5n,
-          guest_id: 3001n + BigInt(i),
-          status: 'ACCEPTED',
-        })) as never,
-      );
-      return jest.spyOn(prisma.guests, 'findMany').mockResolvedValue([
-        { guest_id: 3001n, user_id: 77n },
-        { guest_id: 3002n, user_id: 78n },
-      ] as never);
+  describe('findReadableMatch', () => {
+    /** Guest 7 (user 1 in the double) matched with coordinator 5, whose account is user 55. */
+    function matchedGuest(status = 'ACCEPTED') {
+      signInAsGuest(7n);
+      jest.spyOn(prisma.match_requests, 'findUnique').mockResolvedValue({
+        match_id: 6007n,
+        coordinator_id: 5n,
+        guest_id: 7n,
+        status,
+      } as never);
+      jest
+        .spyOn(prisma.coordinators, 'findUnique')
+        .mockResolvedValue({ user_id: 55n } as never);
     }
-
     const report = (reporter: bigint, reported: string, entry = 40n) => ({
       entry_id: entry,
       actor_user_id: reporter,
       target_id: reported,
       detail: { reason: 'asked for money', matchId: '1' },
     });
-    const targets = async () =>
-      (await service.findUnpausedMatches(userId)).matches.map(
-        (m) => m.targetId,
-      );
 
-    it('returns every match, with no other lookup, when nobody has been reported', async () => {
-      const guests = coordinatorWithMatches();
+    it('opens an accepted match when nobody has been reported', async () => {
+      matchedGuest();
 
-      await expect(targets()).resolves.toEqual(['3001', '3002']);
-      expect(guests).not.toHaveBeenCalled();
-    });
-
-    it('does not read the reports for a caller with no matches', async () => {
-      signInAsCoordinator(5n);
-      jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue([]);
-      const reads = stubOpenReports([report(1n, '77')]);
-
-      await expect(targets()).resolves.toEqual([]);
-      expect(reads).not.toHaveBeenCalled();
-    });
-
-    it('leaves out the match with an open report between the pair, whoever made it', async () => {
-      coordinatorWithMatches();
-      stubOpenReports([report(1n, '77')]);
-
-      await expect(targets()).resolves.toEqual(['3002']);
-
-      coordinatorWithMatches();
-      stubOpenReports([report(78n, '1')]);
-
-      await expect(targets()).resolves.toEqual(['3001']);
-    });
-
-    it('leaves out a match with someone held for everybody', async () => {
-      coordinatorWithMatches();
-      stubOpenReports([report(900n, '78', 40n), report(901n, '78', 41n)]);
-
-      await expect(targets()).resolves.toEqual(['3001']);
-    });
-
-    it('leaves out every match when the caller is the one held', async () => {
-      coordinatorWithMatches();
-      stubOpenReports([report(900n, '1', 40n), report(901n, '1', 41n)]);
-
-      await expect(targets()).resolves.toEqual([]);
-    });
-
-    it('keeps matches a report between strangers has nothing to do with', async () => {
-      coordinatorWithMatches();
-      stubOpenReports([report(900n, '901')]);
-
-      await expect(targets()).resolves.toEqual(['3001', '3002']);
-    });
-
-    it('looks the other profiles up once however many matches there are', async () => {
-      const guests = coordinatorWithMatches();
-      stubOpenReports([report(1n, '77')]);
-
-      await targets();
-
-      expect(guests).toHaveBeenCalledTimes(1);
-      expect(guests.mock.calls[0][0]).toMatchObject({
-        where: { guest_id: { in: [3001n, 3002n] } },
+      await expect(service.findReadableMatch(userId, '5')).resolves.toEqual({
+        side: 'guest',
+        matchId: 6007n,
       });
     });
 
-    it('works from the guest side too', async () => {
-      signInAsGuest(7n);
-      jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue([
-        {
-          match_id: 6007n,
-          coordinator_id: 5n,
-          guest_id: 7n,
-          status: 'ACCEPTED',
-        },
-        {
-          match_id: 6008n,
-          coordinator_id: 6n,
-          guest_id: 7n,
-          status: 'ACCEPTED',
-        },
-      ] as never);
-      const coordinators = jest
-        .spyOn(prisma.coordinators, 'findMany')
-        .mockResolvedValue([
-          { coordinator_id: 5n, user_id: 55n },
-          { coordinator_id: 6n, user_id: 56n },
-        ] as never);
-      stubOpenReports([report(55n, '1')]);
+    it.each([
+      ['the caller reported the other person', [report(1n, '55')]],
+      ['the other person reported the caller', [report(55n, '1')]],
+      [
+        'the other person is held for everybody',
+        [report(900n, '55', 40n), report(901n, '55', 41n)],
+      ],
+      [
+        'the caller is held for everybody',
+        [report(900n, '1', 40n), report(901n, '1', 41n)],
+      ],
+    ])('still opens it when %s', async (_name, reports) => {
+      matchedGuest();
+      const reads = stubOpenReports(reports);
 
-      await expect(targets()).resolves.toEqual(['6']);
-      expect(coordinators).toHaveBeenCalledTimes(1);
+      await expect(service.findReadableMatch(userId, '5')).resolves.toEqual({
+        side: 'guest',
+        matchId: 6007n,
+      });
+      // The reports are not even looked at: they cannot change what is read.
+      expect(reads).not.toHaveBeenCalled();
     });
 
-    it('only asks for accepted matches', async () => {
-      signInAsCoordinator(5n);
-      const find = jest
-        .spyOn(prisma.match_requests, 'findMany')
-        .mockResolvedValue([]);
+    it('still refuses a match that was not accepted', async () => {
+      matchedGuest('PENDING');
 
-      await targets();
+      const attempt = service.findReadableMatch(userId, '5');
 
-      expect(find.mock.calls[0][0]).toMatchObject({
-        where: { status: { in: ['ACCEPTED'] }, coordinator_id: 5n },
+      await expect(attempt).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(attempt).rejects.toMatchObject({
+        response: {
+          message: 'You can only message people you have matched with.',
+        },
       });
     });
   });
