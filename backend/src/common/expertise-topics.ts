@@ -134,6 +134,13 @@ export function topicListProblem(topics: readonly unknown[]): string | null {
   return null;
 }
 
+/**
+ * The result of the last check of each list. class-validator builds fresh
+ * arguments for validate and defaultMessage, so the list itself is the only
+ * thing the two share.
+ */
+const problemByList = new WeakMap<object, string | null>();
+
 /** Checks a topic list against the fixed and custom topic rules. */
 export function IsExpertiseTopicList(options?: ValidationOptions) {
   return (object: object, propertyName: string) => {
@@ -143,12 +150,22 @@ export function IsExpertiseTopicList(options?: ValidationOptions) {
       propertyName,
       options,
       validator: {
-        validate: (value: unknown) =>
-          !Array.isArray(value) || topicListProblem(value) === null,
-        defaultMessage: (args) =>
-          `${args?.property ?? propertyName} ${
-            topicListProblem(args?.value as unknown[]) ?? 'is not valid'
-          }`,
+        validate: (value: unknown) => {
+          if (!Array.isArray(value)) {
+            return true;
+          }
+          const problem = topicListProblem(value);
+          problemByList.set(value, problem);
+          return problem === null;
+        },
+        defaultMessage: (args) => {
+          const list = args?.value as unknown[];
+          const problem =
+            typeof list === 'object' && list !== null && problemByList.has(list)
+              ? problemByList.get(list)
+              : topicListProblem(list);
+          return `${args?.property ?? propertyName} ${problem ?? 'is not valid'}`;
+        },
       },
     });
   };

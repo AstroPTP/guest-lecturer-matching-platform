@@ -3,8 +3,10 @@ import {
   BadRequestException,
   ValidationPipe,
 } from '@nestjs/common';
+import { validate } from 'class-validator';
 import {
   FIXED_EXPERTISE_TOPICS,
+  IsExpertiseTopicList,
   tidyTopics,
   topicKey,
   topicListProblem,
@@ -194,6 +196,75 @@ describe('topicListProblem', () => {
 
   it('leaves values that are not strings to the type check', () => {
     expect(topicListProblem([42, null])).toBeNull();
+  });
+});
+
+describe('IsExpertiseTopicList', () => {
+  class TopicHolder {
+    @IsExpertiseTopicList()
+    selectedTopics: unknown;
+  }
+
+  async function messagesFor(selectedTopics: unknown) {
+    const holder = new TopicHolder();
+    holder.selectedTopics = selectedTopics;
+    const errors = await validate(holder);
+    return errors.flatMap((error) => Object.values(error.constraints ?? {}));
+  }
+
+  it.each([
+    [
+      ['Supply Chain', 'Logistics', 'Procurement', 'Fintech'],
+      'selectedTopics has more than 3 custom topics',
+    ],
+    [
+      ['A'],
+      'selectedTopics has a custom topic that is not 2 to 40 characters long',
+    ],
+    [
+      ['<script>'],
+      "selectedTopics has a custom topic with characters other than letters, numbers, spaces and & - / ' .",
+    ],
+    [['&/-'], 'selectedTopics has a custom topic with no letters or numbers'],
+    [
+      ['ACCOUNTING'],
+      'selectedTopics has a custom topic that repeats a fixed topic',
+    ],
+    [
+      ['Supply Chain', 'supply-chain'],
+      'selectedTopics lists the same topic more than once',
+    ],
+    [
+      ['Accounting', 'Accounting'],
+      'selectedTopics lists the same topic more than once',
+    ],
+  ])('says why %p cannot be saved', async (selectedTopics, message) => {
+    expect(await messagesFor(selectedTopics)).toEqual([message]);
+  });
+
+  it('passes a list that meets the rules and leaves other values to the type checks', async () => {
+    expect(await messagesFor(['Accounting', 'Supply Chain'])).toEqual([]);
+    expect(await messagesFor('Accounting')).toEqual([]);
+  });
+
+  it('checks a list once to build its message', async () => {
+    let reads = 0;
+    const list = new Proxy(
+      ['Supply Chain', 'Logistics', 'Procurement', 'Fintech'],
+      {
+        get(target, property, receiver) {
+          if (property === Symbol.iterator) {
+            reads += 1;
+          }
+          return Reflect.get(target, property, receiver) as unknown;
+        },
+      },
+    );
+
+    expect(await messagesFor(list)).toEqual([
+      'selectedTopics has more than 3 custom topics',
+    ]);
+    expect(reads).toBe(1);
   });
 });
 
