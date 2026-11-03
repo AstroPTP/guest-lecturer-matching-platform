@@ -2,7 +2,7 @@ import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import { expertiseTopics } from "@/constants/profileOptions/shared";
-import { isCustomTopic, topicMatchKey } from "@/utils/customTopics";
+import { topicMatchKey } from "@/utils/customTopics";
 import { normalizeOptionValue } from "@/utils/displayFormatters";
 
 // Which discovery profiles a user sees: the ones they haven't acted on, narrowed
@@ -58,14 +58,17 @@ export function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: Uni
 // topics found on the given profiles and in the current selection, sorted.
 // Topics that match each other the way the filter matches them are shown once.
 export function getTopicFilterOptions(items: DiscoveryItem[], selectedTopics: string[]): { value: string; label: string }[] {
-  const customTopics = new Map<string, string>();
+  const seen = new Set(expertiseTopics.map(topicMatchKey));
+  const customTopics: string[] = [];
   for (const topic of [...selectedTopics, ...items.flatMap((item) => item.profile.expertise.selectedTopics)]) {
-    if (topic.trim() !== "" && isCustomTopic(topic) && !customTopics.has(topicMatchKey(topic))) {
-      customTopics.set(topicMatchKey(topic), topic);
+    const key = topicMatchKey(topic);
+    if (key !== "" && !seen.has(key)) {
+      seen.add(key);
+      customTopics.push(topic);
     }
   }
-  const sortedCustomTopics = Array.from(customTopics.values()).sort((first, second) => first.localeCompare(second));
-  return [...expertiseTopics, ...sortedCustomTopics].map((topic) => ({ value: topic, label: topic }));
+  customTopics.sort((first, second) => first.localeCompare(second));
+  return [...expertiseTopics, ...customTopics].map((topic) => ({ value: topic, label: topic }));
 }
 
 // Topics match the way the server compares them, so a fixed topic is found
