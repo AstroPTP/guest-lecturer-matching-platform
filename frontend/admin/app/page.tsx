@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
-import BrandLogo from "@/components/brand/BrandLogo";
+import BrandLogo, { BRAND_NAME } from "@/components/brand/BrandLogo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import infoIcon from "@/assets/info.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
 
 // The root layout's title template does not apply to a page in its own
 // segment, so the full title is written out here.
-export const metadata: Metadata = { title: "Curtin GLMP | Admin sign in" };
+export const metadata: Metadata = { title: `${BRAND_NAME} | Admin sign in` };
 
 export default async function Home({
   searchParams,

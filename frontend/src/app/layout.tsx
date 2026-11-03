@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/auth/SessionProvider";
+import { BRAND_NAME } from "@/components/brand/BrandLogo";
 import ThemeSync from "@/components/theme/ThemeSync";
 import { themeScript } from "@/components/theme/themeScript";
 
 export const metadata: Metadata = {
-  title: { default: "Curtin GLMP", template: "Curtin GLMP | %s" },
+  title: { default: BRAND_NAME, template: `${BRAND_NAME} | %s` },
   description: "Connect guest lecturers with unit coordinators.",
 };
 
