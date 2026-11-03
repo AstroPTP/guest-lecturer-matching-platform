@@ -20,7 +20,7 @@ import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFor
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { expertiseWithCleanTopics } from "@/utils/customTopics";
+import { expertiseWithCleanTopics, withFixedTopicSpelling } from "@/utils/customTopics";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
   value: level.value,
@@ -328,7 +328,7 @@ export default function UnitCoordinatorMyProfilePage() {
               }
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile.expertise.selectedTopics} formatItems={false} />
+                <TagList label="Expertise Topics" items={withFixedTopicSpelling(profile.expertise.selectedTopics)} formatItems={false} />
                 <TagList
                   label="Required Experience Levels"
                   items={profile.expertise.experienceLevelsRequired.map((item) => formatOption(item, experienceLevelOptions))}

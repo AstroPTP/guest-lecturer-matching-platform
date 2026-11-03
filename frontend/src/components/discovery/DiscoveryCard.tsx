@@ -15,6 +15,7 @@ import {
 } from "@/constants/profileOptions/shared";
 import { professionalFields, professionalRoles } from "@/constants/profileOptions/guestLecturer";
 import { academicRoleOptions, engagementFrequencyOptions, schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 import { formatOptionLabel } from "@/utils/displayFormatters";
 import DiscoverySection from "./DiscoverySection";
 import DiscoveryTagGroup from "./DiscoveryTagGroup";
@@ -129,7 +130,7 @@ function GuestLecturerDetails({ profile }: { profile: PublicGuestLecturerProfile
 
       <DiscoverySection title="Guest Lecturer Experience" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
+          <DiscoveryTagGroup label="Topics" items={withFixedTopicSpelling(expertise.selectedTopics)} />
           <DiscoveryValue label="Experience level" value={formatOptionLabel(expertise.experienceLevel, experienceLevelOptions)} />
           <DiscoveryValue label="Speaking experience" value={expertise.hasSpeakingExperience ? expertise.speakingDetails || "Yes" : "No"} />
           <DiscoveryValue label="International experience" value={expertise.hasInternationalExperience ? expertise.internationalDetails || "Yes" : "No"} />
@@ -165,7 +166,7 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
 
       <DiscoverySection title="Guest Lecturer Requirements" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
+          <DiscoveryTagGroup label="Topics" items={withFixedTopicSpelling(expertise.selectedTopics)} />
           <DiscoveryTagGroup label="Experience required" items={expertise.experienceLevelsRequired.map((level) => formatOptionLabel(level, experienceLevelOptions))} />
           <DiscoveryValue label="Learning objective" value={expertise.learningObjective} />
           <DiscoveryValue label="Industry relevance" value={expertise.industryRelevance} />

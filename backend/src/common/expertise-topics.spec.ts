@@ -46,6 +46,10 @@ describe('tidyTopics', () => {
         'esg-sustainability',
         'human-resource-management',
         'RISK   MANAGEMENT',
+        'ESG/Sustainability',
+        'Banking/Finance',
+        'Marketing. Strategy',
+        "Taxation' Law",
       ]),
     ).toEqual([
       'Banking & Finance',
@@ -53,6 +57,10 @@ describe('tidyTopics', () => {
       'ESG & Sustainability',
       'Human Resource Management',
       'Risk Management',
+      'ESG & Sustainability',
+      'Banking & Finance',
+      'Marketing Strategy',
+      'Taxation Law',
     ]);
   });
 
@@ -64,9 +72,10 @@ describe('tidyTopics', () => {
   );
 
   it('leaves a topic that only resembles a fixed one as it is', () => {
-    expect(
-      tidyTopics(['ESG/Sustainability', 'Corporate Law Reform', 'Account']),
-    ).toEqual(['ESG/Sustainability', 'Corporate Law Reform', 'Account']);
+    expect(tidyTopics(['Corporate Law Reform', 'Account'])).toEqual([
+      'Corporate Law Reform',
+      'Account',
+    ]);
   });
 
   it('does not treat a non-ASCII look-alike as a fixed topic', () => {
@@ -248,13 +257,19 @@ describe.each([
 
   it('stores an older form of a fixed topic with the fixed spelling', async () => {
     const result = (await pipe.transform(
-      makeBody(['banking-finance', 'corporate law', 'Supply Chain']),
+      makeBody([
+        'banking-finance',
+        'corporate law',
+        'ESG/Sustainability',
+        'Supply Chain',
+      ]),
       body(metatype),
     )) as { selectedTopics: string[] };
 
     expect(result.selectedTopics).toEqual([
       'Banking & Finance',
       'Corporate Law',
+      'ESG & Sustainability',
       'Supply Chain',
     ]);
   });
@@ -325,7 +340,6 @@ describe.each([
     [['   ']],
     [['<b>Tax</b>']],
     [['Corporate law', 'corporate-law']],
-    [['ESG/Sustainability']],
     ['Accounting'],
     [[42]],
   ])('answers %p with 400', async (selectedTopics) => {

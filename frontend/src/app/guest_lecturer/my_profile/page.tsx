@@ -16,7 +16,7 @@ import { formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { expertiseWithCleanTopics } from "@/utils/customTopics";
+import { expertiseWithCleanTopics, withFixedTopicSpelling } from "@/utils/customTopics";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
@@ -378,7 +378,7 @@ export default function GuestLecturerMyProfilePage() {
               editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} topicsField={topicsField} />}
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile?.expertise.selectedTopics ?? []} formatItems={false} />
+                <TagList label="Expertise Topics" items={withFixedTopicSpelling(profile?.expertise.selectedTopics ?? [])} formatItems={false} />
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <ProfileField label="Experience Level" value={formatStoredValue(profile?.expertise.experienceLevel ?? "")} />
                   <ProfileField label="Speaking Experience" value={profile?.expertise.hasSpeakingExperience ? "Yes" : "No"} />

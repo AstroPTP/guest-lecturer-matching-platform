@@ -52,13 +52,14 @@ function asciiLowerCase(text: string): string {
 
 /**
  * The form a topic is matched to the fixed list in: lower case (A to Z only),
- * with "&", the word "and", hyphens and spaces left out. "banking-finance" and
- * "Banking and Finance" both match "Banking & Finance".
+ * with the word "and" and then every & - / ' . and space left out.
+ * "banking-finance", "Banking/Finance" and "Banking and Finance" all match
+ * "Banking & Finance".
  */
 function looseTopicKey(topic: string): string {
   return asciiLowerCase(topic)
-    .replace(/&|\band\b/g, '')
-    .replace(/[-\s]+/g, '');
+    .replace(/\band\b/g, '')
+    .replace(/[&\-/'.\s]+/g, '');
 }
 
 const FIXED_TOPIC_NAMES = new Set(FIXED_EXPERTISE_TOPICS);
@@ -69,7 +70,7 @@ const FIXED_TOPIC_KEYS = new Set(FIXED_EXPERTISE_TOPICS.map(topicKey));
 
 /**
  * Trims each topic, collapses the spaces inside it, and spells a fixed topic
- * as the fixed list does, whatever its letter case, hyphens, spaces or "&"
+ * as the fixed list does, whatever its letter case, punctuation, spaces or "&"
  * versus "and". "ACCOUNTING" is stored as "Accounting" and "banking-finance"
  * as "Banking & Finance". Values that are not strings are left for the type
  * validators.

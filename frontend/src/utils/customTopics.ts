@@ -28,11 +28,12 @@ function asciiLowerCase(text: string): string {
   return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
-// Lower case (A to Z only), with "&", the word "and", hyphens and spaces left
-// out, so "banking-finance" and "Banking and Finance" both match "Banking &
-// Finance". The backend matches stored topics to the fixed list the same way.
+// Lower case (A to Z only), with the word "and" and then every & - / ' . and
+// space left out, so "banking-finance", "Banking/Finance" and "Banking and
+// Finance" all match "Banking & Finance". The backend matches stored topics to
+// the fixed list the same way.
 function looseTopicKey(topic: string): string {
-  return asciiLowerCase(topic).replace(/&|\band\b/g, "").replace(/[-\s]+/g, "");
+  return asciiLowerCase(topic).replace(/\band\b/g, "").replace(/[&\-/'.\s]+/g, "");
 }
 
 function findFixedTopic(topic: string): string | undefined {
@@ -44,11 +45,20 @@ export function isCustomTopic(topic: string): boolean {
   return findFixedTopic(topic) === undefined;
 }
 
+// Spells each fixed topic as the list does, whatever older spelling it was
+// saved in, and leaves custom topics exactly as stored.
+export function withFixedTopicSpelling(topics: string[]): string[] {
+  return topics.map((topic) => findFixedTopic(topic) ?? topic);
+}
+
 // Tidies the topics of a saved profile before they go into a form, so a list
 // saved under older rules still saves. A fixed topic is spelled as the list
 // spells it ("ACCOUNTING" shows as the selected "Accounting" chip), repeats are
 // dropped, and the list is cut to the topic limits with fixed topics kept
-// first. The saved profile only changes when the person saves.
+// first. A custom topic is kept only when customTopicError accepts it on its
+// own, so one the backend would refuse (length, characters, no letters or
+// numbers, or a fixed topic in disguise) is dropped instead of blocking the
+// save. The saved profile only changes when the person saves.
 export function cleanStoredTopics(topics: string[]): string[] {
   const tidy = topics.map(tidyTopic);
   const fixed = Array.from(new Set(tidy.map(findFixedTopic).filter((topic): topic is string => topic !== undefined)));
@@ -56,7 +66,7 @@ export function cleanStoredTopics(topics: string[]): string[] {
   const custom: string[] = [];
   for (const topic of tidy) {
     const key = topicKey(topic);
-    if (key !== "" && findFixedTopic(topic) === undefined && !seen.has(key)) {
+    if (customTopicError(topic, []) === "" && !seen.has(key)) {
       seen.add(key);
       custom.push(topic);
     }
