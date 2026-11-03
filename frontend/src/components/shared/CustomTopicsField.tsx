@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent, useId, useState } from "react";
+import { KeyboardEvent, Ref, useId, useImperativeHandle, useState } from "react";
 import {
   CUSTOM_TOPIC_MAX_LENGTH,
   CUSTOM_TOPIC_MIN_LENGTH,
@@ -10,15 +10,23 @@ import {
   tidyTopic,
 } from "@/utils/customTopics";
 
+export interface CustomTopicsFieldHandle {
+  // Adds a topic left typed in the Other box as if Add had been clicked, and
+  // returns the topics to save. Returns null, with the error shown, when the
+  // typed topic is not valid.
+  commitDraft: () => string[] | null;
+}
+
 interface CustomTopicsFieldProps {
   selectedTopics: string[];
   onChange: (topics: string[]) => void;
   compact?: boolean;
+  ref?: Ref<CustomTopicsFieldHandle>;
 }
 
 // The "Other" choice under the fixed topic chips. Custom topics are kept in the
 // same list as the fixed ones, so they save and display the same way.
-export default function CustomTopicsField({ selectedTopics, onChange, compact = false }: CustomTopicsFieldProps) {
+export default function CustomTopicsField({ selectedTopics, onChange, compact = false, ref }: CustomTopicsFieldProps) {
   const customTopics = selectedTopics.filter(isCustomTopic);
   const [isOpen, setIsOpen] = useState(customTopics.length > 0);
   const [draft, setDraft] = useState("");
@@ -32,16 +40,25 @@ export default function CustomTopicsField({ selectedTopics, onChange, compact = 
   const selectedClass = compact ? "bg-[#2d2d2d] text-white" : "bg-black text-white";
   const idleClass = (compact ? "bg-gray-200 text-gray-700" : "bg-gray-200 text-black") + " hover:bg-gray-300";
 
-  function addTopic() {
+  // Adds the typed topic and returns the new list, or shows why it cannot be
+  // added and returns null.
+  function addTopic(): string[] | null {
     const topic = tidyTopic(draft);
     const problem = customTopicError(topic, selectedTopics);
     setError(problem);
     if (problem) {
-      return;
+      return null;
     }
-    onChange([...selectedTopics, topic]);
+    const topics = [...selectedTopics, topic];
+    onChange(topics);
     setDraft("");
+    return topics;
   }
+
+  useImperativeHandle(ref, () => ({
+    // Text in a closed panel is out of sight, so it is not added.
+    commitDraft: () => (isOpen && tidyTopic(draft) !== "" ? addTopic() : selectedTopics),
+  }));
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     // Enter adds the topic instead of submitting the surrounding form.

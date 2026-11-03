@@ -4,7 +4,7 @@ import { ProfileField, ProfileLabel, ProfileInput, ProfileSelect, TagList } from
 import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 
-import { useEffect, useState } from "react";
+import { Ref, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
@@ -19,7 +19,7 @@ import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions,
 import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
-import CustomTopicsField from "@/components/shared/CustomTopicsField";
+import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
 import { expertiseWithCleanTopics } from "@/utils/customTopics";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
@@ -39,6 +39,7 @@ export default function UnitCoordinatorMyProfilePage() {
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
     const router = useRouter();
+  const topicsField = useRef<CustomTopicsFieldHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,19 +129,23 @@ export default function UnitCoordinatorMyProfilePage() {
 
   async function saveExpertise() {
     if (!profile || !expertiseDraft) return;
-    if (expertiseDraft.selectedTopics.length === 0) return alert("Please select at least one expertise topic.");
+    // A topic left typed in the Other box counts as added.
+    const topics = topicsField.current ? topicsField.current.commitDraft() : expertiseDraft.selectedTopics;
+    if (!topics) return;
+    if (topics.length === 0) return alert("Please select at least one expertise topic.");
     if (expertiseDraft.experienceLevelsRequired.length === 0) return alert("Please select at least one required experience level.");
     if (!expertiseDraft.industryRelevance.trim()) return alert("Please explain the industry relevance.");
     if (!expertiseDraft.learningObjective.trim()) return alert("Please enter the learning objective.");
 
+    const updatedExpertise = { ...expertiseDraft, selectedTopics: topics };
     try {
-      await saveUnitCoordinatorExpertise(expertiseDraft);
+      await saveUnitCoordinatorExpertise(updatedExpertise);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
 
-    setProfile({ ...profile, expertise: cloneData(expertiseDraft) });
+    setProfile({ ...profile, expertise: cloneData(updatedExpertise) });
     setEditingSection(null);
     showSavedMessage("Guest lecturer requirements saved successfully.");
   }
@@ -318,6 +323,7 @@ export default function UnitCoordinatorMyProfilePage() {
                   setDraft={setExpertiseDraft}
                   onToggleTopic={toggleExpertiseTopic}
                   onToggleExperienceLevel={toggleExperienceLevel}
+                  topicsField={topicsField}
                 />
               }
             >
@@ -429,11 +435,13 @@ function ExpertiseEditor({
   setDraft,
   onToggleTopic,
   onToggleExperienceLevel,
+  topicsField,
 }: {
   draft: UnitCoordinatorExpertiseData;
   setDraft: NullableStateSetter<UnitCoordinatorExpertiseData>;
   onToggleTopic: (topic: string) => void;
   onToggleExperienceLevel: (level: string) => void;
+  topicsField: Ref<CustomTopicsFieldHandle>;
 }) {
   return (
     <div className="space-y-7">
@@ -444,7 +452,7 @@ function ExpertiseEditor({
           selectedValues={draft.selectedTopics}
           onToggle={onToggleTopic}
         />
-        <CustomTopicsField compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
+        <CustomTopicsField ref={topicsField} compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
       </div>
       <ChoiceButtons
         label="Required Experience Levels"

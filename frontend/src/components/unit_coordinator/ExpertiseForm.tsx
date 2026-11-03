@@ -1,15 +1,16 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
-import CustomTopicsField from "@/components/shared/CustomTopicsField";
+import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
 import { cleanStoredTopics } from "@/utils/customTopics";
 export default function ExpertiseForm() {
   const router = useRouter();
+  const topicsField = useRef<CustomTopicsFieldHandle>(null);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [experienceLevelsRequired, setExperienceLevelsRequired] = useState<string[]>([]);
   const [industryRelevance, setIndustryRelevance] = useState("");
@@ -72,7 +73,13 @@ export default function ExpertiseForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedTopics.length === 0) {
+    // A topic left typed in the Other box counts as added.
+    const topics = topicsField.current ? topicsField.current.commitDraft() : selectedTopics;
+    if (!topics) {
+      return;
+    }
+
+    if (topics.length === 0) {
       alert("Please select at least one expertise topic.");
       return;
     }
@@ -96,7 +103,7 @@ export default function ExpertiseForm() {
     setIsSaving(true);
     try {
       await saveUnitCoordinatorExpertise({
-        selectedTopics,
+        selectedTopics: topics,
         experienceLevelsRequired,
         industryRelevance,
         learningObjective,
@@ -161,7 +168,7 @@ export default function ExpertiseForm() {
               );
             })}
           </div>
-          <CustomTopicsField selectedTopics={selectedTopics} onChange={setSelectedTopics} />
+          <CustomTopicsField ref={topicsField} selectedTopics={selectedTopics} onChange={setSelectedTopics} />
         </section>
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">

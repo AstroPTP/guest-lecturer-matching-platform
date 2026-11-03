@@ -5,7 +5,7 @@ import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 import { useRouter } from "next/navigation";
 
-import { useEffect, useState } from "react";
+import { Ref, useEffect, useRef, useState } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
@@ -15,7 +15,7 @@ import { professionalFields, professionalRoles } from "@/constants/profileOption
 import { formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
-import CustomTopicsField from "@/components/shared/CustomTopicsField";
+import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
 import { expertiseWithCleanTopics } from "@/utils/customTopics";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
@@ -30,6 +30,7 @@ export default function GuestLecturerMyProfilePage() {
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const router = useRouter();
+  const topicsField = useRef<CustomTopicsFieldHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,7 +137,12 @@ export default function GuestLecturerMyProfilePage() {
     if (!profile || !expertiseDraft){
       return;
     }
-    if (expertiseDraft.selectedTopics.length === 0) {
+    // A topic left typed in the Other box counts as added.
+    const topics = topicsField.current ? topicsField.current.commitDraft() : expertiseDraft.selectedTopics;
+    if (!topics) {
+      return;
+    }
+    if (topics.length === 0) {
       alert("Please select at least one expertise topic.");
       return;
     }
@@ -148,6 +154,7 @@ export default function GuestLecturerMyProfilePage() {
 
     const updatedExpertise = {
       ...expertiseDraft,
+      selectedTopics: topics,
       speakingDetails: expertiseDraft.hasSpeakingExperience ? expertiseDraft.speakingDetails : "",
       internationalDetails: expertiseDraft.hasInternationalExperience ? expertiseDraft.internationalDetails : "",
     };
@@ -368,7 +375,7 @@ export default function GuestLecturerMyProfilePage() {
               onEdit={() => startEditing("expertise")}
               onCancel={cancelEditing}
               onSave={saveExpertise}
-              editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} />}
+              editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} topicsField={topicsField} />}
             >
               <div className="space-y-7">
                 <TagList label="Expertise Topics" items={profile?.expertise.selectedTopics ?? []} formatItems={false} />
@@ -516,10 +523,12 @@ function ExpertiseEditor({
   draft,
   setDraft,
   onToggleTopic,
+  topicsField,
 }: {
   draft: GuestLecturerExpertiseData;
   setDraft: React.Dispatch<React.SetStateAction<GuestLecturerExpertiseData | null>>;
   onToggleTopic: (topic: string) => void;
+  topicsField: Ref<CustomTopicsFieldHandle>;
 }) {
   return (
     <div className="space-y-7">
@@ -541,7 +550,7 @@ function ExpertiseEditor({
             );
           })}
         </div>
-        <CustomTopicsField compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
+        <CustomTopicsField ref={topicsField} compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
       </div>
 
       <ProfileSelect
