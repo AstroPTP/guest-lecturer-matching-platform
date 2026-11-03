@@ -50,16 +50,29 @@ function asciiLowerCase(text: string): string {
   return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
+/**
+ * The form a topic is matched to the fixed list in: lower case (A to Z only),
+ * with "&", the word "and", hyphens and spaces left out. "banking-finance" and
+ * "Banking and Finance" both match "Banking & Finance".
+ */
+function looseTopicKey(topic: string): string {
+  return asciiLowerCase(topic)
+    .replace(/&|\band\b/g, '')
+    .replace(/[-\s]+/g, '');
+}
+
 const FIXED_TOPIC_NAMES = new Set(FIXED_EXPERTISE_TOPICS);
-const FIXED_TOPIC_BY_LOWER_CASE = new Map(
-  FIXED_EXPERTISE_TOPICS.map((topic) => [asciiLowerCase(topic), topic]),
+const FIXED_TOPIC_BY_LOOSE_KEY = new Map(
+  FIXED_EXPERTISE_TOPICS.map((topic) => [looseTopicKey(topic), topic]),
 );
 const FIXED_TOPIC_KEYS = new Set(FIXED_EXPERTISE_TOPICS.map(topicKey));
 
 /**
  * Trims each topic, collapses the spaces inside it, and spells a fixed topic
- * in any letter case as the fixed list does, so "ACCOUNTING" is stored as
- * "Accounting". Values that are not strings are left for the type validators.
+ * as the fixed list does, whatever its letter case, hyphens, spaces or "&"
+ * versus "and". "ACCOUNTING" is stored as "Accounting" and "banking-finance"
+ * as "Banking & Finance". Values that are not strings are left for the type
+ * validators.
  */
 export function tidyTopics(value: unknown): unknown {
   if (!Array.isArray(value)) {
@@ -70,7 +83,7 @@ export function tidyTopics(value: unknown): unknown {
       return topic;
     }
     const tidy = topic.trim().replace(/\s+/g, ' ');
-    return FIXED_TOPIC_BY_LOWER_CASE.get(asciiLowerCase(tidy)) ?? tidy;
+    return FIXED_TOPIC_BY_LOOSE_KEY.get(looseTopicKey(tidy)) ?? tidy;
   });
 }
 

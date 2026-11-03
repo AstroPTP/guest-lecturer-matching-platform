@@ -38,6 +38,37 @@ describe('tidyTopics', () => {
     ).toEqual(['Accounting', 'Risk Management', 'Banking & Finance']);
   });
 
+  it('spells an older form of a fixed topic as the fixed list does', () => {
+    expect(
+      tidyTopics([
+        'banking-finance',
+        'Banking and Finance',
+        'esg-sustainability',
+        'human-resource-management',
+        'RISK   MANAGEMENT',
+      ]),
+    ).toEqual([
+      'Banking & Finance',
+      'Banking & Finance',
+      'ESG & Sustainability',
+      'Human Resource Management',
+      'Risk Management',
+    ]);
+  });
+
+  it.each(FIXED_EXPERTISE_TOPICS)(
+    'spells the hyphenated form of %p as the fixed list does',
+    (topic) => {
+      expect(tidyTopics([topicKey(topic)])).toEqual([topic]);
+    },
+  );
+
+  it('leaves a topic that only resembles a fixed one as it is', () => {
+    expect(
+      tidyTopics(['ESG/Sustainability', 'Corporate Law Reform', 'Account']),
+    ).toEqual(['ESG/Sustainability', 'Corporate Law Reform', 'Account']);
+  });
+
   it('does not treat a non-ASCII look-alike as a fixed topic', () => {
     expect(KELVIN_BANKING.toLowerCase()).toBe('banking & finance');
     expect(tidyTopics([KELVIN_BANKING])).toEqual([KELVIN_BANKING]);
@@ -213,6 +244,28 @@ describe.each([
     )) as { selectedTopics: string[] };
 
     expect(result.selectedTopics).toEqual(['Accounting', 'Banking & Finance']);
+  });
+
+  it('stores an older form of a fixed topic with the fixed spelling', async () => {
+    const result = (await pipe.transform(
+      makeBody(['banking-finance', 'corporate law', 'Supply Chain']),
+      body(metatype),
+    )) as { selectedTopics: string[] };
+
+    expect(result.selectedTopics).toEqual([
+      'Banking & Finance',
+      'Corporate Law',
+      'Supply Chain',
+    ]);
+  });
+
+  it('answers an older form of a fixed topic beside the fixed one with 400', async () => {
+    const error = await rejection(['Banking & Finance', 'banking-finance']);
+
+    expect(error.getStatus()).toBe(400);
+    expect(error.getResponse()).toMatchObject({
+      message: ['selectedTopics lists the same topic more than once'],
+    });
   });
 
   it('answers a non-ASCII look-alike of a fixed topic with 400', async () => {
