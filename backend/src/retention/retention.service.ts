@@ -1,3 +1,4 @@
+// cspell:ignore timestamptz
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { prisma } from '../prisma';
@@ -34,7 +35,11 @@ export interface RetentionRun {
   cutoff: Date;
   /** Rows a dry run found past the cut-off. Zero for a real run. */
   wouldDelete: number;
+  /** Support messages a dry run found past the cut-off. Zero for a real run. */
+  supportWouldDelete: number;
   deleted: number;
+  /** Support messages deleted, counted apart from the match messages above. */
+  supportDeleted: number;
   /** Messages with no sent_at, which no run ever deletes. */
   skippedNullSentAt: number;
   /** Batches that removed at least one row. */
@@ -55,15 +60,19 @@ export interface RetentionPreview {
   retentionDays: number;
   cutoff: string;
   wouldDelete: number;
+  supportWouldDelete: number;
   skippedNullSentAt: number;
 }
 
 /**
- * Deletes in-app messages older than the retention window, once a week.
+ * Deletes in-app messages older than the retention window, once a week. That
+ * covers the messages between matched people and the messages in requests for
+ * details, together with the files attached to the latter.
  *
  * The window is measured from `sent_at`. A message with no `sent_at` has no
  * age to measure, so it is never deleted; the run counts those rows and
- * reports the number instead, so someone can decide what they are.
+ * reports the number instead, so someone can decide what they are. Support
+ * messages always have one.
  */
 @Injectable()
 export class RetentionService {
@@ -110,15 +119,18 @@ export class RetentionService {
   async preview(): Promise<RetentionPreview> {
     const { retentionDays } = this.config();
     const cutoff = this.cutoffFor(retentionDays);
-    const [wouldDelete, skippedNullSentAt] = await Promise.all([
-      this.countExpired(cutoff),
-      this.countNullSentAt(),
-    ]);
+    const [wouldDelete, supportWouldDelete, skippedNullSentAt] =
+      await Promise.all([
+        this.countExpired(cutoff),
+        this.countExpiredSupport(cutoff),
+        this.countNullSentAt(),
+      ]);
     return {
       dryRun: true,
       retentionDays,
       cutoff: cutoff.toISOString(),
       wouldDelete,
+      supportWouldDelete,
       skippedNullSentAt,
     };
   }
@@ -136,7 +148,9 @@ export class RetentionService {
       retentionDays: config.retentionDays,
       cutoff,
       wouldDelete: 0,
+      supportWouldDelete: 0,
       deleted: 0,
+      supportDeleted: 0,
       skippedNullSentAt: 0,
       batches: 0,
       durationMs: 0,
@@ -149,6 +163,7 @@ export class RetentionService {
 
       if (config.dryRun) {
         run.wouldDelete = await this.countExpired(cutoff);
+        run.supportWouldDelete = await this.countExpiredSupport(cutoff);
       } else {
         // The loop ends on the first batch that deletes nothing, which is
         // what makes a re-run safe: it simply finds nothing left to do.
@@ -157,10 +172,11 @@ export class RetentionService {
           if (!batch.acquired) {
             // Rows already deleted in this run stay deleted, so a lock lost
             // part-way is not the same as never having had it.
-            if (run.deleted > 0) {
+            const removedSoFar = run.deleted + run.supportDeleted;
+            if (removedSoFar > 0) {
               run.outcome = 'partial';
               this.logger.log(
-                `Stopped early: another instance took over after ${run.deleted} rows.`,
+                `Stopped early: another instance took over after ${removedSoFar} rows.`,
               );
             } else {
               run.outcome = 'skipped';
@@ -168,8 +184,9 @@ export class RetentionService {
             }
             break;
           }
-          if (batch.deleted === 0) break;
+          if (batch.deleted + batch.supportDeleted === 0) break;
           run.deleted += batch.deleted;
+          run.supportDeleted += batch.supportDeleted;
           run.batches += 1;
         }
       }
@@ -185,6 +202,8 @@ export class RetentionService {
     this.logger.log(
       `Message retention ${run.outcome}: dryRun=${run.dryRun} ` +
         `deleted=${run.deleted} wouldDelete=${run.wouldDelete} ` +
+        `supportDeleted=${run.supportDeleted} ` +
+        `supportWouldDelete=${run.supportWouldDelete} ` +
         `skippedNullSentAt=${run.skippedNullSentAt} batches=${run.batches} ` +
         `durationMs=${run.durationMs}`,
     );
@@ -212,6 +231,13 @@ export class RetentionService {
    * at once. An instance that finds the lock taken stops, and says so in its
    * outcome.
    *
+   * One batch removes up to `batchSize` match messages and up to `batchSize`
+   * support messages, then any attached files the removed support messages
+   * leave with nothing pointing at them, then any support thread they leave
+   * with no messages. All of it is in the one transaction, so a file is never
+   * deleted while a message still refers to it, and never left behind when its
+   * message goes.
+   *
    * The lock is a transaction-level advisory lock taken inside the same
    * transaction as the delete, not a session-level one. The database can sit
    * behind a transaction-mode pooler (PgBouncer, Supabase), which hands each
@@ -224,12 +250,12 @@ export class RetentionService {
   private deleteBatch(
     cutoff: Date,
     batchSize: number,
-  ): Promise<{ acquired: boolean; deleted: number }> {
+  ): Promise<{ acquired: boolean; deleted: number; supportDeleted: number }> {
     return prisma.$transaction(async (tx) => {
       const [lock] = await tx.$queryRaw<{ acquired: boolean }[]>`
         SELECT pg_try_advisory_xact_lock(${RETENTION_LOCK_KEY}::bigint) AS acquired`;
       if (!lock?.acquired) {
-        return { acquired: false, deleted: 0 };
+        return { acquired: false, deleted: 0, supportDeleted: 0 };
       }
 
       // `sent_at IS NOT NULL` is redundant, since a comparison with NULL is
@@ -243,7 +269,48 @@ export class RetentionService {
           ORDER BY sent_at, message_id
           LIMIT ${batchSize}
         )`;
-      return { acquired: true, deleted };
+
+      // RETURNING hands back the files these messages pointed at and the
+      // threads they were in, which is how the files that are now
+      // unreferenced and the threads that are now empty are found.
+      const removed = await tx.$queryRaw<
+        { attachment_id: bigint | null; thread_id: bigint }[]
+      >`
+        DELETE FROM support_messages
+        WHERE message_id IN (
+          SELECT message_id FROM support_messages
+          WHERE sent_at < ${cutoff}::timestamptz
+          ORDER BY sent_at, message_id
+          LIMIT ${batchSize}
+        )
+        RETURNING attachment_id, thread_id`;
+      const attachmentIds = removed.flatMap((row) =>
+        row.attachment_id === null ? [] : [row.attachment_id],
+      );
+      if (attachmentIds.length > 0) {
+        // The NOT EXISTS keeps a file that something else still refers to.
+        await tx.$executeRaw`
+          DELETE FROM support_attachments a
+          WHERE a.attachment_id = ANY(${attachmentIds}::bigint[])
+            AND NOT EXISTS (
+              SELECT 1 FROM support_messages m
+              WHERE m.attachment_id = a.attachment_id
+            )`;
+      }
+      const threadIds = [...new Set(removed.map((row) => row.thread_id))];
+      if (threadIds.length > 0) {
+        // A request left with no messages has nothing to show, and keeping the
+        // subject of a conversation that has been purged would defeat the
+        // purge. Only threads this batch emptied are looked at.
+        await tx.$executeRaw`
+          DELETE FROM support_threads t
+          WHERE t.thread_id = ANY(${threadIds}::bigint[])
+            AND NOT EXISTS (
+              SELECT 1 FROM support_messages m
+              WHERE m.thread_id = t.thread_id
+            )`;
+      }
+      return { acquired: true, deleted, supportDeleted: removed.length };
     }, TRANSACTION_OPTIONS);
   }
 
@@ -252,6 +319,14 @@ export class RetentionService {
     const [row] = await prisma.$queryRaw<{ count: number }[]>`
       SELECT count(*)::int AS count FROM messages
       WHERE sent_at IS NOT NULL AND sent_at < ${cutoff}::timestamp`;
+    return row?.count ?? 0;
+  }
+
+  /** Same predicate as the support delete in deleteBatch. */
+  private async countExpiredSupport(cutoff: Date): Promise<number> {
+    const [row] = await prisma.$queryRaw<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM support_messages
+      WHERE sent_at < ${cutoff}::timestamptz`;
     return row?.count ?? 0;
   }
 
@@ -279,9 +354,15 @@ export class RetentionService {
           retentionDays: run.retentionDays,
           cutoff: run.cutoff.toISOString(),
           deleted: run.deleted,
+          supportDeleted: run.supportDeleted,
           // A dry run deletes nothing, so without this the row would say
           // nothing about what the run found.
-          ...(run.dryRun ? { wouldDelete: run.wouldDelete } : {}),
+          ...(run.dryRun
+            ? {
+                wouldDelete: run.wouldDelete,
+                supportWouldDelete: run.supportWouldDelete,
+              }
+            : {}),
           skippedNullSentAt: run.skippedNullSentAt,
           batches: run.batches,
           durationMs: run.durationMs,

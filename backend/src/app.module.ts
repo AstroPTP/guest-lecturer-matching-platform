@@ -19,6 +19,7 @@ import { SettingsModule } from './settings/settings.module';
 import { DismissalsModule } from './dismissals/dismissals.module';
 import { ImagesModule } from './images/images.module';
 import { RetentionModule } from './retention/retention.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { RetentionModule } from './retention/retention.module';
     // Registered once here; modules only declare @Cron methods.
     ScheduleModule.forRoot(),
     RetentionModule,
+    SupportModule,
   ],
   controllers: [AppController],
   providers: [

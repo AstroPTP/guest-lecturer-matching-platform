@@ -182,11 +182,18 @@ export class GuestSpeakersService {
    * Every guest speaker, from the database. What the discovery page lists.
    *
    * Deactivated accounts are left out, and so are unapproved profiles while
-   * an administrator requires approval.
+   * an administrator requires approval, anyone on hold after reports, and
+   * anyone the viewer has an open report with.
+   *
+   * `forMatches` is for listing the profiles of the viewer's own matches
+   * rather than for discovery: a person the viewer has an open report with is
+   * kept, so their conversation stays where it was.
    */
-  async findAll() {
+  async findAll(viewerAuth0Id?: string, forMatches = false) {
     const guests = await prisma.guests.findMany({
-      where: await visibleGuestsWhere(),
+      where: await visibleGuestsWhere(viewerAuth0Id, {
+        keepReportedPair: forMatches,
+      }),
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>

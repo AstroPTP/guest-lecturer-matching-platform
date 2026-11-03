@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import DiscoveryCard from "./DiscoveryCard";
 import MatchModal from "./MatchModal";
@@ -22,7 +22,7 @@ import {
   saveGuestLecturerDiscoveryFilters,
   saveUnitCoordinatorDiscoveryFilters,
 } from "@/services/filter/discoveryFilterService";
-import { dismissProfile, expressInterest, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
+import { dismissProfile, expressInterest, getAccountOnHoldMessage, getBlocks, getDismisses, getInterests, getMatches, removeDismiss, removeInterest,} from "@/services/discovery/matchService";
 import {
   applyGuestLecturerFilters,
   applyUnitCoordinatorFilters,
@@ -74,6 +74,9 @@ export default function DiscoveryPageContent({
   // Bumped to reload the list after filters are cleared from this page.
   const [filterVersion, setFilterVersion] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
+  // A notification links here as ?from=<profile id>. The first load opens on
+  // that person's card, so the interest they sent can be answered straight away.
+  const linkedProfileId = useRef<string | null | undefined>(undefined);
   // The profile whose action is still saving. Requests take seconds, and a
   // second click in that time would send the same request again.
   const [busyProfileId, setBusyProfileId] = useState<string | null>(null);
@@ -91,6 +94,9 @@ export default function DiscoveryPageContent({
 
   useEffect(() => {
     let cancelled = false;
+    if (linkedProfileId.current === undefined) {
+      linkedProfileId.current = new URLSearchParams(window.location.search).get("from");
+    }
     async function loadDataset() {
       setIsLoading(true);
       setErrorMessage(null);
@@ -108,23 +114,28 @@ export default function DiscoveryPageContent({
         }
         setDismissedProfilesExist(getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks).length > 0);
         setActiveFilterCount(countActiveFilters(filters));
+        let loadedItems: DiscoveryItem[];
         if (isReviewingDismissed) {
-          setItems(getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks));
+          loadedItems = getDismissedDiscoveryItems(initialItems, dismisses, matches, blocks);
         } else if (currentUserType === "guestLecturer") {
           const baseItems = getAvailableDiscoveryItems(initialItems, interests, dismisses, matches, blocks);
           const guestLecturerFilters = filters as GuestLecturerDiscoveryFilters;
           setUnfilteredCount(baseItems.length);
-          setItems(applyGuestLecturerFilters(baseItems, guestLecturerFilters));
+          loadedItems = applyGuestLecturerFilters(baseItems, guestLecturerFilters);
         } else {
           const baseItems = getAvailableDiscoveryItems(initialItems, interests, dismisses, matches, blocks);
           const unitCoordinatorFilters = filters as UnitCoordinatorDiscoveryFilters;
           setUnfilteredCount(baseItems.length);
-          setItems(applyUnitCoordinatorFilters(baseItems, unitCoordinatorFilters));
+          loadedItems = applyUnitCoordinatorFilters(baseItems, unitCoordinatorFilters);
         }
+        setItems(loadedItems);
         setActionHistory([]);
         setMatchModalData(null);
         setDismissToast(null);
-        setCurrentIndex(0);
+        // Falls back to the first card when the linked profile is not in the
+        // list, for example because the user's filters leave it out.
+        setCurrentIndex(Math.max(0, loadedItems.findIndex((item) => item.profile.id === linkedProfileId.current)));
+        linkedProfileId.current = null;
       } catch (error) {
         if (!cancelled) {
           console.error("Unable to load discovery data:", error);
@@ -222,8 +233,9 @@ export default function DiscoveryPageContent({
       if (result.matched && result.match) {
         setMatchModalData({ match: result.match, matchedItem: selectedItem });
       }
-    } catch {
-      setActionError("This isn't connected to a backend yet, so that action couldn't be saved.");
+    } catch (error) {
+      // A person on hold is told it is their account, rather than that the backend is missing.
+      setActionError(getAccountOnHoldMessage(error) ?? "This isn't connected to a backend yet, so that action couldn't be saved.");
     } finally {
       setBusyProfileId(null);
     }

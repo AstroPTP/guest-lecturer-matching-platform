@@ -64,6 +64,9 @@ export const prisma = {
   admin_settings: model(),
   availability: model(),
   user_expertise: model(),
+  support_threads: model(),
+  support_messages: model(),
+  support_attachments: model(),
 };
 
 export function resolveUserId(): Promise<bigint> {

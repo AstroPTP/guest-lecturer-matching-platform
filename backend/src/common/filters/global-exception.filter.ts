@@ -10,6 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { monitoringStore } from '../../monitoring/monitoring.store';
 import { ErrorCode, ErrorEnvelope } from '../error-codes';
+import { currentCorrelationId } from '../request-context';
 
 /**
  * Turns every error into the four-field envelope.
@@ -17,12 +18,12 @@ import { ErrorCode, ErrorEnvelope } from '../error-codes';
  * Two obligations, pulling in opposite directions, and both have to be met:
  *
  *   - the client gets exactly four fields and nothing else: no stack, no file
- *     path, no SQL, no dependency name (INF-01);
- *   - the server log keeps the full detail, or nothing is diagnosable
- *     (checklist INF-02).
+ *     path, no SQL, no dependency name;
+ *   - the server log keeps the full detail, or nothing is diagnosable.
  *
  * The correlation id appears in both, so a user quoting the id from their
- * error screen can be matched to the stack trace that produced it.
+ * error screen can be matched to the stack trace that produced it. It is the
+ * same id the request's JSON log line and any audit entry carry.
  */
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -33,13 +34,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = http.getResponse<Response>();
     const request = http.getRequest<Request>();
 
-    const correlationId = resolveCorrelationId(request);
+    const correlationId = resolveCorrelationId();
     const status = resolveStatus(exception);
     const { code, message } = resolveCodeAndMessage(exception, status);
 
     // Method and path only. Never the body, the query string or the headers.
     // Request payloads and credentials must not be logged, and an
-    // Authorization header in a log file is a credential at rest (INF-06).
+    // Authorization header in a log file is a credential at rest.
     const context = `${request.method} ${request.path} -> ${status} ${code} [${correlationId}]`;
 
     if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
@@ -100,20 +101,15 @@ function numericUserIdOf(request: Request): number | null {
 }
 
 /**
- * Reuses an inbound correlation id so one identifier follows a request across
- * the frontend and backend logs (checklist REP-06), and mints one otherwise.
+ * The id the request middleware already settled on, so the envelope, the log
+ * line and the response header all agree.
  *
- * Length-capped because this value is echoed back and written to logs, and an
- * unbounded client-supplied string is a log-injection and storage problem.
+ * An error that arrives with no request context means the middleware did not
+ * run for it: mint an id here, so an envelope never goes out without one. A
+ * header the caller sent is never used.
  */
-function resolveCorrelationId(request: Request): string {
-  const inbound = request.header('x-correlation-id');
-
-  if (typeof inbound === 'string' && /^[\w-]{1,64}$/.test(inbound)) {
-    return inbound;
-  }
-
-  return randomUUID();
+function resolveCorrelationId(): string {
+  return currentCorrelationId() ?? randomUUID();
 }
 
 function resolveStatus(exception: unknown): HttpStatus {
@@ -207,6 +203,10 @@ function defaultCodeFor(status: HttpStatus): ErrorCode {
       return ErrorCode.AuthzInsufficientRole;
     case HttpStatus.BAD_REQUEST:
       return ErrorCode.ValidationFailed;
+    case HttpStatus.NOT_FOUND:
+      return ErrorCode.NotFound;
+    case HttpStatus.CONFLICT:
+      return ErrorCode.Conflict;
     case HttpStatus.TOO_MANY_REQUESTS:
       return ErrorCode.RateLimitExceeded;
     case HttpStatus.PAYLOAD_TOO_LARGE:
@@ -224,6 +224,10 @@ function defaultMessageFor(status: HttpStatus): string {
       return 'You do not have permission to perform this action';
     case HttpStatus.BAD_REQUEST:
       return 'The request could not be processed';
+    case HttpStatus.NOT_FOUND:
+      return 'The requested resource was not found';
+    case HttpStatus.CONFLICT:
+      return 'The request conflicts with the current state of the resource';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'Too many requests';
     case HttpStatus.PAYLOAD_TOO_LARGE:
