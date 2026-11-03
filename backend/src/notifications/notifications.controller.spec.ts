@@ -117,14 +117,15 @@ describe('NotificationsController', () => {
     );
 
     it("counts the administrator's own unread notices, the figure the bell shows", async () => {
-      const countUnread = jest
-        .spyOn(service, 'countUnread')
-        .mockResolvedValue(3);
+      const unreadSummary = jest
+        .spyOn(service, 'unreadSummary')
+        .mockResolvedValue({ count: 3, latestAt: '2026-10-12T03:30:00.000Z' });
 
       await expect(controller.unreadCount(admin)).resolves.toEqual({
         count: 3,
+        latestAt: '2026-10-12T03:30:00.000Z',
       });
-      expect(countUnread).toHaveBeenCalledWith('auth0|admin');
+      expect(unreadSummary).toHaveBeenCalledWith('auth0|admin');
     });
 
     it('marks the whole inbox read for that administrator only', async () => {
