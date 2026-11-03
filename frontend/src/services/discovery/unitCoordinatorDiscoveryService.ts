@@ -9,7 +9,11 @@ import type { PublicGuestLecturerProfile } from "@/types/discovery/publicGuestLe
  * pages expect (schedule, delivery focus and topics included), so nothing is
  * mapped here. The call goes through /api/backend, which attaches the access
  * token server-side, so nothing here handles a credential.
+ *
+ * With `forMatches` the list is for the caller's own matches rather than for
+ * Discovery: someone the caller has an open report with is kept, so their
+ * conversation stays where it was.
  */
-export async function getPublicGuestLecturerProfiles(): Promise<PublicGuestLecturerProfile[]> {
-  return backendFetch<PublicGuestLecturerProfile[]>("/guest-speakers");
+export async function getPublicGuestLecturerProfiles(options: { forMatches?: boolean } = {}): Promise<PublicGuestLecturerProfile[]> {
+  return backendFetch<PublicGuestLecturerProfile[]>(options.forMatches ? "/guest-speakers?forMatches=true" : "/guest-speakers");
 }

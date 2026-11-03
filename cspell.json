@@ -24,6 +24,7 @@
     "forgeable",
     "frameguard",
     "glma",
+    "glmp",
     "healthz",
     "hsts",
     "husky",
@@ -55,6 +56,7 @@
     "supabase",
     "tenant",
     "throttler",
+    "topbar",
     "unparseable",
     "unvetted",
     "xact"

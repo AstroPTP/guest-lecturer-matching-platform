@@ -4,10 +4,12 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import notificationIcon from "@/assets/notification.png";
-import { getUnreadNotificationCount } from "@/services/notifications/notificationService";
+import { getUnreadNotificationSummary } from "@/services/notifications/notificationService";
+import { startUnreadCountPolling, UNREAD_COUNT_CHANGED_EVENT } from "@/utils/unreadCountPoller";
 import { getGuestLecturerBasicInformation } from "@/services/profile/guestLecturerProfileService";
 import { getUnitCoordinatorBasicInformation } from "@/services/profile/unitCoordinatorProfileService";
 import type { UserRole } from "@/types/shared/userRole";
+import ThemeToggle from "@/components/theme/ThemeToggle";
 
 interface DashboardHeaderProps {
   role: UserRole;
@@ -38,23 +40,11 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
   }, [role, roleLabel]);
   const [unreadCount, setUnreadCount] = useState(0);
   useEffect(() => {
-    let cancelled = false;
-    async function loadUnreadCount() {
-      try {
-        const count = await getUnreadNotificationCount();
-        if (!cancelled) {
-          setUnreadCount(count);
-        }
-      } catch {
-        if (!cancelled) {
-          setUnreadCount(0);
-        }
-      }
-    }
-    void loadUnreadCount();
-    return () => {
-      cancelled = true;
-    };
+    return startUnreadCountPolling({
+      fetchCount: getUnreadNotificationSummary,
+      onCount: setUnreadCount,
+      onChange: (summary) => window.dispatchEvent(new CustomEvent(UNREAD_COUNT_CHANGED_EVENT, { detail: summary })),
+    });
   }, []);
   return (
     <header
@@ -65,20 +55,23 @@ export default function DashboardHeader({ role, notificationHref, theme }: Dashb
           {greeting}, {fullName}!
         </p>
       </div>
-      <div className="relative">
-        <button
-          type="button"
-          aria-label={"Notifications" + (unreadCount > 0 ? ", " + unreadCount + " unread" : "")}
-          title="Notifications"
-          onClick={() => router.push(notificationHref)}
-          className={"rounded-xl p-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 " + (theme === "coordinator" ? "hover:bg-blue-100 focus-visible:outline-blue-600" : "hover:bg-teal-100 focus-visible:outline-teal-600")}
-        >
-          <Image src={notificationIcon} alt="" width={24} height={24} />
-        </button>
+      <div className="flex items-center gap-3">
+        <ThemeToggle className="hidden sm:inline-flex" />
+        <div className="relative">
+          <button
+            type="button"
+            aria-label={"Notifications" + (unreadCount > 0 ? ", " + unreadCount + " unread" : "")}
+            title="Notifications"
+            onClick={() => router.push(notificationHref)}
+            className={"rounded-xl p-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 " + (theme === "coordinator" ? "hover:bg-blue-100 focus-visible:outline-blue-600" : "hover:bg-teal-100 focus-visible:outline-teal-600")}
+          >
+            <Image src={notificationIcon} alt="" width={24} height={24} />
+          </button>
 
-        {unreadCount > 0 && (
-          <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
-        )}
+          {unreadCount > 0 && (
+            <span aria-hidden="true" className="pointer-events-none absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white" />
+          )}
+        </div>
       </div>
     </header>
   );
