@@ -106,6 +106,6 @@ export const config = {
   // Each name has to be the whole first segment, so a route that merely starts
   // with one is still checked.
   matcher: [
-    '/((?!(?:_next/static|_next/image|favicon\\.ico|icon\\.svg|apple-icon\\.png|icon|apple-icon|push-badge|manifest\\.webmanifest|sw\\.js)(?:/|$)).*)',
+    '/((?!(?:_next/static|_next/image|favicon\\.ico|icon\\.svg|apple-icon\\.png|icon|push-badge|manifest\\.webmanifest|sw\\.js)(?:/|$)).*)',
   ],
 };
