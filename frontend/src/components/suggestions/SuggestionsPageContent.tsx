@@ -34,13 +34,13 @@ function todayString(): string {
 function describeLastSession(band: LastSessionBand): string {
   switch (band) {
     case "never":
-      return "Not yet matched for a session";
+      return "No session yet";
     case "within 30 days":
-      return "Last matched within 30 days";
+      return "Last session within 30 days";
     case "1 to 3 months":
-      return "Last matched 1 to 3 months ago";
+      return "Last session 1 to 3 months ago";
     case "over 3 months":
-      return "Last matched over 3 months ago";
+      return "Last session over 3 months ago";
   }
 }
 

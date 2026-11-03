@@ -145,7 +145,7 @@ const guestLecturer: HelpContent = {
     {
       question: "Who can see my details?",
       answer:
-        "Only signed-in unit coordinators and the CCAE administrators. A suggestion shows your name, role, photo and shared topics, plus broad ranges for how recently and how often you have been matched, but never your email.",
+        "Only signed-in unit coordinators and the CCAE administrators. A suggestion shows your name, role, photo and shared topics, plus broad ranges for how recently and how often you have had a session, but never your email.",
       feature: "suggestions",
     },
     {

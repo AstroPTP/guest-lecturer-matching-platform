@@ -183,8 +183,8 @@ export type SessionsBand = 'none' | '1 to 2' | '3 to 5' | '6 or more';
  *
  * The exact date is never returned. A coordinator who could read it, or the
  * exact rotation term it produces, could work out when another coordinator
- * matched with that lecturer. The server ranks on the exact value and only
- * the band leaves it.
+ * had a session with that lecturer. The server ranks on the exact value and
+ * only the band leaves it.
  */
 export function lastSessionBand(
   lastSessionAt: Date | null,
