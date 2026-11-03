@@ -242,7 +242,7 @@ const unitCoordinator: HelpContent = {
     {
       question: "Why can't I see a speaker I know?",
       answer:
-        "They may be unavailable at that time, not cover your topics, not have finished their profile, or be someone you dismissed or ended a match with. Try another time or fewer topics, or look for them in Discovery.",
+        "They may be unavailable at that time, not cover your topics, not have finished their profile, be someone you dismissed or ended a match with, or have contact on hold after a report. A hold is a routine step and says nothing about the person. Try another time or add more topics (a lecturer only needs to share one), or look for them in Discovery.",
       feature: "suggestions",
     },
     {
