@@ -1,6 +1,8 @@
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
+import { expertiseTopics } from "@/constants/profileOptions/shared";
+import { isCustomTopic } from "@/utils/customTopics";
 import { normalizeOptionValue } from "@/utils/displayFormatters";
 
 // Which discovery profiles a user sees: the ones they haven't acted on, narrowed
@@ -50,6 +52,21 @@ export function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: Uni
     const matchesLocation = !filters.location.trim() || engagementProfile.primaryLocation.toLowerCase().includes(filters.location.trim().toLowerCase());
     return matchesTopics && matchesExperience && matchesField && matchesFormats && matchesDurations && matchesDays && matchesSpeaking && matchesInternational && matchesLocation;
   });
+}
+
+// The topic choices on the Filters page: the fixed topics, then the custom
+// topics found on the given profiles and in the current selection, sorted.
+// Topics that match each other the way the filter matches them are shown once.
+export function getTopicFilterOptions(items: DiscoveryItem[], selectedTopics: string[]): { value: string; label: string }[] {
+  const profileTopics = items.flatMap((item) => item.profile.expertise.selectedTopics).sort((first, second) => first.localeCompare(second));
+  const customTopics = new Map<string, string>();
+  for (const topic of [...selectedTopics, ...profileTopics]) {
+    if (topic.trim() !== "" && isCustomTopic(topic) && !customTopics.has(normalizeOptionValue(topic))) {
+      customTopics.set(normalizeOptionValue(topic), topic);
+    }
+  }
+  const sortedCustomTopics = Array.from(customTopics.values()).sort((first, second) => first.localeCompare(second));
+  return [...expertiseTopics, ...sortedCustomTopics].map((topic) => ({ value: topic, label: topic }));
 }
 
 function includesOption(values: string[], value: string): boolean {

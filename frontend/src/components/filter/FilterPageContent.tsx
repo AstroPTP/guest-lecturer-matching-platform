@@ -11,10 +11,10 @@ import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import { getPublicUnitCoordinatorProfiles } from "@/services/discovery/guestLecturerDiscoveryService";
 import { getPublicGuestLecturerProfiles } from "@/services/discovery/unitCoordinatorDiscoveryService";
 import { getBlocks, getDismisses, getInterests, getMatches } from "@/services/discovery/matchService";
-import { applyGuestLecturerFilters, applyUnitCoordinatorFilters, getAvailableDiscoveryItems } from "@/utils/discoveryFilters";
+import { applyGuestLecturerFilters, applyUnitCoordinatorFilters, getAvailableDiscoveryItems, getTopicFilterOptions } from "@/utils/discoveryFilters";
 import { emptyGuestLecturerFilters, emptyUnitCoordinatorFilters,getGuestLecturerDiscoveryFilters, getUnitCoordinatorDiscoveryFilters, saveGuestLecturerDiscoveryFilters, saveUnitCoordinatorDiscoveryFilters,} from "@/services/filter/discoveryFilterService";
 import { professionalFields } from "@/constants/profileOptions/guestLecturer";
-import { experienceLevels, expertiseTopics, formatOptions,sessionDurationOptions, unitCoordinatorAudienceSizeOptions,weekDays} from "@/constants/profileOptions/shared";
+import { experienceLevels, formatOptions,sessionDurationOptions, unitCoordinatorAudienceSizeOptions,weekDays} from "@/constants/profileOptions/shared";
 
 interface FilterPageContentProps {
   role: UserRole;
@@ -62,6 +62,8 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
         : applyUnitCoordinatorFilters(availableItems, unitCoordinatorFilters).length;
   }
   const profileNoun = role === "guestLecturer" ? "coordinator" : "guest lecturer";
+  // The fixed topics plus the custom topics on the profiles that can be filtered.
+  const topicOptions = getTopicFilterOptions(availableItems ?? [], role === "guestLecturer" ? guestLecturerFilters.topics : unitCoordinatorFilters.topics);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,9 +133,9 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
       </div>
       {loadError && <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-700">{loadError}</div>}
       {role === "guestLecturer" ? (
-        <GuestLecturerFilterFields filters={guestLecturerFilters} setFilters={setGuestLecturerFilters} />
+        <GuestLecturerFilterFields filters={guestLecturerFilters} setFilters={setGuestLecturerFilters} topicOptions={topicOptions} />
       ) : (
-        <UnitCoordinatorFilterFields filters={unitCoordinatorFilters} setFilters={setUnitCoordinatorFilters} />
+        <UnitCoordinatorFilterFields filters={unitCoordinatorFilters} setFilters={setUnitCoordinatorFilters} topicOptions={topicOptions} />
       )}
 
       <div className="sticky bottom-0 mt-10 border-t border-gray-200 bg-[#f8f8f8] py-5">
@@ -146,18 +148,16 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
   );
 }
 
-function GuestLecturerFilterFields({filters,setFilters}: {
+function GuestLecturerFilterFields({filters,setFilters,topicOptions}: {
   filters: GuestLecturerDiscoveryFilters;
   setFilters: React.Dispatch<React.SetStateAction<GuestLecturerDiscoveryFilters>>;
+  topicOptions: { value: string; label: string }[];
 }) {
   return (
     <div className="space-y-6">
       <FilterSection title="Expertise Topics" description="Choose the topics you want to speak about.">
         <ChoiceButtons
-          options={expertiseTopics.map((item) => ({
-            value: item,
-            label: item,
-          }))}
+          options={topicOptions}
           selectedValues={filters.topics}
           onToggle={(value) =>
             setFilters({
@@ -236,18 +236,16 @@ function GuestLecturerFilterFields({filters,setFilters}: {
   );
 }
 
-function UnitCoordinatorFilterFields({ filters, setFilters}: {
+function UnitCoordinatorFilterFields({ filters, setFilters, topicOptions}: {
   filters: UnitCoordinatorDiscoveryFilters;
   setFilters: React.Dispatch<React.SetStateAction<UnitCoordinatorDiscoveryFilters>>;
+  topicOptions: { value: string; label: string }[];
 }) {
   return (
     <div className="space-y-6">
       <FilterSection title="Expertise Topics" description="Choose the expertise required for your unit.">
         <ChoiceButtons
-          options={expertiseTopics.map((item) => ({
-            value: item,
-            label: item,
-          }))}
+          options={topicOptions}
           selectedValues={filters.topics}
           onToggle={(value) =>
             setFilters({
