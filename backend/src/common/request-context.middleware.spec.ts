@@ -109,25 +109,14 @@ describe('requestContextMiddleware', () => {
   });
 
   describe('the correlation id', () => {
-    it('reuses a well-formed inbound id on the response, in the handler and in the log', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/things/7')
-        .set('x-correlation-id', 'abc-123_DEF')
-        .expect(200);
-
-      expect(res.headers['x-correlation-id']).toBe('abc-123_DEF');
-      expect((res.body as { seenByHandler: string }).seenByHandler).toBe(
-        'abc-123_DEF',
-      );
-      expect(parsed()[0].correlationId).toBe('abc-123_DEF');
-    });
-
     it.each([
+      ['a well-formed id', 'abc-123_DEF'],
+      ['a ULID-shaped id', '01HZX3K9QJ0000000000000000'],
       ['too long', 'a'.repeat(65)],
       ['markup', '<script>alert(1)</script>'],
       ['spaced', 'has space in it'],
     ])(
-      'replaces an inbound id that is %s with a ULID',
+      'ignores an inbound id that is %s and issues its own ULID',
       async (_label, inbound) => {
         const res = await request(app.getHttpServer())
           .get('/things/7')
@@ -137,10 +126,29 @@ describe('requestContextMiddleware', () => {
         const issued = res.headers['x-correlation-id'];
         expect(issued).not.toBe(inbound);
         expect(issued).toMatch(ULID);
+        expect((res.body as { seenByHandler: string }).seenByHandler).toBe(
+          issued,
+        );
         expect(parsed()[0].correlationId).toBe(issued);
         expect(lines.join('')).not.toContain(inbound);
       },
     );
+
+    it('does not let a caller reuse the id of another request', async () => {
+      const first = await request(app.getHttpServer()).get('/things/1');
+      const copied = first.headers['x-correlation-id'];
+
+      const second = await request(app.getHttpServer())
+        .get('/things/2')
+        .set('x-correlation-id', copied);
+
+      expect(second.headers['x-correlation-id']).toMatch(ULID);
+      expect(second.headers['x-correlation-id']).not.toBe(copied);
+      expect(parsed().map((line) => line.correlationId)).toEqual([
+        copied,
+        second.headers['x-correlation-id'],
+      ]);
+    });
 
     it('mints a ULID when none is sent, and a different one for every request', async () => {
       const first = await request(app.getHttpServer()).get('/things/1');
@@ -166,27 +174,29 @@ describe('requestContextMiddleware', () => {
     it('keeps the context after the body has been parsed and awaited on', async () => {
       const res = await request(app.getHttpServer())
         .post('/things')
-        .set('x-correlation-id', 'posted-1')
         .send({ name: 'x' })
         .expect(201);
 
       expect((res.body as { seenByHandler: string }).seenByHandler).toBe(
-        'posted-1',
+        res.headers['x-correlation-id'],
       );
     });
 
     it('keeps requests that overlap apart', async () => {
       const server = app.getHttpServer();
       const [slow, fast] = await Promise.all([
-        request(server).get('/slow/a/40').set('x-correlation-id', 'id-a'),
-        request(server).get('/slow/b/1').set('x-correlation-id', 'id-b'),
+        request(server).get('/slow/a/40'),
+        request(server).get('/slow/b/1'),
       ]);
 
+      expect(slow.headers['x-correlation-id']).not.toBe(
+        fast.headers['x-correlation-id'],
+      );
       expect((slow.body as { seenByHandler: string }).seenByHandler).toBe(
-        'id-a',
+        slow.headers['x-correlation-id'],
       );
       expect((fast.body as { seenByHandler: string }).seenByHandler).toBe(
-        'id-b',
+        fast.headers['x-correlation-id'],
       );
     });
   });
@@ -309,12 +319,12 @@ describe('requestContextMiddleware', () => {
         .set('x-correlation-id', 'trace-me-1')
         .expect(500);
 
-      expect((res.body as { correlationId: string }).correlationId).toBe(
-        'trace-me-1',
-      );
-      expect(res.headers['x-correlation-id']).toBe('trace-me-1');
+      const id = res.headers['x-correlation-id'];
+      expect(id).toMatch(ULID);
+      expect(id).not.toBe('trace-me-1');
+      expect((res.body as { correlationId: string }).correlationId).toBe(id);
       expect(parsed()[0]).toMatchObject({
-        correlationId: 'trace-me-1',
+        correlationId: id,
         status: 500,
         route: '/boom',
       });

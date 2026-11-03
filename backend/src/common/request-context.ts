@@ -13,7 +13,7 @@ export interface RequestContext {
 
 const storage = new AsyncLocalStorage<RequestContext>();
 
-/** Header carrying the id from the frontend proxies and back to them. */
+/** Response header carrying the request's id back to the caller. */
 export const CORRELATION_HEADER = 'x-correlation-id';
 
 /**
@@ -33,21 +33,4 @@ export function runInRequestContext<T>(
  */
 export function currentCorrelationId(): string | undefined {
   return storage.getStore()?.correlationId;
-}
-
-/**
- * The inbound id if it is safe to reuse, otherwise undefined.
- *
- * Reused so one identifier follows a request across the frontend and backend
- * logs. Length-capped and limited to word characters and
- * hyphens because the value is echoed in a response header, written to logs
- * and stored in the audit trail: an unbounded client-supplied string is a
- * log-injection and storage problem, and a newline in it would forge a line.
- */
-export function acceptInboundCorrelationId(
-  inbound: unknown,
-): string | undefined {
-  return typeof inbound === 'string' && /^[\w-]{1,64}$/.test(inbound)
-    ? inbound
-    : undefined;
 }

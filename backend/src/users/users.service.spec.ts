@@ -125,6 +125,86 @@ describe('UsersService behaviour', () => {
       expect(createdat).toBeInstanceOf(Date);
     });
 
+    describe('recording the first sign-in', () => {
+      /** The upsert as the database answers it for a row it has just created. */
+      const createsRow = () =>
+        jest.spyOn(prisma.users, 'upsert').mockImplementation(((args: {
+          create: { createdat: Date };
+        }) =>
+          Promise.resolve({
+            userid: 3n,
+            createdat: args.create.createdat,
+          })) as never);
+
+      let updateMany: jest.SpyInstance;
+      beforeEach(() => {
+        updateMany = jest
+          .spyOn(prisma.users, 'updateMany')
+          .mockResolvedValue({ count: 1 });
+        jest
+          .spyOn(prisma.users, 'findFirst')
+          .mockResolvedValue({ userid: 3n } as never);
+      });
+      afterEach(() => jest.restoreAllMocks());
+
+      it('records it through the helper the guard uses when this call created the row', async () => {
+        createsRow();
+        const audit = jest.spyOn(prisma.audit_entries, 'create');
+
+        await service.ensureForUser(caller);
+
+        expect(updateMany).toHaveBeenCalledTimes(1);
+        expect((updateMany.mock.calls as unknown[][])[0][0]).toMatchObject({
+          where: { auth0Id: 'auth0|ann', deletedat: null },
+          data: { lastloginat: expect.any(Date) as unknown },
+        });
+        expect(audit).toHaveBeenCalledTimes(1);
+        expect(audit.mock.calls[0][0]).toMatchObject({
+          data: { action: 'user.signed_in', target_id: '3' },
+        });
+      });
+
+      it('returns the row it created', async () => {
+        createsRow();
+
+        await expect(service.ensureForUser(caller)).resolves.toMatchObject({
+          userid: 3n,
+        });
+      });
+
+      it('records nothing for a row that already existed', async () => {
+        jest.spyOn(prisma.users, 'upsert').mockResolvedValue({
+          userid: 3n,
+          createdat: new Date('2026-01-01T00:00:00Z'),
+        } as never);
+        const audit = jest.spyOn(prisma.audit_entries, 'create');
+
+        await service.ensureForUser(caller);
+
+        expect(updateMany).not.toHaveBeenCalled();
+        expect(audit).not.toHaveBeenCalled();
+      });
+
+      it('records nothing for a row that has no creation time', async () => {
+        jest
+          .spyOn(prisma.users, 'upsert')
+          .mockResolvedValue({ userid: 3n, createdat: null } as never);
+
+        await service.ensureForUser(caller);
+
+        expect(updateMany).not.toHaveBeenCalled();
+      });
+
+      it('still returns the row when recording the sign-in fails', async () => {
+        createsRow();
+        updateMany.mockRejectedValue(new Error('connection lost'));
+
+        await expect(service.ensureForUser(caller)).resolves.toMatchObject({
+          userid: 3n,
+        });
+      });
+    });
+
     it('still creates a row for a caller whose token carries no roles', async () => {
       const upsert = jest
         .spyOn(prisma.users, 'upsert')

@@ -10,7 +10,8 @@ import { prisma } from '../prisma';
 import { UsersService } from '../users/users.service';
 import { AppRole } from './roles';
 import type { AuthenticatedUser } from './authenticated-user';
-import { JwtAuthGuard, recordSignIn } from './jwt.guard';
+import { JwtAuthGuard } from './jwt.guard';
+import { recordSignIn } from './record-sign-in';
 
 const CORRELATION_ID = '01HZX3K9QJ0000000000000000';
 
@@ -274,12 +275,16 @@ describe('JwtAuthGuard sign-in auditing', () => {
        * decides the outcome as it does in life.
        */
       function memoryUsers() {
-        type Row = { userid: bigint; lastloginat: Date | null };
+        type Row = {
+          userid: bigint;
+          createdat: Date;
+          lastloginat: Date | null;
+        };
         const rows = new Map<string, Row>();
         jest.spyOn(prisma.users, 'upsert').mockImplementation(((args: {
           where: { auth0Id: string };
           update: Record<string, unknown>;
-          create: { lastloginat?: Date };
+          create: { createdat: Date };
         }) => {
           const existing = rows.get(args.where.auth0Id);
           if (existing) {
@@ -288,7 +293,8 @@ describe('JwtAuthGuard sign-in auditing', () => {
           }
           const row = {
             userid: 42n,
-            lastloginat: args.create.lastloginat ?? null,
+            createdat: args.create.createdat,
+            lastloginat: null,
           };
           rows.set(args.where.auth0Id, row);
           return Promise.resolve(row);
@@ -329,12 +335,26 @@ describe('JwtAuthGuard sign-in auditing', () => {
         await settle();
       };
 
-      it('audits the first sign-in once when the row exists by the time the guard updates', async () => {
+      /** The handler for GET /users/me, as the guard's next step. */
+      const createRow = () => new UsersService().ensureForUser(newcomer);
+
+      it('records the first sign-in when the row is created, though the account makes no second request', async () => {
         const rows = memoryUsers();
 
-        await new UsersService().ensureForUser(newcomer);
-        // Creating the row records no sign-in; that is the guard's to do.
-        expect(rows.get(newcomer.id)?.lastloginat).toBeNull();
+        // The guard's update finds no row, so it records nothing.
+        await request();
+        expect(auditedActions(create)).toEqual([]);
+
+        await createRow();
+
+        expect(auditedActions(create)).toEqual(['user.signed_in']);
+        expect(rows.get(newcomer.id)?.lastloginat).toBeInstanceOf(Date);
+      });
+
+      it('audits the first sign-in once, however many requests follow', async () => {
+        const rows = memoryUsers();
+        await request();
+        await createRow();
 
         await request();
         await request();
@@ -344,31 +364,59 @@ describe('JwtAuthGuard sign-in auditing', () => {
         expect(rows.get(newcomer.id)?.lastloginat).toBeInstanceOf(Date);
       });
 
-      it('still audits it exactly once when the guard updates before the row exists', async () => {
+      it('audits it once when the guard wins the race and updates the row first', async () => {
+        const rows = memoryUsers();
+        // Another request created the row; this one's guard sees it and
+        // records the sign-in before this request's handler gets to run.
+        rows.set(newcomer.id, {
+          userid: 42n,
+          createdat: new Date(Date.now() - 5),
+          lastloginat: null,
+        });
+        await request();
+        expect(auditedActions(create)).toEqual(['user.signed_in']);
+
+        await createRow();
+
+        expect(auditedActions(create)).toEqual(['user.signed_in']);
+        expect(updateMany).toHaveBeenCalledTimes(1);
+      });
+
+      it('writes the sign-in with the correlation id of the request that created the account', async () => {
         memoryUsers();
 
-        // The first request: the guard's update finds no row, then the
-        // handler creates it.
-        await request();
-        expect(auditedActions(create)).toEqual([]);
-        await new UsersService().ensureForUser(newcomer);
+        await runInRequestContext({ correlationId: CORRELATION_ID }, () =>
+          createRow(),
+        );
 
-        // The next one finds the row waiting for its first sign-in.
-        await request();
-        await request();
+        expect(firstArg(create)).toMatchObject({
+          data: {
+            action: 'user.signed_in',
+            target_id: '42',
+            detail: { correlationId: CORRELATION_ID },
+          },
+        });
+      });
 
+      it('leaves the stored time alone when the handler runs again for an existing account', async () => {
+        const rows = memoryUsers();
+        await createRow();
+        const stored = rows.get(newcomer.id)?.lastloginat;
+
+        await createRow();
+
+        expect(rows.get(newcomer.id)?.lastloginat).toBe(stored);
         expect(auditedActions(create)).toEqual(['user.signed_in']);
       });
 
-      it('leaves the time the guard stored alone when the handler runs later', async () => {
+      it('keeps the simulated demo user out of the trail but still stamps the time', async () => {
+        process.env.DEMO_AUTH_BYPASS = 'true';
         const rows = memoryUsers();
-        await new UsersService().ensureForUser(newcomer);
-        await request();
-        const stored = rows.get(newcomer.id)?.lastloginat;
 
-        await new UsersService().ensureForUser(newcomer);
+        await createRow();
 
-        expect(rows.get(newcomer.id)?.lastloginat).toBe(stored);
+        expect(rows.get(newcomer.id)?.lastloginat).toBeInstanceOf(Date);
+        expect(create).not.toHaveBeenCalled();
       });
     });
 

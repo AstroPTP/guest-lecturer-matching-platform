@@ -5,7 +5,7 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { profileImageUrl } from '../images/images.service';
-import { visibleCoordinatorsWhere } from './coordinator-visibility';
+import { visibleCoordinatorsWhere } from '../admin/platform-rules';
 
 type CoordinatorRow = NonNullable<
   Awaited<ReturnType<typeof prisma.coordinators.findUnique>>
@@ -181,10 +181,16 @@ export class UnitCoordinatorsService {
    * Every unit coordinator, from the database. What the discovery page lists.
    * Deactivated accounts, anyone on hold after reports, and anyone the viewer
    * has an open report with are left out.
+   *
+   * `forMatches` is for listing the profiles of the viewer's own matches
+   * rather than for discovery: a person the viewer has an open report with is
+   * kept, so their conversation stays where it was.
    */
-  async findAll(viewerAuth0Id?: string) {
+  async findAll(viewerAuth0Id?: string, forMatches = false) {
     const coordinators = await prisma.coordinators.findMany({
-      where: await visibleCoordinatorsWhere(viewerAuth0Id),
+      where: await visibleCoordinatorsWhere(viewerAuth0Id, {
+        keepReportedPair: forMatches,
+      }),
       orderBy: { coordinator_id: 'asc' },
     });
     const userIds = coordinators.flatMap((coordinator) =>

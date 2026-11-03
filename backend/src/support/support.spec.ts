@@ -19,6 +19,7 @@ import { AppRole } from '../auth/roles';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
 import type { NotificationsService } from '../notifications/notifications.service';
 import { MAX_ATTACHMENT_BYTES } from './attachments';
+import { ListSupportThreadsQueryDto } from './dto/list-support-threads-query.dto';
 import { OpenSupportThreadDto } from './dto/open-support-thread.dto';
 import { SetSupportStatusDto } from './dto/set-support-status.dto';
 import { SupportReplyDto } from './dto/support-reply.dto';
@@ -141,6 +142,16 @@ function fakeDatabase() {
         guest: null,
         coordinator: null,
       },
+      {
+        // Has signed in but has not chosen a role yet.
+        userid: 6n,
+        auth0Id: 'auth0|erin',
+        email: 'erin@example.com',
+        role: null,
+        deletedat: null,
+        guest: null,
+        coordinator: null,
+      },
     ] as Row[],
     threads: [] as Row[],
     messages: [] as Row[],
@@ -211,6 +222,15 @@ function fakeDatabase() {
     if (!row) return Promise.reject(new Error('no such thread'));
     Object.assign(row, args.data);
     return Promise.resolve(row);
+  }) as never);
+
+  jest.spyOn(prisma.support_threads, 'updateMany').mockImplementation(((args: {
+    where: Row;
+    data: Row;
+  }) => {
+    const rows = db.threads.filter((t) => matches(t, args.where));
+    rows.forEach((row) => Object.assign(row, args.data));
+    return Promise.resolve({ count: rows.length });
   }) as never);
 
   jest.spyOn(prisma.support_messages, 'create').mockImplementation(((args: {
@@ -295,6 +315,21 @@ function fakeDatabase() {
 }
 
 type Db = ReturnType<typeof fakeDatabase>;
+
+/**
+ * Makes an administrator close the request after the service has read it as
+ * open and before its transaction runs, which is what happens when the close
+ * lands while a file is still uploading.
+ */
+function closeBeforeTransaction(db: Db, threadId: string) {
+  jest
+    .spyOn(prisma, '$transaction')
+    .mockImplementation((fn: (tx: typeof prisma) => Promise<unknown>) => {
+      const thread = db.threads.find((t) => t.thread_id === BigInt(threadId));
+      if (thread) thread.status = 'closed';
+      return fn(prisma);
+    });
+}
 
 /** Adds a thread to the fake database the way an administrator's request would. */
 function seedThread(
@@ -391,6 +426,17 @@ describe('SupportAdminController access', () => {
     expect(Reflect.getMetadata(PATH_METADATA, SupportAdminController)).toBe(
       'admin/support',
     );
+  });
+
+  it('passes the list filter on to the service', async () => {
+    const listThreads = jest.fn().mockResolvedValue([]);
+    const controller = new SupportAdminController({
+      listThreads,
+    } as unknown as SupportService);
+
+    await controller.list({ userId: '2', status: 'open' });
+
+    expect(listThreads).toHaveBeenCalledWith({ userId: '2', status: 'open' });
   });
 
   it('has a route for each thing an administrator can do, and no others', () => {
@@ -570,6 +616,32 @@ describe('DTOs', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('accepts a list with no filter, with a person, with a status, or both', async () => {
+    for (const query of [
+      {},
+      { userId: '2' },
+      { status: 'open' },
+      { userId: '2', status: 'closed' },
+    ]) {
+      expect(
+        await validate(plainToInstance(ListSupportThreadsQueryDto, query)),
+      ).toHaveLength(0);
+    }
+  });
+
+  it.each([
+    [{ userId: 'abc' }],
+    [{ userId: '2; drop table users' }],
+    [{ userId: '-1' }],
+    [{ status: 'resolved' }],
+    [{ status: 'OPEN' }],
+  ])('rejects the list filter %j', async (query) => {
+    expect(
+      (await validate(plainToInstance(ListSupportThreadsQueryDto, query)))
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
   it.each(['open', 'closed'])('accepts the status %s', async (status) => {
     expect(
       await validate(plainToInstance(SetSupportStatusDto, { status })),
@@ -651,6 +723,45 @@ describe('SupportService.openThread', () => {
     expect(notifications.create).toHaveBeenCalledWith(
       expect.objectContaining({ recipientId: 'auth0|dave' }),
     );
+  });
+
+  describe('when the person cannot reach the conversation', () => {
+    it.each([
+      ['another administrator', '1'],
+      ['someone with no role yet', '6'],
+    ])(
+      'refuses %s with a 400 that says who can be asked',
+      async (_who, userId) => {
+        const attempt = service.openThread(ADMIN, dto({ userId }));
+
+        await expect(attempt).rejects.toBeInstanceOf(BadRequestException);
+        await expect(attempt).rejects.toMatchObject({
+          response: {
+            code: 'SUPPORT_USER_NOT_REACHABLE',
+            message:
+              'Requests can only be sent to guest lecturers and unit coordinators.',
+          },
+        });
+      },
+    );
+
+    it('writes, records and notifies nothing', async () => {
+      await service.openThread(ADMIN, dto({ userId: '1' })).catch(() => null);
+      await service.openThread(ADMIN, dto({ userId: '6' })).catch(() => null);
+
+      expect(db.threads).toHaveLength(0);
+      expect(db.messages).toHaveLength(0);
+      expect(db.audits).toHaveLength(0);
+      expect(notifications.create).not.toHaveBeenCalled();
+    });
+
+    it('does not stop the next request being opened for a lecturer or coordinator', async () => {
+      await service.openThread(ADMIN, dto({ userId: '1' })).catch(() => null);
+
+      await expect(
+        service.openThread(ADMIN, dto({ userId: '3' })),
+      ).resolves.toEqual({ id: expect.any(String) as string });
+    });
   });
 
   it('records support.requested against the thread, as the administrator', async () => {
@@ -818,6 +929,51 @@ describe('SupportService.listThreads', () => {
   it('is empty when there are no requests', async () => {
     await expect(service.listThreads()).resolves.toEqual([]);
   });
+
+  describe('with a filter', () => {
+    it("lists only the named person's requests", async () => {
+      seedThread(db, { userId: 2n, status: 'closed' });
+      seedThread(db, { userId: 2n });
+      seedThread(db, { userId: 3n });
+
+      const list = await service.listThreads({ userId: '2' });
+
+      expect(list.map((t) => t.userId)).toEqual(['2', '2']);
+    });
+
+    it('lists only open requests, or only closed ones', async () => {
+      seedThread(db, { userId: 2n, status: 'closed' });
+      seedThread(db, { userId: 3n });
+
+      expect(
+        (await service.listThreads({ status: 'open' })).map((t) => t.userId),
+      ).toEqual(['3']);
+      expect(
+        (await service.listThreads({ status: 'closed' })).map((t) => t.userId),
+      ).toEqual(['2']);
+    });
+
+    it('finds the one open request of a person whose request is older than the 200 most recently active', async () => {
+      seedThread(db, { userId: 2n });
+      db.threads[0].updated_at = new Date('2026-01-01T00:00:00.000Z');
+      for (let i = 0; i < 200; i += 1) {
+        seedThread(db, { userId: 3n, status: 'closed' });
+      }
+
+      const unfiltered = await service.listThreads();
+      expect(unfiltered).toHaveLength(200);
+      expect(unfiltered.some((t) => t.userId === '2')).toBe(false);
+
+      const found = await service.listThreads({ userId: '2', status: 'open' });
+      expect(found.map((t) => t.id)).toEqual(['1']);
+    });
+
+    it('refuses a person id that is not a number', async () => {
+      await expect(
+        service.listThreads({ userId: 'abc' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
 });
 
 describe('SupportService.getThreadForAdmin', () => {
@@ -935,6 +1091,38 @@ describe('SupportService.adminReply', () => {
   it('reports a thread that does not exist', async () => {
     await expect(service.adminReply(ADMIN, '404', 'Hi')).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+
+  it('refuses when the request is closed after it was read as open, and writes nothing', async () => {
+    const id = seedThread(db);
+    closeBeforeTransaction(db, id);
+
+    const attempt = service.adminReply(ADMIN, id, 'Hello');
+
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'SUPPORT_THREAD_CLOSED' },
+    });
+    expect(db.messages).toHaveLength(1);
+    expect(db.audits).toHaveLength(0);
+    expect(notifications.create).not.toHaveBeenCalled();
+  });
+
+  it('checks that the request is open inside the transaction, before it writes the message', async () => {
+    const id = seedThread(db);
+    const check = jest.spyOn(prisma.support_threads, 'updateMany');
+    const write = jest.spyOn(prisma.support_messages, 'create');
+
+    await service.adminReply(ADMIN, id, 'Hello');
+
+    expect(check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { thread_id: BigInt(id), status: 'open' },
+      }),
+    );
+    expect(check.mock.invocationCallOrder[0]).toBeLessThan(
+      write.mock.invocationCallOrder[0],
     );
   });
 });
@@ -1194,6 +1382,46 @@ describe('SupportService.postMine', () => {
 
     expect(db.messages).toHaveLength(1);
     expect(db.attachments).toHaveLength(0);
+  });
+
+  it('refuses when the request is closed while the file is still uploading, and stores nothing', async () => {
+    const id = seedThread(db);
+    closeBeforeTransaction(db, id);
+
+    const attempt = service.postMine(
+      ALICE,
+      id,
+      'Here',
+      upload(PDF, 'application/pdf'),
+    );
+
+    await expect(attempt).rejects.toBeInstanceOf(ConflictException);
+    await expect(attempt).rejects.toMatchObject({
+      response: { code: 'SUPPORT_THREAD_CLOSED' },
+    });
+    expect(db.messages).toHaveLength(1);
+    expect(db.attachments).toHaveLength(0);
+  });
+
+  it('checks that the request is open inside the transaction, before it stores the file or the message', async () => {
+    const id = seedThread(db);
+    const check = jest.spyOn(prisma.support_threads, 'updateMany');
+    const file = jest.spyOn(prisma.support_attachments, 'create');
+    const message = jest.spyOn(prisma.support_messages, 'create');
+
+    await service.postMine(ALICE, id, 'Here', upload(PDF, 'application/pdf'));
+
+    expect(check).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { thread_id: BigInt(id), status: 'open' },
+      }),
+    );
+    expect(check.mock.invocationCallOrder[0]).toBeLessThan(
+      file.mock.invocationCallOrder[0],
+    );
+    expect(check.mock.invocationCallOrder[0]).toBeLessThan(
+      message.mock.invocationCallOrder[0],
+    );
   });
 
   it("refuses a reply to someone else's thread, and stores nothing", async () => {
@@ -1527,6 +1755,28 @@ describe('refusals carry a code and a message the user can read', () => {
         return service.getMine(ALICE, id);
       },
       'SUPPORT_THREAD_NOT_FOUND',
+    ],
+    [
+      'a request closed while the reply was being saved',
+      () => {
+        const id = seedThread(db);
+        closeBeforeTransaction(db, id);
+        return service.adminReply(ADMIN, id, 'Hello');
+      },
+      'SUPPORT_THREAD_CLOSED',
+    ],
+    [
+      'a person who cannot reach the conversation',
+      () =>
+        service.openThread(
+          ADMIN,
+          Object.assign(new OpenSupportThreadDto(), {
+            userId: '6',
+            subject: 's',
+            message: 'm',
+          }),
+        ),
+      'SUPPORT_USER_NOT_REACHABLE',
     ],
     [
       'a deactivated account',
