@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import arrowBackIcon from "@/assets/arrow_back.png";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
@@ -63,7 +63,8 @@ export default function FilterPageContent({ role, discoveryHref }: FilterPageCon
   }
   const profileNoun = role === "guestLecturer" ? "coordinator" : "guest lecturer";
   // The fixed topics plus the custom topics on the profiles that can be filtered.
-  const topicOptions = getTopicFilterOptions(availableItems ?? [], role === "guestLecturer" ? guestLecturerFilters.topics : unitCoordinatorFilters.topics);
+  const selectedTopics = role === "guestLecturer" ? guestLecturerFilters.topics : unitCoordinatorFilters.topics;
+  const topicOptions = useMemo(() => getTopicFilterOptions(availableItems ?? [], selectedTopics), [availableItems, selectedTopics]);
 
   useEffect(() => {
     let cancelled = false;

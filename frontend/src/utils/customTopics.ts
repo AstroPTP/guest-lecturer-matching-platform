@@ -51,6 +51,14 @@ export function withFixedTopicSpelling(topics: string[]): string[] {
   return topics.map((topic) => findFixedTopic(topic) ?? topic);
 }
 
+// The form two topics are compared in when filtering, the same sameness rule
+// the server uses: a fixed topic by its fixed spelling, any other topic by
+// topicKey. "banking-finance" matches "Banking & Finance", and "Supply/Chain"
+// matches "Supply Chain".
+export function topicMatchKey(topic: string): string {
+  return topicKey(findFixedTopic(topic) ?? topic);
+}
+
 // Tidies the topics of a saved profile before they go into a form, so a list
 // saved under older rules still saves. A fixed topic is spelled as the list
 // spells it ("ACCOUNTING" shows as the selected "Accounting" chip), repeats are

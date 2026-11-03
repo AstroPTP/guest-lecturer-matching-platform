@@ -2,7 +2,7 @@ import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import type { BlockRecord, DismissRecord, InterestRecord, MatchRecord } from "@/types/discovery/matchTypes";
 import type { GuestLecturerDiscoveryFilters, UnitCoordinatorDiscoveryFilters } from "@/types/filter/discoveryFilterTypes";
 import { expertiseTopics } from "@/constants/profileOptions/shared";
-import { isCustomTopic } from "@/utils/customTopics";
+import { isCustomTopic, topicMatchKey } from "@/utils/customTopics";
 import { normalizeOptionValue } from "@/utils/displayFormatters";
 
 // Which discovery profiles a user sees: the ones they haven't acted on, narrowed
@@ -22,7 +22,7 @@ export function applyGuestLecturerFilters(items: DiscoveryItem[], filters: Guest
     }
 
     const { expertise, engagementProfile } = item.profile;
-    const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => includesOption(expertise.selectedTopics, topic));
+    const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => includesTopic(expertise.selectedTopics, topic));
     const matchesFormats = filters.formats.length === 0 || filters.formats.some((format) => includesOption(engagementProfile.formats, format));
     const matchesDurations = filters.sessionDurations.length === 0 || includesOption(filters.sessionDurations, engagementProfile.sessionDuration);
     const matchesAudience =
@@ -41,7 +41,7 @@ export function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: Uni
       return false;
     }
     const { basicInformation, expertise, engagementProfile } = item.profile;
-    const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => includesOption(expertise.selectedTopics, topic));
+    const matchesTopics = filters.topics.length === 0 || filters.topics.some((topic) => includesTopic(expertise.selectedTopics, topic));
     const matchesExperience = filters.experienceLevels.length === 0 || includesOption(filters.experienceLevels, expertise.experienceLevel);
     const matchesField = filters.professionalFields.length === 0 || includesOption(filters.professionalFields, basicInformation.professionalField);
     const matchesFormats = filters.formats.length === 0 || filters.formats.some((format) => includesOption(engagementProfile.formats ?? [], format));
@@ -58,15 +58,22 @@ export function applyUnitCoordinatorFilters(items: DiscoveryItem[], filters: Uni
 // topics found on the given profiles and in the current selection, sorted.
 // Topics that match each other the way the filter matches them are shown once.
 export function getTopicFilterOptions(items: DiscoveryItem[], selectedTopics: string[]): { value: string; label: string }[] {
-  const profileTopics = items.flatMap((item) => item.profile.expertise.selectedTopics).sort((first, second) => first.localeCompare(second));
   const customTopics = new Map<string, string>();
-  for (const topic of [...selectedTopics, ...profileTopics]) {
-    if (topic.trim() !== "" && isCustomTopic(topic) && !customTopics.has(normalizeOptionValue(topic))) {
-      customTopics.set(normalizeOptionValue(topic), topic);
+  for (const topic of [...selectedTopics, ...items.flatMap((item) => item.profile.expertise.selectedTopics)]) {
+    if (topic.trim() !== "" && isCustomTopic(topic) && !customTopics.has(topicMatchKey(topic))) {
+      customTopics.set(topicMatchKey(topic), topic);
     }
   }
   const sortedCustomTopics = Array.from(customTopics.values()).sort((first, second) => first.localeCompare(second));
   return [...expertiseTopics, ...sortedCustomTopics].map((topic) => ({ value: topic, label: topic }));
+}
+
+// Topics match the way the server compares them, so a fixed topic is found
+// under any older spelling and a custom topic whatever its letter case or
+// punctuation.
+function includesTopic(topics: string[], topic: string): boolean {
+  const target = topicMatchKey(topic);
+  return topics.some((item) => topicMatchKey(item) === target);
 }
 
 function includesOption(values: string[], value: string): boolean {
