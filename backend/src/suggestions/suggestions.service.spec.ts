@@ -34,7 +34,7 @@ interface LecturerSpec {
   to?: string | null;
   consent?: boolean | null;
   deleted?: boolean;
-  /** Completed sessions, each finishing on the given date. */
+  /** Completed sessions, each held on the given date. */
   sessions?: Date[];
   completed?: number;
   broken?: number;
@@ -145,7 +145,13 @@ function build(specs: LecturerSpec[]): World & { ids: Record<string, bigint> } {
       world.expertise.push({ user_id: userId, expertise: topic });
     }
     for (const when of spec.sessions ?? []) {
-      world.events.push(eventOf(guestId, { completed_at: when }));
+      world.events.push(
+        eventOf(guestId, {
+          date: when.toISOString().slice(0, 10),
+          completed_at: when,
+          created_at: new Date(when.getTime() - DAY),
+        }),
+      );
     }
     for (let i = 0; i < (spec.completed ?? 0); i += 1) {
       world.events.push(eventOf(guestId));
@@ -222,6 +228,14 @@ function install(world: World) {
         world.guests.filter((row) =>
           matches(row as Record<string, unknown>, args.where),
         ),
+      )) as never);
+  jest
+    .spyOn(prisma.guests, 'count')
+    .mockImplementation(((args: { where: Where }) =>
+      Promise.resolve(
+        world.guests.filter((row) =>
+          matches(row as Record<string, unknown>, args.where),
+        ).length,
       )) as never);
   jest
     .spyOn(prisma.dismissals, 'findMany')
@@ -413,6 +427,20 @@ describe('SuggestionsService', () => {
       expect(JSON.stringify(candidates)).toContain('"consentstate":true');
       expect(JSON.stringify(candidates)).toContain('"deletedat":null');
       expect(JSON.stringify(candidates)).toContain('"first_name":{"not":null}');
+    });
+
+    it('counts the visible lecturers instead of loading them', async () => {
+      install(build([{ name: 'Ada' }, { name: 'Ben', consent: false }]));
+      const count = jest.spyOn(prisma.guests, 'count');
+      const read = jest.spyOn(prisma.guests, 'findMany');
+      const { stages } = await service.suggest(userId, query, NOW);
+
+      expect(count).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+      // The one load is the candidates, which are used; none is only a count.
+      expect(read.mock.calls[0][0]?.select).toHaveProperty('first_name', true);
+      expect(stages.considered).toBe(2);
+      expect(stages.eligible).toBe(1);
     });
 
     describe("the platform's visibility rule", () => {
@@ -903,16 +931,13 @@ describe('SuggestionsService', () => {
       expect(ada.lastSessionBand).toBe('never');
     });
 
-    it('reads only agreed events, for the lecturers still in the running', async () => {
+    it('reads only accepted and completed events, for the lecturers still in the running', async () => {
       install(build([{ name: 'Ada' }, { name: 'Off topic', topics: ['Art'] }]));
       const spy = jest.spyOn(prisma.events, 'findMany');
       await service.suggest(userId, query, NOW);
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]?.where).toEqual({
-        OR: [
-          { status: 'accepted' },
-          { status: 'completed', responded_at: { not: null } },
-        ],
+        status: { in: ['accepted', 'completed'] },
         match: { is: { guest_id: { in: [1n] } } },
       });
     });
@@ -930,7 +955,7 @@ describe('SuggestionsService', () => {
         const world = build([{ name: 'Ada' }]);
         world.events.push(
           eventOf(world.ids.Ada, {
-            completed_at: new Date(NOW.getTime() - 10 * DAY),
+            date: '2026-10-12',
             match: { guest_id: world.ids.Ada, status: 'UNMATCHED' },
           }),
         );
@@ -976,24 +1001,25 @@ describe('SuggestionsService', () => {
         },
       );
 
-      it('does not count a completed event the lecturer never replied to', async () => {
+      it('dates a session by its event date, not by when it was marked complete', async () => {
         const world = build([{ name: 'Ada' }]);
-        // The status order is not enforced, so an unanswered invitation can be
-        // marked completed. The lecturer's agreement is what makes a session.
+        // Held in June and marked complete in late October.
         world.events.push(
-          eventOf(world.ids.Ada, { status: 'completed', responded_at: null }),
+          eventOf(world.ids.Ada, {
+            date: '2026-06-10',
+            completed_at: new Date('2026-10-21T00:00:00.000Z'),
+          }),
         );
-        const ada = await sessionsOf(world);
-        expect(ada.sessionsBand).toBe('none');
-        expect(ada.lastSessionBand).toBe('never');
+        expect((await sessionsOf(world)).lastSessionBand).toBe('over 3 months');
       });
 
-      it('dates a session by when it was completed, ahead of the event date', async () => {
+      it('uses the time it was marked complete when the event date cannot be read', async () => {
         const world = build([{ name: 'Ada' }]);
         world.events.push(
           eventOf(world.ids.Ada, {
+            date: 'next Tuesday',
             completed_at: new Date(NOW.getTime() - 10 * DAY),
-            date: '2026-06-01',
+            created_at: new Date(NOW.getTime() - 200 * DAY),
           }),
         );
         expect((await sessionsOf(world)).lastSessionBand).toBe(
@@ -1032,7 +1058,7 @@ describe('SuggestionsService', () => {
         const world = build([{ name: 'A' }, { name: 'B' }]);
         world.events.push(
           eventOf(world.ids.A, { status: 'accepted', date: '2026-12-01' }),
-          eventOf(world.ids.B, { completed_at: NOW }),
+          eventOf(world.ids.B, { date: '2026-10-22' }),
         );
         install(world);
         expect(await names()).toEqual(['A', 'B']);

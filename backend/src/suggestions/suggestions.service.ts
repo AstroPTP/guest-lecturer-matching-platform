@@ -4,7 +4,6 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import type { Prisma } from '../../generated/prisma/client';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { ErrorCode } from '../common/error-codes';
 import { profileImageUrl } from '../images/images.service';
@@ -114,41 +113,25 @@ export interface SuggestionsResult {
   suggestions: Suggestion[];
 }
 
-/**
- * The shared visibility rule, called with the viewer. The cast keeps this
- * compiling whether or not the rule takes one, and the call is made here, not
- * captured at import, so a test can replace the rule.
- */
-function visibleGuestsFor(
-  viewerAuth0Id: string,
-): Promise<Prisma.guestsWhereInput> {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-  const rule = visibleGuestsWhere as (
-    viewerAuth0Id?: string,
-  ) => Promise<Prisma.guestsWhereInput>;
-  return rule(viewerAuth0Id);
-}
-
 /** Match states that end the coordinator's interest in that lecturer for good. */
 const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
 
 /**
- * When a session took place, for the rotation term: the moment the coordinator
- * marked it complete, else the event's own date, else when it was created. The
- * date is typed by the coordinator and stored as a string, so one that does not
- * read as a date is not used, and one that does is held between when the event
- * was created and now: a future date reads as now, a back-dated one as created.
+ * When a session took place, for the rotation term: the event's own date, else
+ * the moment the coordinator marked it complete, else when it was created. The
+ * date is the day the session was held, where the completion time is only when
+ * it was marked, which may be months later. It is typed by the coordinator and
+ * stored as a string, so one that does not read as a date is not used, and one
+ * that does is held between when the event was created and now: a future date
+ * reads as now, a back-dated one as created.
  */
 function sessionDate(
   event: { date: string; completed_at: Date | null; created_at: Date },
   now: Date,
 ): Date {
-  if (event.completed_at) {
-    return event.completed_at;
-  }
   const planned = new Date(event.date);
   if (Number.isNaN(planned.getTime())) {
-    return event.created_at;
+    return event.completed_at ?? event.created_at;
   }
   return new Date(
     Math.min(
@@ -200,13 +183,12 @@ function sessionDate(
  * "Sessions so far" counts a lecturer's events with every coordinator, not
  * only this one, because the aim is to spread sessions across the whole pool.
  * An event is a session once the lecturer has agreed to it: it is accepted, or
- * it is completed and the lecturer had replied. The status order is not
- * enforced, so a completed event with no reply is an invitation nobody
- * answered. An invitation still waiting, a declined one and a cancelled one
- * are not sessions either. It counts whatever has since happened to the match,
- * so a lecturer keeps their history after a match ends, and a match with no
- * event yet counts for nothing. Each event is one session, so a coordinator who
- * has a lecturer back several times adds several.
+ * it is completed, which an event can only be after being accepted. An
+ * invitation still waiting, a declined one and a cancelled one are not
+ * sessions. It counts whatever has since happened to the match, so a lecturer
+ * keeps their history after a match ends, and a match with no event yet counts
+ * for nothing. Each event is one session, so a coordinator who has a lecturer
+ * back several times adds several.
  */
 @Injectable()
 export class SuggestionsService {
@@ -225,9 +207,9 @@ export class SuggestionsService {
     // Rule 1: eligible. Visibility is the platform's shared rule; the profile
     // checks are pushed into the query so only candidates are read.
     // Passes the viewer so contact paused by a report also hides the pair here.
-    const visible = await visibleGuestsFor(auth0Id);
-    const [visibleGuests, guests] = await Promise.all([
-      prisma.guests.findMany({ where: visible, select: { guest_id: true } }),
+    const visible = await visibleGuestsWhere(auth0Id);
+    const [consideredCount, guests] = await Promise.all([
+      prisma.guests.count({ where: visible }),
       prisma.guests.findMany({
         where: {
           AND: [
@@ -280,7 +262,7 @@ export class SuggestionsService {
     });
 
     const stages: SuggestionStages = {
-      considered: visibleGuests.length,
+      considered: consideredCount,
       eligible: eligible.length,
       available: 0,
       sharesTopic: 0,
@@ -348,10 +330,7 @@ export class SuggestionsService {
     const relevantGuestIds = relevant.map((entry) => entry.guest.guest_id);
     const sessionEvents = await prisma.events.findMany({
       where: {
-        OR: [
-          { status: 'accepted' },
-          { status: 'completed', responded_at: { not: null } },
-        ],
+        status: { in: ['accepted', 'completed'] },
         match: { is: { guest_id: { in: relevantGuestIds } } },
       },
       select: {

@@ -10,8 +10,15 @@ import type { Prisma } from '../../generated/prisma/client';
  * apply a rule need one import, not a module dependency.
  */
 
-/** The settings row. Written as an upsert so the first read cannot race another. */
-export function readSettings() {
+/**
+ * The settings row. An ordinary read writes nothing; only when the row is
+ * missing is it created, as an upsert so the first read cannot race another.
+ */
+export async function readSettings() {
+  const existing = await prisma.admin_settings.findUnique({ where: { id: 1 } });
+  if (existing) {
+    return existing;
+  }
   return prisma.admin_settings.upsert({
     where: { id: 1 },
     update: {},
