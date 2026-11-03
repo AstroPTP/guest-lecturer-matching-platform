@@ -20,6 +20,9 @@
  *
  * size is the height of the mark in pixels. The text scales with it.
  *
+ * The same drawing is in this app's app/icon.svg and in the other app's copy of
+ * this file and of icon.svg. All four change together.
+ *
  * The wrapper is one image with one accessible name. The drawing and the words
  * inside it are hidden from assistive technology so the name is read once, not
  * as "Curtin GLMP Curtin GLMP Guest Lecturer Matching Platform".
