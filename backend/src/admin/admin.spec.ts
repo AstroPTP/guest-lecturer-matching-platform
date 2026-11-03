@@ -131,6 +131,40 @@ describe('AdminService', () => {
     expect(update.mock.calls[0][0].data.deletedat).toBeNull();
   });
 
+  it('does the whole change, audit entry included, on the transaction it is given', async () => {
+    const tx = {
+      users: {
+        findUnique: jest.fn().mockResolvedValue({ userid: 5n }),
+        update: jest
+          .fn()
+          .mockResolvedValue({ userid: 5n, deletedat: new Date() }),
+        findFirst: jest.fn().mockResolvedValue({ userid: 99n }),
+      },
+      audit_entries: { create: jest.fn().mockResolvedValue({ entry_id: 1n }) },
+    };
+    const root = {
+      find: jest.spyOn(prisma.users, 'findUnique'),
+      update: jest.spyOn(prisma.users, 'update'),
+      audit: jest.spyOn(prisma.audit_entries, 'create'),
+    };
+
+    await service.setStatus('5', 'deactivated', 'auth0|admin', tx as never);
+
+    expect(tx.users.update).toHaveBeenCalledTimes(1);
+    expect(tx.audit_entries.create).toHaveBeenCalledTimes(1);
+    expect(tx.audit_entries.create.mock.calls[0]).toEqual([
+      {
+        data: expect.objectContaining({
+          action: 'user.deactivated',
+          target_id: '5',
+        }) as unknown,
+      },
+    ]);
+    expect(root.find).not.toHaveBeenCalled();
+    expect(root.update).not.toHaveBeenCalled();
+    expect(root.audit).not.toHaveBeenCalled();
+  });
+
   it('refuses an unknown user rather than creating one', async () => {
     jest.spyOn(prisma.users, 'findUnique').mockResolvedValue(null);
     await expect(service.setStatus('99', 'deactivated')).rejects.toBeInstanceOf(

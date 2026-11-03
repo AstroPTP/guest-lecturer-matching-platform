@@ -1,6 +1,12 @@
 import { IsString, IsNotEmpty, IsIn } from 'class-validator';
 
-const NOTIFICATION_TYPES = ['match', 'event', 'message', 'profile'] as const;
+const NOTIFICATION_TYPES = [
+  'match',
+  'event',
+  'message',
+  'profile',
+  'admin',
+] as const;
 
 export class CreateNotificationDto {
   @IsString()
@@ -8,7 +14,7 @@ export class CreateNotificationDto {
   recipientId: string;
 
   @IsIn(NOTIFICATION_TYPES)
-  type: 'match' | 'event' | 'message' | 'profile';
+  type: 'match' | 'event' | 'message' | 'profile' | 'admin';
 
   @IsString()
   @IsNotEmpty()

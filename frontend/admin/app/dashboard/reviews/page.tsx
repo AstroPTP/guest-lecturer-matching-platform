@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import {
   approveGuest,
   getPendingReviews,
@@ -132,6 +133,9 @@ export default function ReviewsPage() {
                 >
                   Reject
                 </button>
+                {row.userId ? (
+                  <RequestDetailsButton userId={row.userId} userName={row.name} />
+                ) : null}
                 {row.userId ? (
                   <Link href={`/dashboard/users/${encodeURIComponent(`#GL-${row.userId}`)}`}>Full profile</Link>
                 ) : null}

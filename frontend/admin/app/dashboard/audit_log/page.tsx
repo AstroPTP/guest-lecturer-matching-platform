@@ -4,7 +4,8 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import arrowIcon from "@/assets/arrow.png";
 import searchIcon from "@/assets/search.png";
-import { getAuditEntries } from "@/services/adminApi";
+import { correlationIdFromSearch } from "@/lib/auditSearch";
+import { AUDIT_ACTION_FILTERS, getAuditEntries } from "@/services/adminApi";
 import type { AuditActorRole, AuditCategory, AuditEntry } from "@/types/admin";
 
 const auditCategories: AuditCategory[] = [
@@ -13,6 +14,8 @@ const auditCategories: AuditCategory[] = [
   "Event",
   "Invitation",
   "Account Management",
+  "Security",
+  "System",
 ];
 
 const auditActorRoles: AuditActorRole[] = [
@@ -44,6 +47,9 @@ export default function AuditLogPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<AuditCategory | "All">("All");
   const [actorRole, setActorRole] = useState<AuditActorRole | "All">("All");
+  // The stored action key, or "All". Unlike the other filters this one is sent
+  // to the server, so a frequent action cannot crowd the rest out of the page.
+  const [action, setAction] = useState<string>("All");
   const [startDateTime, setStartDateTime] = useState<string>(monthsAgo(6));
   const [endDateTime, setEndDateTime] = useState<string>(toLocalInput(new Date()));
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
@@ -51,14 +57,33 @@ export default function AuditLogPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Set when the search text is a whole correlation ID. That search is sent to
+  // the server, because searching in the browser only reaches the newest
+  // entries loaded, and an older ID would never be found.
+  const searchedId = correlationIdFromSearch(query);
+
+  // Cleared at once, so rows from the previous request are not shown as though
+  // they belonged to the new one while it loads.
+  function startLoading() {
+    setAuditEntries([]);
+    setErrorMessage(null);
+    setIsLoading(true);
+    setCurrentPage(1);
+  }
+
   useEffect(() => {
     let active = true;
     void (async () => {
       try {
-        const rows = await getAuditEntries(500);
+        const rows = await getAuditEntries(
+          500,
+          action === "All" ? undefined : action,
+          searchedId,
+        );
         if (active) setAuditEntries(rows);
       } catch (error) {
         if (active) {
+          setAuditEntries([]);
           setErrorMessage(
             error instanceof Error ? error.message : "The audit log could not be loaded.",
           );
@@ -70,7 +95,7 @@ export default function AuditLogPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [action, searchedId]);
 
   const filteredEntries = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -83,8 +108,10 @@ export default function AuditLogPage() {
         !normalized ||
         entry.actorName.toLowerCase().includes(normalized) ||
         entry.action.toLowerCase().includes(normalized) ||
-        entry.target.toLowerCase().includes(normalized);
-      const matchesDateRange = entryTime >= startTime && entryTime <= endTime;
+        entry.target.toLowerCase().includes(normalized) ||
+        (entry.correlationId?.toLowerCase().includes(normalized) ?? false);
+      // A whole correlation id is looked up on the server across all dates, so the range does not hide it.
+      const matchesDateRange = searchedId !== undefined || (entryTime >= startTime && entryTime <= endTime);
 
       return (
         matchesQuery &&
@@ -93,7 +120,7 @@ export default function AuditLogPage() {
         (actorRole === "All" || entry.actorRole === actorRole)
       );
     });
-  }, [actorRole, auditEntries, category, endDateTime, query, startDateTime]);
+  }, [actorRole, auditEntries, category, endDateTime, query, searchedId, startDateTime]);
 
   // Pagination that actually pages. The four footer buttons had no handlers at
   // all, and the count claimed 2,841 entries over a fixed list of fourteen.
@@ -154,11 +181,33 @@ export default function AuditLogPage() {
         <label className="audit-search">
           <Image alt="" aria-hidden="true" height={14} src={searchIcon} width={14} />
           <input
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by actor, action or target..."
+            onChange={(event) => {
+              const text = event.target.value;
+              if (correlationIdFromSearch(text) !== searchedId) startLoading();
+              setQuery(text);
+            }}
+            placeholder="Search by actor, action, target or correlation ID..."
             type="search"
             value={query}
           />
+        </label>
+
+        <label className="audit-select">
+          <span>Action</span>
+          <select
+            onChange={(event) => {
+              startLoading();
+              setAction(event.target.value);
+            }}
+            value={action}
+          >
+            <option value="All">All actions</option>
+            {AUDIT_ACTION_FILTERS.map((item) => (
+              <option key={item.action} value={item.action}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="audit-select">
@@ -212,6 +261,7 @@ export default function AuditLogPage() {
                 <th>Action</th>
                 <th>Target</th>
                 <th>Category</th>
+                <th>Correlation ID</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -236,19 +286,30 @@ export default function AuditLogPage() {
                     <b className={"category-label " + entry.category.toLowerCase()}>{entry.category}</b>
                   </td>
                   <td>
+                    {entry.correlationId ? (
+                      <code className="audit-correlation" title="Click to select, then copy">
+                        {entry.correlationId}
+                      </code>
+                    ) : (
+                      <span className="audit-correlation-none">None recorded</span>
+                    )}
+                  </td>
+                  <td>
                     <b className={"audit-status " + entry.status.toLowerCase()}>{entry.status}</b>
                   </td>
                 </tr>
               ))}
               {pageEntries.length === 0 && (
                 <tr>
-                  <td className="audit-empty" colSpan={7}>
+                  <td className="audit-empty" colSpan={8}>
                     {isLoading
                       ? "Loading audit entries…"
                       : errorMessage
                         ? errorMessage
                         : auditEntries.length === 0
-                          ? "Nothing has been recorded yet."
+                          ? searchedId
+                            ? "No audit entry carries that correlation ID."
+                            : "Nothing has been recorded yet."
                           : "No audit entries match your filters."}
                   </td>
                 </tr>
