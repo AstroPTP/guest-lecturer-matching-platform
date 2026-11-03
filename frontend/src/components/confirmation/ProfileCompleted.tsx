@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import arrowIcon from "@/assets/arrow.png";
 import checkIcon from "@/assets/check.png";
+import BrandLogo from "@/components/brand/BrandLogo";
 
 interface ProfileCompletedProps {
   title: string;
@@ -20,6 +21,9 @@ export default function ProfileCompleted({ title, description, button1Text, butt
       className={"flex min-h-screen items-center justify-center px-6 " + (isCoordinator ? "bg-gradient-to-br from-sky-50 via-indigo-50 to-rose-50" : "bg-gradient-to-br from-emerald-50 via-cyan-50 to-amber-50") }
     >
       <div className="flex w-full max-w-3xl flex-col items-center text-center">
+        <div className="mb-10">
+          <BrandLogo variant="compact" size={36} />
+        </div>
         <div
           className={"flex h-24 w-24 items-center justify-center rounded-2xl bg-white shadow-lg " + (isCoordinator ? "ring-1 ring-blue-200" : "ring-1 ring-teal-200")}
         >

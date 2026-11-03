@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import heroImage from "@/assets/help/help-administrator.svg";
 
@@ -156,6 +157,8 @@ const FAQS = [
     answer: "Yes. Use the Light, System and Dark switch in the top bar. System follows your device setting.",
   },
 ];
+
+export const metadata: Metadata = { title: "Help" };
 
 /**
  * The administrator's guide: what each section is for and how to carry out

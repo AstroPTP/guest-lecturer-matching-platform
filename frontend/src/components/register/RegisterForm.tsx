@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import person from "@/assets/person.png";
 import email from "@/assets/email.png";
 import visibility from "@/assets/visibility.png";
@@ -56,7 +57,9 @@ export default function RegisterForm() {
   return (
     <main className="w-full max-w-md">
       <div className="mb-12 text-center">
-        <h1 className="mb-4 text-4xl font-bold">Guest Lecturer Matching</h1>
+        <h1 className="mb-5 flex justify-center">
+          <BrandLogo variant="full" size={64} />
+        </h1>
         <p className="text-base text-gray-600">Join the industrial network of academic professionals.</p>
       </div>
 
@@ -78,7 +81,7 @@ export default function RegisterForm() {
                 id="fullName"
                 name="fullName"
                 type="text"
-                placeholder="Tuan Kiet Luu"
+                placeholder="Alex Taylor"
                 required
                 className="w-full rounded-lg border border-slate-200 bg-slate-50 py-3 pl-4 pr-12 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               />
