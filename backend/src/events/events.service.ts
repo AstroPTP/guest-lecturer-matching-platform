@@ -1,9 +1,11 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
 import { CreateEventDto } from './dto/create-event.dto';
+import { ErrorCode } from '../common/error-codes';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MatchRequestsService } from '../match-requests/match-requests.service';
 import { prisma, toId } from '../prisma';
@@ -30,6 +32,14 @@ export interface Event extends CreateEventDto {
 
 const GUEST_LECTURER_ACTIONS: EventStatus[] = ['accepted', 'declined'];
 const COORDINATOR_ACTIONS: EventStatus[] = ['cancelled', 'completed'];
+
+const STATUS_WORDS: Record<EventStatus, string> = {
+  'invitation-sent': 'still waiting for a reply',
+  accepted: 'confirmed',
+  declined: 'declined',
+  cancelled: 'cancelled',
+  completed: 'completed',
+};
 
 /** The match columns an event needs: both profile ids and both Auth0 ids. */
 const matchParties = {
@@ -171,6 +181,15 @@ export class EventsService {
       throw new ForbiddenException(
         'You are not the coordinator for this event',
       );
+    }
+
+    // A session is completed only after the guest lecturer confirmed it, so an
+    // invitation nobody answered, or one that was declined, cannot be.
+    if (status === 'completed' && event.status !== 'accepted') {
+      throw new ConflictException({
+        code: ErrorCode.Conflict,
+        message: `This session is ${STATUS_WORDS[event.status as EventStatus] ?? event.status}, so it cannot be marked completed.`,
+      });
     }
 
     const now = new Date();
