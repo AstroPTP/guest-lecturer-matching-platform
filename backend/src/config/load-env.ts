@@ -4,7 +4,7 @@
  * This exists because of a defect found in review: the
  * validation in env.validation.ts assumed something had already populated
  * process.env, and nothing had. `nest start` does not read a .env file, and
- * neither does `node dist/main`. Only prisma.config.ts did, through its own
+ * neither does `node dist/src/main`. Only prisma.config.ts did, through its own
  * `import 'dotenv/config'`, which is why Prisma worked against a filled-in
  * .env while the application reported all six variables unset and refused to
  * boot at all.

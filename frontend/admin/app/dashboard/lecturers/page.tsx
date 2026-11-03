@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { EngagementDirectory } from "@/components/EngagementDirectory";
+import { facultyLabel } from "@/lib/faculty_labels";
 import { getLecturers, type LecturerSummary } from "@/services/adminApi";
 
 export default function LecturersPage() {
@@ -37,7 +38,7 @@ export default function LecturersPage() {
       rows={rows.map((row) => ({
         id: row.id,
         name: row.name,
-        detail: row.field,
+        detail: facultyLabel(row.field),
         primaryMetric: row.status,
         secondaryMetric: row.lastSignIn,
         href: `/dashboard/users/${encodeURIComponent(`#GL-${row.id}`)}`,
