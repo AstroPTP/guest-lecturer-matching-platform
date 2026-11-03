@@ -322,7 +322,7 @@ export default function UnitCoordinatorMyProfilePage() {
               }
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile.expertise.selectedTopics} />
+                <TagList label="Expertise Topics" items={profile.expertise.selectedTopics} formatItems={false} />
                 <TagList
                   label="Required Experience Levels"
                   items={profile.expertise.experienceLevelsRequired.map((item) => formatOption(item, experienceLevelOptions))}

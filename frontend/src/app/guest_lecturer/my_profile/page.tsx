@@ -371,7 +371,7 @@ export default function GuestLecturerMyProfilePage() {
               editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} />}
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile?.expertise.selectedTopics ?? []} />
+                <TagList label="Expertise Topics" items={profile?.expertise.selectedTopics ?? []} formatItems={false} />
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <ProfileField label="Experience Level" value={formatStoredValue(profile?.expertise.experienceLevel ?? "")} />
                   <ProfileField label="Speaking Experience" value={profile?.expertise.hasSpeakingExperience ? "Yes" : "No"} />

@@ -6,7 +6,6 @@ import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
 import Image from "next/image";
 import {
   experienceLevels,
-  expertiseTopics,
   formatOptions,
   guestLecturerAudienceSizeOptions,
   guestLecturerAvailabilityFrequencyOptions,
@@ -130,7 +129,7 @@ function GuestLecturerDetails({ profile }: { profile: PublicGuestLecturerProfile
 
       <DiscoverySection title="Guest Lecturer Experience" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics.map((topic) => formatOptionLabel(topic, topicOptions))} />
+          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
           <DiscoveryValue label="Experience level" value={formatOptionLabel(expertise.experienceLevel, experienceLevelOptions)} />
           <DiscoveryValue label="Speaking experience" value={expertise.hasSpeakingExperience ? expertise.speakingDetails || "Yes" : "No"} />
           <DiscoveryValue label="International experience" value={expertise.hasInternationalExperience ? expertise.internationalDetails || "Yes" : "No"} />
@@ -166,7 +165,7 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
 
       <DiscoverySection title="Guest Lecturer Requirements" className="border-t border-gray-200">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics.map((topic) => formatOptionLabel(topic, topicOptions))} />
+          <DiscoveryTagGroup label="Topics" items={expertise.selectedTopics} />
           <DiscoveryTagGroup label="Experience required" items={expertise.experienceLevelsRequired.map((level) => formatOptionLabel(level, experienceLevelOptions))} />
           <DiscoveryValue label="Learning objective" value={expertise.learningObjective} />
           <DiscoveryValue label="Industry relevance" value={expertise.industryRelevance} />
@@ -176,7 +175,6 @@ function UnitCoordinatorDetails({ profile }: { profile: PublicUnitCoordinatorPro
   );
 }
 
-const topicOptions = expertiseTopics.map((topic) => ({ value: topic, label: topic }));
 const experienceLevelOptions = experienceLevels.map((level) => ({ value: level.value, label: level.title }));
 const professionalFieldOptions = professionalFields.map((field) => ({ value: field, label: field }));
 const professionalRoleOptions = professionalRoles.map((role) => ({ value: role, label: role }));
