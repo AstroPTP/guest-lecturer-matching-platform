@@ -11,6 +11,7 @@ import { GuestSpeakersModule } from './guest-speakers/guest-speakers.module';
 import { HealthModule } from './health/health.module';
 import { MatchRequestsModule } from './match-requests/match-requests.module';
 import { MessagesModule } from './messages/messages.module';
+import { SuggestionsModule } from './suggestions/suggestions.module';
 import { UnitCoordinatorsModule } from './unit-coordinators/unit-coordinators.module';
 import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
@@ -36,6 +37,7 @@ import { SupportModule } from './support/support.module';
     HealthModule,
     MatchRequestsModule,
     MessagesModule,
+    SuggestionsModule,
     UnitCoordinatorsModule,
     UsersModule,
     EventsModule,

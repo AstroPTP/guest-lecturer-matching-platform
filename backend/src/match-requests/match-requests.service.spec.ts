@@ -1235,42 +1235,102 @@ describe('MatchRequestsService', () => {
       );
     });
 
-    it('cancels upcoming events and tells the other person', async () => {
-      signInAsGuest(7n);
-      existingRow('ACCEPTED');
-      jest
-        .spyOn(prisma.match_requests, 'updateMany')
-        .mockResolvedValue({ count: 1 });
-      jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValueOnce({
-        first_name: 'Ada',
-        last_name: 'Lee',
-        users: { auth0Id: 'auth0|coordinator' },
-      } as never);
-      jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce({
-        first_name: 'Sam',
-        last_name: 'Tran',
-        users: { auth0Id: 'auth0|guest' },
-      } as never);
-      const cancelEvents = jest.spyOn(prisma.events, 'updateMany');
-      const notify = jest
-        .spyOn(notifications, 'create')
-        .mockResolvedValue({} as never);
+    describe('events of an ended match', () => {
+      /** Ends the match with these accepted events on it, and returns the cancellation. */
+      async function endMatchWith(
+        accepted: { event_id: bigint; date: string; end_time: string }[],
+      ) {
+        signInAsGuest(7n);
+        existingRow('ACCEPTED');
+        jest
+          .spyOn(prisma.match_requests, 'updateMany')
+          .mockResolvedValue({ count: 1 });
+        jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValueOnce({
+          first_name: 'Ada',
+          last_name: 'Lee',
+          users: { auth0Id: 'auth0|coordinator' },
+        } as never);
+        jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce({
+          first_name: 'Sam',
+          last_name: 'Tran',
+          users: { auth0Id: 'auth0|guest' },
+        } as never);
+        const read = jest
+          .spyOn(prisma.events, 'findMany')
+          .mockResolvedValue(accepted as never);
+        const cancel = jest.spyOn(prisma.events, 'updateMany');
+        const notify = jest
+          .spyOn(notifications, 'create')
+          .mockResolvedValue({} as never);
 
-      await service.remove(userId, '2001');
-      expect(cancelEvents).toHaveBeenCalledWith({
-        where: {
-          match_id: 6007n,
-          status: { in: ['invitation-sent', 'accepted'] },
-        },
-        data: { status: 'cancelled' },
+        await service.remove(userId, '2001');
+        return { read, cancel, notify };
+      }
+
+      /** The ids the cancellation leaves out: accepted events that finished. */
+      const kept = (cancel: jest.SpyInstance) =>
+        (
+          cancel.mock.calls[0] as [
+            {
+              where: {
+                OR: [unknown, { event_id: { notIn: bigint[] } }];
+              };
+            },
+          ]
+        )[0].where.OR[1].event_id.notIn;
+
+      it('cancels every invitation still waiting, and tells the other person', async () => {
+        const { cancel, notify } = await endMatchWith([]);
+        expect(cancel).toHaveBeenCalledWith({
+          where: {
+            match_id: 6007n,
+            OR: [
+              { status: 'invitation-sent' },
+              { status: 'accepted', event_id: { notIn: [] } },
+            ],
+          },
+          data: { status: 'cancelled' },
+        });
+        expect(notify).toHaveBeenCalledTimes(1);
+        expect(notify).toHaveBeenCalledWith(
+          expect.objectContaining({
+            recipientId: 'auth0|coordinator',
+            title: 'Match ended',
+          }),
+        );
       });
-      expect(notify).toHaveBeenCalledTimes(1);
-      expect(notify).toHaveBeenCalledWith(
-        expect.objectContaining({
-          recipientId: 'auth0|coordinator',
-          title: 'Match ended',
-        }),
-      );
+
+      it('reads only the confirmed events of this match to see which have finished', async () => {
+        const { read } = await endMatchWith([]);
+        expect(read).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { match_id: 6007n, status: 'accepted' },
+          }),
+        );
+      });
+
+      it('cancels a confirmed event that is still to come', async () => {
+        const { cancel } = await endMatchWith([
+          { event_id: 11n, date: '2999-01-01', end_time: '11:00' },
+        ]);
+        expect(kept(cancel)).toEqual([]);
+      });
+
+      it('leaves a confirmed event that has finished as it is', async () => {
+        const { cancel } = await endMatchWith([
+          { event_id: 12n, date: '2020-01-01', end_time: '11:00' },
+          { event_id: 13n, date: '2999-01-01', end_time: '11:00' },
+        ]);
+        expect(kept(cancel)).toEqual([12n]);
+      });
+
+      it('treats a date it cannot read as still to come', async () => {
+        const { cancel } = await endMatchWith([
+          { event_id: 14n, date: 'next Tuesday', end_time: '11:00' },
+          { event_id: 15n, date: '2020-01-01', end_time: 'late' },
+        ]);
+        expect(kept(cancel)).toEqual([]);
+      });
     });
 
     it('does nothing more when another unmatch already ended it', async () => {

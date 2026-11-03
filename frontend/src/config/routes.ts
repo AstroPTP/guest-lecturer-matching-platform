@@ -18,6 +18,7 @@ export function getDashboardRoutes(role: UserRole) {
     profile: root + "/my_profile",
     discovery: root + "/discovery",
     filter: root + "/filter",
+    suggestions: root + "/suggestions",
     matches: root + "/matches",
     messages: root + "/messages",
     events: root + "/events",
