@@ -63,6 +63,8 @@ export class UnitCoordinatorsController {
   /**
    * The Discovery list, for guest speakers. `?sort=` is optional and one of
    * joined, newest, name, topics, active or best; anything else is a 400.
+   * `?forMatches=true` lists the caller's matched profiles instead of
+   * Discovery's.
    */
   @Get()
   @Roles(AppRole.GuestSpeaker)
@@ -70,6 +72,10 @@ export class UnitCoordinatorsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: DiscoveryQueryDto = {},
   ) {
-    return this.unitCoordinatorsService.findAll(user.id, query.sort);
+    return this.unitCoordinatorsService.findAll(
+      user.id,
+      query.sort,
+      query.forMatches === 'true',
+    );
   }
 }

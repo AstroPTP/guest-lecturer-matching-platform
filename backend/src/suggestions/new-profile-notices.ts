@@ -1,11 +1,14 @@
 import { Logger } from '@nestjs/common';
-import { readSettings, visibleGuestsWhere } from '../admin/platform-rules';
+import {
+  readSettings,
+  visibleCoordinatorsWhere,
+  visibleGuestsWhere,
+} from '../admin/platform-rules';
 import {
   NotificationsService,
   type AdminNotice,
 } from '../notifications/notifications.service';
 import { prisma } from '../prisma';
-import { visibleCoordinatorsWhere } from '../unit-coordinators/coordinator-visibility';
 import { suggestionsOn } from './matching-settings';
 import { normaliseTopic } from './scoring';
 

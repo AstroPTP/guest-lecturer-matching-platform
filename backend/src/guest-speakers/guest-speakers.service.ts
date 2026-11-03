@@ -212,10 +212,20 @@ export class GuestSpeakersService {
    * gives the order people joined too, so a choice remembered from when it was
    * on never fails. Only the order changes: nobody is added or removed, and no
    * score, count or sign-in time is returned.
+   *
+   * `forMatches` is for listing the profiles of the viewer's own matches
+   * rather than for discovery: a person the viewer has an open report with is
+   * kept, so their conversation stays where it was.
    */
-  async findAll(viewerAuth0Id?: string, sort?: DiscoverySort) {
+  async findAll(
+    viewerAuth0Id?: string,
+    sort?: DiscoverySort,
+    forMatches = false,
+  ) {
     const guests = await prisma.guests.findMany({
-      where: await visibleGuestsWhere(viewerAuth0Id),
+      where: await visibleGuestsWhere(viewerAuth0Id, {
+        keepReportedPair: forMatches,
+      }),
       orderBy: { guest_id: 'asc' },
     });
     const userIds = guests.flatMap((guest) =>

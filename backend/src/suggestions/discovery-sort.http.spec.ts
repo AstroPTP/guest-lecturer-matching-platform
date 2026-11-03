@@ -87,14 +87,37 @@ describe('GET /guest-speakers and GET /unit-coordinators with ?sort=', () => {
       async (sort) => {
         const list = jest.spyOn(service(), 'findAll').mockResolvedValue([]);
         await get(`${path}?sort=${sort}`, role, subject).expect(200);
-        expect(list).toHaveBeenCalledWith(subject, sort);
+        expect(list).toHaveBeenCalledWith(subject, sort, false);
       },
     );
 
     it('gives the service no sort when none is asked for, so it picks the default', async () => {
       const list = jest.spyOn(service(), 'findAll').mockResolvedValue([]);
       await get(path, role, subject).expect(200);
-      expect(list).toHaveBeenCalledWith(subject, undefined);
+      expect(list).toHaveBeenCalledWith(subject, undefined, false);
+    });
+
+    it.each([
+      ['true', true],
+      ['false', false],
+      ['yes', false],
+    ])(
+      'hands forMatches=%s on beside the sort, as %s',
+      async (value, expected) => {
+        const list = jest.spyOn(service(), 'findAll').mockResolvedValue([]);
+        await get(
+          `${path}?sort=name&forMatches=${value}`,
+          role,
+          subject,
+        ).expect(200);
+        expect(list).toHaveBeenCalledWith(subject, 'name', expected);
+      },
+    );
+
+    it('lists the caller’s matched profiles with forMatches alone, and no sort', async () => {
+      const list = jest.spyOn(service(), 'findAll').mockResolvedValue([]);
+      await get(`${path}?forMatches=true`, role, subject).expect(200);
+      expect(list).toHaveBeenCalledWith(subject, undefined, true);
     });
 
     it.each([

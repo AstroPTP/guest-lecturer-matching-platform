@@ -383,7 +383,7 @@ describe('isRegistered', () => {
 });
 
 describe('deleteAccount', () => {
-  /** Every call the transaction makes, in order, as "table.method". */
+  /** Every call the account deletion makes, in order, as "table.method". */
   type Tx = ReturnType<typeof deletionTransaction>;
 
   function deletionTransaction(
@@ -399,17 +399,21 @@ describe('deleteAccount', () => {
       order.push(name);
       return Promise.resolve({ count: 1 });
     };
-    const profile = (name: string, photo: bigint | null | undefined) => ({
-      findUnique: jest.fn(() => {
-        order.push(`${name}.findUnique`);
-        return Promise.resolve(
-          photo === undefined ? null : { profile_image_id: photo },
-        );
-      }),
-      deleteMany: jest.fn(() => record(`${name}.deleteMany`)),
-    });
+    const profile = (photo: bigint | null | undefined) =>
+      photo === undefined ? null : { profile_image_id: photo };
     return {
       order,
+      // The profiles are read through the users row in one query. They have no
+      // findUnique here, so a second lookup would fail the test.
+      users: {
+        findUnique: jest.fn(() => {
+          order.push('users.findUnique');
+          return Promise.resolve({
+            guest: profile(photos.guest),
+            coordinator: profile(photos.coordinator),
+          });
+        }),
+      },
       availability: { deleteMany: jest.fn(() => record('availability')) },
       user_expertise: { deleteMany: jest.fn(() => record('user_expertise')) },
       notifications: { deleteMany: jest.fn(() => record('notifications')) },
@@ -432,35 +436,53 @@ describe('deleteAccount', () => {
         deleteMany: jest.fn(() => record('support_attachments')),
       },
       images: { deleteMany: jest.fn(() => record('images')) },
-      guests: profile('guests', photos.guest),
-      coordinators: profile('coordinators', photos.coordinator),
-      users: { update: jest.fn(() => record('users')) },
+      guests: { deleteMany: jest.fn(() => record('guests.deleteMany')) },
+      coordinators: {
+        deleteMany: jest.fn(() => record('coordinators.deleteMany')),
+      },
     };
   }
 
-  /** Deletes ME with Auth0 already gone, running the work against `tx`. */
-  async function deleteWith(tx: Tx) {
-    fakeAuth0({
+  /**
+   * Deletes ME, running the transaction against `tx`. `auth0Delete` is what
+   * Auth0 answers to the user deletion; by default the user is already gone.
+   */
+  function deleteWith(
+    tx: Tx,
+    auth0Delete: () => { status: number } = () => ({ status: 404 }),
+  ) {
+    const calls = fakeAuth0({
       'POST /oauth/token': tokenEndpoint(),
-      'DELETE /api/v2/users': () => ({ status: 404 }),
+      'DELETE /api/v2/users': () => {
+        tx.order.push('auth0.delete');
+        return auth0Delete();
+      },
     });
     jest
       .spyOn(prisma, '$transaction')
       .mockImplementation(((work: (t: Tx) => Promise<void>) =>
         work(tx)) as never);
-    return service.deleteAccount(ME);
+    const mark = jest.spyOn(prisma.users, 'update').mockImplementation((() => {
+      tx.order.push('users.update');
+      return Promise.resolve({});
+    }) as never);
+    return { calls, mark, result: service.deleteAccount(ME) };
   }
+
+  const markedWith = (mark: jest.SpyInstance) =>
+    (mark.mock.calls as unknown as [{ data: Record<string, unknown> }][])[0][0]
+      .data;
 
   it('clears personal data and marks the user deleted, even if Auth0 already removed them', async () => {
     const tx = deletionTransaction({});
 
-    await expect(deleteWith(tx)).resolves.toEqual({ success: true });
+    const { mark, result } = deleteWith(tx);
 
-    const written = (
-      tx.users.update.mock.calls as unknown as [
-        { data: Record<string, unknown> },
-      ][]
-    )[0][0].data;
+    await expect(result).resolves.toEqual({ success: true });
+    expect(mark).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userid: 1n } }),
+    );
+    const written = markedWith(mark);
     expect(written).toMatchObject({
       email: null,
       role: null,
@@ -472,7 +494,7 @@ describe('deleteAccount', () => {
   it("removes the caller's notifications, which hold their activity and links", async () => {
     const tx = deletionTransaction({});
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.notifications.deleteMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
@@ -482,7 +504,7 @@ describe('deleteAccount', () => {
   it("removes the caller's devices set up for pushed notifications", async () => {
     const tx = deletionTransaction({});
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.push_subscriptions.deleteMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
@@ -493,7 +515,7 @@ describe('deleteAccount', () => {
     const tx = deletionTransaction({});
     const outside = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     // On the transaction's own client, so it commits or rolls back with the
     // rest of the deletion, and never on a separate connection.
@@ -501,14 +523,14 @@ describe('deleteAccount', () => {
     expect(outside).not.toHaveBeenCalled();
     expect(tx.order.indexOf('push_subscriptions')).toBeGreaterThanOrEqual(0);
     expect(tx.order.indexOf('push_subscriptions')).toBeLessThan(
-      tx.order.indexOf('users'),
+      tx.order.indexOf('users.update'),
     );
   });
 
   it('removes the requests for details sent to the caller, with their messages', async () => {
     const tx = deletionTransaction({});
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.support_messages.deleteMany).toHaveBeenCalledWith({
       where: { thread: { user_id: 1n } },
@@ -521,7 +543,7 @@ describe('deleteAccount', () => {
   it('removes the files attached to those messages, after the messages that point at them', async () => {
     const tx = deletionTransaction({}, [21n, null, 22n]);
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.support_messages.findMany).toHaveBeenCalledWith({
       where: { thread: { user_id: 1n }, attachment_id: { not: null } },
@@ -543,7 +565,7 @@ describe('deleteAccount', () => {
   it('deletes no files for a caller whose messages had none', async () => {
     const tx = deletionTransaction({}, [null, null]);
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.support_attachments.deleteMany).not.toHaveBeenCalled();
     expect(tx.support_threads.deleteMany).toHaveBeenCalled();
@@ -553,7 +575,7 @@ describe('deleteAccount', () => {
     const tx = deletionTransaction({ guest: 11n }, [21n]);
     const transaction = jest.spyOn(prisma, '$transaction');
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(transaction).toHaveBeenCalledTimes(1);
 
@@ -562,14 +584,14 @@ describe('deleteAccount', () => {
     const at = (call: string) => tx.order.indexOf(call);
     expect(at('support_threads')).toBeGreaterThanOrEqual(0);
     expect(at('support_attachments')).toBeGreaterThanOrEqual(0);
-    expect(at('support_threads')).toBeLessThan(at('users'));
-    expect(at('support_attachments')).toBeLessThan(at('users'));
+    expect(at('support_threads')).toBeLessThan(at('users.update'));
+    expect(at('support_attachments')).toBeLessThan(at('users.update'));
   });
 
   it('removes the guest lecturer photo along with the profile', async () => {
     const tx = deletionTransaction({ guest: 11n });
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.images.deleteMany).toHaveBeenCalledTimes(1);
     expect(tx.images.deleteMany).toHaveBeenCalledWith({
@@ -580,7 +602,7 @@ describe('deleteAccount', () => {
   it('removes the coordinator photo along with the profile', async () => {
     const tx = deletionTransaction({ coordinator: 12n });
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.images.deleteMany).toHaveBeenCalledWith({
       where: { image_id: { in: [12n] } },
@@ -590,7 +612,7 @@ describe('deleteAccount', () => {
   it('removes both photos when the account holds both profiles', async () => {
     const tx = deletionTransaction({ guest: 11n, coordinator: 12n });
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.images.deleteMany).toHaveBeenCalledWith({
       where: { image_id: { in: [11n, 12n] } },
@@ -600,32 +622,119 @@ describe('deleteAccount', () => {
   it('deletes no images for an account that never added a photo', async () => {
     const tx = deletionTransaction({ guest: null, coordinator: undefined });
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.images.deleteMany).not.toHaveBeenCalled();
     expect(tx.guests.deleteMany).toHaveBeenCalled();
   });
 
-  it('reads the photo ids before the profiles that point at them are deleted', async () => {
+  it('reads both profiles in one query, before the profiles that point at the photos are deleted', async () => {
     const tx = deletionTransaction({ guest: 11n, coordinator: 12n });
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
+    expect(tx.users.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.users.findUnique).toHaveBeenCalledWith({
+      where: { userid: 1n },
+      select: {
+        guest: { select: { profile_image_id: true } },
+        coordinator: { select: { profile_image_id: true } },
+      },
+    });
     const at = (call: string) => tx.order.indexOf(call);
-    expect(at('guests.findUnique')).toBeGreaterThanOrEqual(0);
-    expect(at('guests.findUnique')).toBeLessThan(at('guests.deleteMany'));
-    expect(at('coordinators.findUnique')).toBeGreaterThanOrEqual(0);
-    expect(at('coordinators.findUnique')).toBeLessThan(
-      at('coordinators.deleteMany'),
-    );
+    expect(at('users.findUnique')).toBe(0);
+    expect(at('users.findUnique')).toBeLessThan(at('guests.deleteMany'));
+    expect(at('users.findUnique')).toBeLessThan(at('coordinators.deleteMany'));
   });
 
-  it('keeps the users row, so the signed token can no longer be used', async () => {
-    const tx = deletionTransaction({ guest: 11n });
+  describe('order of the database and Auth0 steps', () => {
+    it('finishes the database cleanup before deleting the Auth0 user', async () => {
+      const tx = deletionTransaction({ guest: 11n });
 
-    await deleteWith(tx);
+      await deleteWith(tx).result;
 
-    expect(tx.users.update).toHaveBeenCalledTimes(1);
-    expect(tx.order.at(-1)).toBe('users');
+      const at = (call: string) => tx.order.indexOf(call);
+      expect(at('auth0.delete')).toBeGreaterThan(at('images'));
+      expect(at('auth0.delete')).toBeGreaterThan(at('guests.deleteMany'));
+      expect(at('auth0.delete')).toBeGreaterThan(at('notifications'));
+    });
+
+    it('keeps the users row and marks it deleted last, so the signed token can no longer be used', async () => {
+      const tx = deletionTransaction({ guest: 11n });
+
+      const { mark, result } = deleteWith(tx);
+      await result;
+
+      expect(mark).toHaveBeenCalledTimes(1);
+      expect(tx.order.slice(-2)).toEqual(['auth0.delete', 'users.update']);
+    });
+
+    it('does not touch Auth0 or the users row when the database cleanup fails', async () => {
+      const tx = deletionTransaction({ guest: 11n });
+      tx.images.deleteMany.mockRejectedValue(new Error('constraint'));
+
+      const { calls, mark, result } = deleteWith(tx);
+
+      await expect(result).rejects.toThrow('constraint');
+      expect(calls.some((call) => call.method === 'DELETE')).toBe(false);
+      expect(mark).not.toHaveBeenCalled();
+    });
+
+    it.each([500, 429, 403, 400])(
+      'asks the person to try again when Auth0 answers %i, and does not mark the row deleted',
+      async (status) => {
+        const tx = deletionTransaction({ guest: 11n });
+
+        const { mark, result } = deleteWith(tx, () => ({ status }));
+
+        await expect(result).rejects.toBeInstanceOf(
+          ServiceUnavailableException,
+        );
+        await expect(result).rejects.toThrow(/try again/i);
+        expect(tx.guests.deleteMany).toHaveBeenCalled();
+        expect(mark).not.toHaveBeenCalled();
+      },
+    );
+
+    it('can be run again after the Auth0 step failed, and then finishes', async () => {
+      const failed = deletionTransaction({ guest: 11n });
+      const first = deleteWith(failed, () => ({ status: 503 }));
+      await expect(first.result).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+
+      // The profile and photo went the first time; the second pass finds none.
+      const retry = deletionTransaction({ guest: undefined });
+      const second = deleteWith(retry, () => ({ status: 204 }));
+
+      await expect(second.result).resolves.toEqual({ success: true });
+      expect(retry.images.deleteMany).not.toHaveBeenCalled();
+      expect(second.mark).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes nothing when the identity service cannot be reached', async () => {
+      const tx = deletionTransaction({ guest: 11n });
+      fakeAuth0({ 'POST /oauth/token': () => ({ status: 500 }) });
+      const transaction = jest
+        .spyOn(prisma, '$transaction')
+        .mockImplementation(((work: (t: Tx) => Promise<void>) =>
+          work(tx)) as never);
+
+      await expect(service.deleteAccount(ME)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(transaction).not.toHaveBeenCalled();
+    });
+
+    it('removes nothing when Auth0 is not configured on the server', async () => {
+      delete process.env.AUTH0_MANAGEMENT_CLIENT_SECRET;
+      fakeAuth0({});
+      const transaction = jest.spyOn(prisma, '$transaction');
+
+      await expect(service.deleteAccount(ME)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(transaction).not.toHaveBeenCalled();
+    });
   });
 });

@@ -698,29 +698,30 @@ describe('ImagesService.getVisibleTo after reports', () => {
   }
 
   describe('a pair with an open report between them', () => {
-    it('stops the reporter fetching the reported guest lecturer’s photo', async () => {
+    // Their conversation stays in both Messages lists, and it shows the photo.
+    it('still serves the reported guest lecturer’s photo to the reporter', async () => {
       auditTrail([report(1n, 1n, 101n)]);
 
-      await expect(asMe(REPORTED_GUEST)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(asMe(REPORTED_GUEST)).resolves.toMatchObject({
+        image_id: REPORTED_GUEST,
+      });
     });
 
-    it('stops the reporter fetching the reported coordinator’s photo', async () => {
+    it('still serves the reported coordinator’s photo to the reporter', async () => {
       auditTrail([report(1n, 1n, 102n)]);
 
-      await expect(asMe(REPORTED_COORDINATOR)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(asMe(REPORTED_COORDINATOR)).resolves.toMatchObject({
+        image_id: REPORTED_COORDINATOR,
+      });
     });
 
-    it('stops the reported person fetching the reporter’s photo', async () => {
-      // Person 101 reported the viewer (user 1), so the viewer may not see 101.
+    it('still serves the reporter’s photo to the person reported', async () => {
+      // Person 101 reported the viewer (user 1).
       auditTrail([report(1n, 101n, 1n)]);
 
-      await expect(asMe(REPORTED_GUEST)).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(asMe(REPORTED_GUEST)).resolves.toMatchObject({
+        image_id: REPORTED_GUEST,
+      });
     });
 
     it('leaves every other photo available to both of them', async () => {
@@ -740,10 +741,12 @@ describe('ImagesService.getVisibleTo after reports', () => {
       });
     });
 
-    it('serves the photo again once the report is dismissed', async () => {
-      auditTrail([report(1n, 1n, 101n)], { resolved: ['1'] });
+    it('still hides the photo when the reported person is also on hold', async () => {
+      auditTrail([report(1n, 1n, 101n), report(2n, 300n, 101n)]);
 
-      await expect(asMe(REPORTED_GUEST)).resolves.toBeDefined();
+      await expect(asMe(REPORTED_GUEST)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 

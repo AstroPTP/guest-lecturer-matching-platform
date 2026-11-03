@@ -424,12 +424,13 @@ describe('Auth guards', () => {
       );
     });
 
-    it('REP-06 echoes a supplied correlation id so logs can be joined up', async () => {
+    it('does not use a well-formed correlation id the caller supplied', async () => {
       const res = await get('/test/protected')
         .set('x-correlation-id', 'req-abc-123')
         .expect(401);
 
-      expect(envelopeOf(res).correlationId).toBe('req-abc-123');
+      expect(envelopeOf(res).correlationId).not.toBe('req-abc-123');
+      expect(envelopeOf(res).correlationId).toMatch(/^[0-9a-f-]{36}$/);
     });
 
     it('mints a correlation id when the caller supplies none', async () => {

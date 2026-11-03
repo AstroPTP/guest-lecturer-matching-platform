@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { isSafeProxyPath } from '@/lib/api/proxyPath';
 import { backendUrl } from '@/lib/auth/config';
-import { forwardedHeaders, upstreamPath } from '@/lib/api/proxyRequest';
+import {
+  forwardedHeaders,
+  unreachableBackendLogLine,
+  upstreamPath,
+} from '@/lib/api/proxyRequest';
 import { readAccessToken } from '@/lib/auth/session';
 
 /**
@@ -82,22 +86,34 @@ async function forward(request: NextRequest, path: string[] | null) {
 
   // The backend gives the request its id and sends it back in the response,
   // and the proxy passes it on. This one is only for the 502 below, when there
-  // is no backend response to take an id from.
+  // is no backend response to take an id from. It is shown to the user and
+  // written to the log, so the two can be matched.
   const proxyId = randomUUID();
 
   const target = `${backendUrl()}/${upstreamPath(path)}${request.nextUrl.search}`;
 
-  const response = await fetch(target, {
-    cache: 'no-store',
-    method: request.method,
-    headers,
-    body: ['GET', 'HEAD'].includes(request.method)
-      ? undefined
-      : await request.arrayBuffer(),
-    redirect: 'manual',
-  }).catch(() => null);
+  const body = ['GET', 'HEAD'].includes(request.method)
+    ? undefined
+    : await request.arrayBuffer();
 
-  if (!response) {
+  let response: Response;
+  try {
+    response = await fetch(target, {
+      cache: 'no-store',
+      method: request.method,
+      headers,
+      body,
+      redirect: 'manual',
+    });
+  } catch (error) {
+    console.error(
+      unreachableBackendLogLine({
+        correlationId: proxyId,
+        method: request.method,
+        path: `/${path.join('/')}`,
+        error,
+      }),
+    );
     return refuse(
       {
         code: 'BACKEND_UNREACHABLE',

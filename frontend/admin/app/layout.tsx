@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { BRAND_NAME } from "@/components/brand/BrandLogo";
 import { themeScript } from "@/components/theme/themeScript";
 
 export const metadata: Metadata = {
-  title: { default: "Curtin GLMP", template: "Curtin GLMP | %s" },
+  title: { default: BRAND_NAME, template: `${BRAND_NAME} | %s` },
   description: "CCAE platform administration workspace",
 };
 

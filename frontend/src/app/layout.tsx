@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { SessionProvider } from "@/components/auth/SessionProvider";
+import { BRAND_NAME } from "@/components/brand/BrandLogo";
+import ThemeSync from "@/components/theme/ThemeSync";
 import { themeScript } from "@/components/theme/themeScript";
 
 export const metadata: Metadata = {
-  title: { default: "Curtin GLMP", template: "Curtin GLMP | %s" },
+  title: { default: BRAND_NAME, template: `${BRAND_NAME} | %s` },
   description: "Connect guest lecturers with unit coordinators.",
 };
 
@@ -17,13 +19,16 @@ export default function RootLayout({
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <head>
         {/*
-          Applies a stored light or dark choice before the first paint, so a
-          dark-mode user does not see a white flash on every navigation. The
-          server cannot know the choice, hence suppressHydrationWarning above.
+          Sets the theme before the first paint: a signed-in user's stored choice
+          on the dashboards, light on every other page. A dark-mode user does
+          not see a white flash on every navigation, and a public page never
+          paints dark. The server cannot know the choice, hence
+          suppressHydrationWarning above.
         */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className="min-h-full flex flex-col">
+        <ThemeSync />
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>
