@@ -65,25 +65,31 @@ export function topicMatchKey(topic: string): string {
 // dropped, and the list is cut to the topic limits with fixed topics kept
 // first. A custom topic is kept only when customTopicError accepts it on its
 // own, so one the backend would refuse (length, characters, no letters or
-// numbers, or a fixed topic in disguise) is dropped instead of blocking the
-// save. The saved profile only changes when the person saves.
-export function cleanStoredTopics(topics: string[]): string[] {
-  const tidy = topics.map(tidyTopic);
+// numbers) does not block the save. Returns the topics kept and the topics
+// dropped, so the person can be told before they save. A topic merged into a
+// fixed topic or into an earlier copy of itself is not dropped. The saved
+// profile only changes when the person saves.
+export function cleanStoredTopics(topics: string[]): { kept: string[]; dropped: string[] } {
+  const tidy = topics.map(tidyTopic).filter((topic) => topic !== "");
   const fixed = Array.from(new Set(tidy.map(findFixedTopic).filter((topic): topic is string => topic !== undefined)));
   const seen = new Set(fixed.map(topicKey));
   const custom: string[] = [];
+  const refused: string[] = [];
   for (const topic of tidy) {
     const key = topicKey(topic);
-    if (customTopicError(topic, []) === "" && !seen.has(key)) {
-      seen.add(key);
-      custom.push(topic);
+    if (findFixedTopic(topic) !== undefined || (key !== "" && seen.has(key))) {
+      continue;
     }
+    seen.add(key);
+    (customTopicError(topic, []) === "" ? custom : refused).push(topic);
   }
-  return [...fixed, ...custom.slice(0, MAX_CUSTOM_TOPICS)].slice(0, MAX_TOPICS);
+  const kept = [...fixed, ...custom.slice(0, MAX_CUSTOM_TOPICS)].slice(0, MAX_TOPICS);
+  const overLimit = [...fixed, ...custom].filter((topic) => !kept.includes(topic));
+  return { kept, dropped: [...refused, ...overLimit] };
 }
 
 export function expertiseWithCleanTopics<T extends { selectedTopics: string[] }>(expertise: T): T {
-  return { ...expertise, selectedTopics: cleanStoredTopics(expertise.selectedTopics) };
+  return { ...expertise, selectedTopics: cleanStoredTopics(expertise.selectedTopics).kept };
 }
 
 // Why a new custom topic cannot be added to the selected ones, or "" if it can.

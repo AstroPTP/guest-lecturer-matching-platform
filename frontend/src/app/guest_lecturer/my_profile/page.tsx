@@ -16,7 +16,7 @@ import { formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { expertiseWithCleanTopics, withFixedTopicSpelling } from "@/utils/customTopics";
+import { cleanStoredTopics, expertiseWithCleanTopics, withFixedTopicSpelling } from "@/utils/customTopics";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
@@ -290,6 +290,9 @@ export default function GuestLecturerMyProfilePage() {
     });
   }
 
+  // Saved topics that saving would remove because they break the topic rules.
+  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : [];
+
   if (isLoading) {
     return (
       <DashboardShell
@@ -375,7 +378,7 @@ export default function GuestLecturerMyProfilePage() {
               onEdit={() => startEditing("expertise")}
               onCancel={cancelEditing}
               onSave={saveExpertise}
-              editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} topicsField={topicsField} />}
+              editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} topicsField={topicsField} droppedTopics={droppedTopics} />}
             >
               <div className="space-y-7">
                 <TagList label="Expertise Topics" items={withFixedTopicSpelling(profile?.expertise.selectedTopics ?? [])} formatItems={false} />
@@ -524,11 +527,13 @@ function ExpertiseEditor({
   setDraft,
   onToggleTopic,
   topicsField,
+  droppedTopics,
 }: {
   draft: GuestLecturerExpertiseData;
   setDraft: React.Dispatch<React.SetStateAction<GuestLecturerExpertiseData | null>>;
   onToggleTopic: (topic: string) => void;
   topicsField: Ref<CustomTopicsFieldHandle>;
+  droppedTopics: string[];
 }) {
   return (
     <div className="space-y-7">
@@ -550,7 +555,7 @@ function ExpertiseEditor({
             );
           })}
         </div>
-        <CustomTopicsField ref={topicsField} compact selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
+        <CustomTopicsField ref={topicsField} compact droppedTopics={droppedTopics} selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
       </div>
 
       <ProfileSelect

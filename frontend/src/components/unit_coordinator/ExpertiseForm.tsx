@@ -12,6 +12,7 @@ export default function ExpertiseForm() {
   const router = useRouter();
   const topicsField = useRef<CustomTopicsFieldHandle>(null);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [droppedTopics, setDroppedTopics] = useState<string[]>([]);
   const [experienceLevelsRequired, setExperienceLevelsRequired] = useState<string[]>([]);
   const [industryRelevance, setIndustryRelevance] = useState("");
   const [learningObjective, setLearningObjective] = useState("");
@@ -29,7 +30,9 @@ export default function ExpertiseForm() {
           return;
         }
 
-        setSelectedTopics(cleanStoredTopics(data.selectedTopics));
+        const { kept, dropped } = cleanStoredTopics(data.selectedTopics);
+        setSelectedTopics(kept);
+        setDroppedTopics(dropped);
         setExperienceLevelsRequired(data.experienceLevelsRequired);
         setIndustryRelevance(data.industryRelevance);
         setLearningObjective(data.learningObjective);
@@ -168,7 +171,7 @@ export default function ExpertiseForm() {
               );
             })}
           </div>
-          <CustomTopicsField ref={topicsField} selectedTopics={selectedTopics} onChange={setSelectedTopics} />
+          <CustomTopicsField ref={topicsField} selectedTopics={selectedTopics} onChange={setSelectedTopics} droppedTopics={droppedTopics} />
         </section>
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
