@@ -504,7 +504,7 @@ describe('deleteAccount', () => {
   it("removes the caller's devices set up for pushed notifications", async () => {
     const tx = deletionTransaction({});
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     expect(tx.push_subscriptions.deleteMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
@@ -515,7 +515,7 @@ describe('deleteAccount', () => {
     const tx = deletionTransaction({});
     const outside = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
 
-    await deleteWith(tx);
+    await deleteWith(tx).result;
 
     // On the transaction's own client, so it commits or rolls back with the
     // rest of the deletion, and never on a separate connection.
@@ -523,7 +523,7 @@ describe('deleteAccount', () => {
     expect(outside).not.toHaveBeenCalled();
     expect(tx.order.indexOf('push_subscriptions')).toBeGreaterThanOrEqual(0);
     expect(tx.order.indexOf('push_subscriptions')).toBeLessThan(
-      tx.order.indexOf('users'),
+      tx.order.indexOf('users.update'),
     );
   });
 
