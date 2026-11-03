@@ -36,9 +36,10 @@ function looseTopicKey(topic: string): string {
   return asciiLowerCase(topic).replace(/\band\b/g, "").replace(/[&\-/'.\s]+/g, "");
 }
 
+const FIXED_TOPIC_BY_LOOSE_KEY = new Map<string, string>(expertiseTopics.map((fixed) => [looseTopicKey(fixed), fixed]));
+
 function findFixedTopic(topic: string): string | undefined {
-  const key = looseTopicKey(topic);
-  return expertiseTopics.find((fixed) => looseTopicKey(fixed) === key);
+  return FIXED_TOPIC_BY_LOOSE_KEY.get(looseTopicKey(topic));
 }
 
 export function isCustomTopic(topic: string): boolean {
@@ -46,9 +47,11 @@ export function isCustomTopic(topic: string): boolean {
 }
 
 // Spells each fixed topic as the list does, whatever older spelling it was
-// saved in, and leaves custom topics exactly as stored.
+// saved in, and leaves custom topics exactly as stored. A topic that is the same
+// once respelled ("banking-finance" beside "Banking & Finance") is shown once,
+// in the order it first appears.
 export function withFixedTopicSpelling(topics: string[]): string[] {
-  return topics.map((topic) => findFixedTopic(topic) ?? topic);
+  return Array.from(new Set(topics.map((topic) => findFixedTopic(topic) ?? topic)));
 }
 
 // The form two topics are compared in when filtering, the same sameness rule
