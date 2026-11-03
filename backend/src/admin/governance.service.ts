@@ -17,7 +17,6 @@ import {
   lockReporter,
 } from './open-reports';
 import { readSettings, recordAudit } from './platform-rules';
-import { MIN_FIT_WEIGHT_PERCENT } from '../suggestions/matching-settings';
 import type { UpdateSettingsDto } from './dto/update-settings.dto';
 import type { CreateReportDto } from './dto/create-report.dto';
 import type { Prisma } from '../../generated/prisma/client';
@@ -182,12 +181,6 @@ export class GovernanceService {
       throw new BadRequestException({
         code: ErrorCode.ValidationFailed,
         message: `The three weights must add up to 100 (they add up to ${fit + rotation + exposure}). Send all three together.`,
-      });
-    }
-    if (fit < MIN_FIT_WEIGHT_PERCENT) {
-      throw new BadRequestException({
-        code: ErrorCode.ValidationFailed,
-        message: `Topic fit must be at least ${MIN_FIT_WEIGHT_PERCENT}, so it always counts most.`,
       });
     }
   }
