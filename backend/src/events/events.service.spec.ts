@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -213,6 +217,57 @@ describe('EventsService', () => {
           recipientId: 'auth0|guest',
           title: 'Event cancelled',
         }),
+      );
+    });
+
+    describe('marking a session completed', () => {
+      it('lets the coordinator complete a confirmed session and sets completedAt', async () => {
+        signInAs('coordinator');
+        jest
+          .spyOn(prisma.events, 'findUnique')
+          .mockResolvedValue(eventRow({ status: 'accepted' }));
+        const update = jest.spyOn(prisma.events, 'update').mockResolvedValue(
+          eventRow({
+            status: 'completed',
+            completed_at: createdAt,
+          }),
+        );
+
+        await expect(
+          service.updateStatus('1', 'completed', 'auth0|coordinator'),
+        ).resolves.toEqual(
+          expect.objectContaining({
+            status: 'completed',
+            completedAt: createdAt.toISOString(),
+          }),
+        );
+        expect(update).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        ['invitation-sent', 'still waiting for a reply'],
+        ['declined', 'declined'],
+      ])(
+        'refuses a session that is %s, and changes nothing',
+        async (status, words) => {
+          signInAs('coordinator');
+          jest
+            .spyOn(prisma.events, 'findUnique')
+            .mockResolvedValue(eventRow({ status }));
+          const update = jest.spyOn(prisma.events, 'update');
+
+          const failure = await service
+            .updateStatus('1', 'completed', 'auth0|coordinator')
+            .catch((error: unknown) => error);
+
+          expect(failure).toBeInstanceOf(ConflictException);
+          expect((failure as ConflictException).getResponse()).toEqual({
+            code: 'CONFLICT',
+            message: `This session is ${words}, so it cannot be marked completed.`,
+          });
+          expect(update).not.toHaveBeenCalled();
+          expect(notificationsService.create).not.toHaveBeenCalled();
+        },
       );
     });
 

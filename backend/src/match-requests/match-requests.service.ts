@@ -39,6 +39,19 @@ function interestHref(
     : '/unit_coordinator/discovery?from=' + String(pair.guest_id);
 }
 
+/**
+ * Whether an event has finished: its end, read as the date and the end time
+ * together in the server's time zone, as the events page reads it in the
+ * browser's, is before now. A date that cannot be read counts as still to come.
+ */
+function hasEnded(
+  event: { date: string; end_time: string },
+  now: Date,
+): boolean {
+  const end = new Date(`${event.date}T${event.end_time}`);
+  return !Number.isNaN(end.getTime()) && end.getTime() < now.getTime();
+}
+
 interface CallerSide {
   side: Side;
   ownId: bigint;
@@ -282,10 +295,23 @@ export class MatchRequestsService {
       return;
     }
 
+    // Every invitation still waiting is cancelled, since no session happened.
+    // A confirmed event is cancelled only if it is still to come: one that has
+    // finished was held, and stays on record as a session.
+    const confirmed = await prisma.events.findMany({
+      where: { match_id: existing.match_id, status: 'accepted' },
+      select: { event_id: true, date: true, end_time: true },
+    });
+    const finished = confirmed
+      .filter((event) => hasEnded(event, now))
+      .map((event) => event.event_id);
     await prisma.events.updateMany({
       where: {
         match_id: existing.match_id,
-        status: { in: ['invitation-sent', 'accepted'] },
+        OR: [
+          { status: 'invitation-sent' },
+          { status: 'accepted', event_id: { notIn: finished } },
+        ],
       },
       data: { status: 'cancelled' },
     });
