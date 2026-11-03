@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
 import { expertiseTopics } from "@/constants/profileOptions/shared";
 import { BackendError } from "@/lib/api/backendClient";
+import { rememberSuggestionsOff, suggestionsOffError, useSuggestionsOn } from "@/lib/hooks/useSuggestionsOn";
 import { expressInterest } from "@/services/discovery/matchService";
-import { getSuggestions, getSuggestionsStatus } from "@/services/suggestions/suggestionsService";
+import { getSuggestions } from "@/services/suggestions/suggestionsService";
 import type {
   LastSessionBand,
   SessionsBand,
@@ -34,13 +35,13 @@ function todayString(): string {
 function describeLastSession(band: LastSessionBand): string {
   switch (band) {
     case "never":
-      return "Not yet matched for a session";
+      return "No session yet";
     case "within 30 days":
-      return "Last matched within 30 days";
+      return "Last session within 30 days";
     case "1 to 3 months":
-      return "Last matched 1 to 3 months ago";
+      return "Last session 1 to 3 months ago";
     case "over 3 months":
-      return "Last matched over 3 months ago";
+      return "Last session over 3 months ago";
   }
 }
 
@@ -98,22 +99,10 @@ export default function SuggestionsPageContent() {
   const [result, setResult] = useState<SuggestionsResult | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // Set when the API says the feature is off, in place of the form.
-  const [switchedOff, setSwitchedOff] = useState<string | null>(null);
-
-  // Ask first, so a coordinator is told it is off before filling in a form.
-  useEffect(() => {
-    let active = true;
-    getSuggestionsStatus().catch((error: unknown) => {
-      const message = switchedOffMessage(error);
-      if (active && message) {
-        setSwitchedOff(message);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  // The shared answer, so a coordinator is told it is off before filling in a
+  // form. Set only by a 404: a failure to ask is not a reason to hide the form.
+  const suggestionsOn = useSuggestionsOn();
+  const switchedOff = suggestionsOn === false ? switchedOffMessage(suggestionsOffError()) : null;
 
   function toggleTopic(topic: string) {
     setTopics((current) => (current.includes(topic) ? current.filter((item) => item !== topic) : [...current, topic]));
@@ -139,10 +128,10 @@ export default function SuggestionsPageContent() {
       setResult(await getSuggestions({ date, startTime, endTime, topics }));
     } catch (error) {
       setResult(null);
-      const message = switchedOffMessage(error);
-      if (message) {
-        // It was switched off while the page was open.
-        setSwitchedOff(message);
+      if (switchedOffMessage(error)) {
+        // It was switched off while the page was open. Telling the shared
+        // answer also takes the item out of the menu.
+        rememberSuggestionsOff(error);
         return;
       }
       console.error("Unable to load suggested speakers:", error);

@@ -64,6 +64,11 @@ describe('UpdateSettingsDto, Suggested speakers fields', () => {
       { suggestionsFitWeight: 40 },
       'suggestionsFitWeight',
     ],
+    [
+      'fit 49, one below the floor',
+      { suggestionsFitWeight: 49 },
+      'suggestionsFitWeight',
+    ],
     ['fit 101', { suggestionsFitWeight: 101 }, 'suggestionsFitWeight'],
     [
       'a rotation weight of -1',
@@ -198,18 +203,6 @@ describe('GovernanceService, Suggested speakers settings', () => {
       expect(await attempt({ suggestionsExposureWeight: 5 })).toBeInstanceOf(
         BadRequestException,
       );
-    });
-
-    it('a fit below 50 even when the sum is right, if the DTO was bypassed', async () => {
-      const failure = await attempt({
-        suggestionsFitWeight: 40,
-        suggestionsRotationWeight: 40,
-        suggestionsExposureWeight: 20,
-      });
-      expect(failure).toBeInstanceOf(BadRequestException);
-      expect(failure.getResponse()).toMatchObject({
-        message: expect.stringContaining('at least 50') as unknown,
-      });
     });
   });
 

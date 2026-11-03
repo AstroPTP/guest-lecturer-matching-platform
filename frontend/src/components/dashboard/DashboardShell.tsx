@@ -78,8 +78,10 @@ export default function DashboardShell({ children, menuItems, role, notification
   const collapsed = useSyncExternalStore(subscribeCollapsed, getCollapsedSnapshot, getCollapsedServerSnapshot);
   useLeaveWhenSignedOut();
   // Ranked matching is off until an administrator switches it on, so the items
-  // that belong to it stay out of the menu until the API says it is on.
-  const suggestionsOn = useSuggestionsOn() === true;
+  // that belong to it stay out of the menu until the API says it is on. A menu
+  // with no such item has nothing to wait for, so it does not ask.
+  const hasSuggestionsItem = menuItems.some((item) => item.feature === "suggestions");
+  const suggestionsOn = useSuggestionsOn(hasSuggestionsItem) === true;
   const visibleItems = menuItems.filter((item) => item.feature !== "suggestions" || suggestionsOn);
 
   function toggleCollapsed() {
