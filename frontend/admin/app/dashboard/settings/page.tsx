@@ -17,9 +17,9 @@ const settingsNav: Array<{ label: string; href: string; icon: StaticImageData }>
 const rankingNav = { label: "Ranking settings", href: "#suggestions", icon: groupIcon };
 
 const RANKED_MATCHING_OFF =
-  "Off (default): coordinators and guest lecturers filter Discovery and choose the sort order themselves. No scores are used.";
+  "Off (default): coordinators and guest lecturers filter Discovery themselves. No scores are used.";
 const RANKED_MATCHING_ON =
-  "On: coordinators get a Suggested speakers page, Discovery can show the best match first, and people are told when a new profile shares their topics. Ranking uses topic fit, time since the last session and sessions so far, never personal characteristics. Adjust the weights below.";
+  "On: coordinators get a Suggested speakers page. Ranking uses topic fit, time since the last session and sessions so far, never personal characteristics. Adjust the weights below.";
 
 type Editable = Omit<PlatformSettings, "updatedAt">;
 

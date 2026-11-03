@@ -51,13 +51,13 @@ const GUIDES: Guide[] = [
   {
     title: "Turn ranked matching (Suggested speakers) on or off",
     steps: [
-      "Open Settings. Ranked matching (Suggested speakers) is the last rule in Matching rules, and it is off by default. While it is off, coordinators and guest lecturers filter Discovery and choose the sort order themselves, and no scores are used.",
-      "Switch it on to give coordinators a Suggested speakers page, let Discovery show the best match first, and tell people when a new profile shares their topics. Ranking uses topic fit, time since the last session and sessions so far, never personal characteristics.",
+      "Open Settings. Ranked matching (Suggested speakers) is the last rule in Matching rules, and it is off by default. While it is off, coordinators and guest lecturers filter Discovery themselves, and no scores are used.",
+      "Switch it on to give coordinators a Suggested speakers page. Ranking uses topic fit, time since the last session and sessions so far, never personal characteristics.",
       "Once it is on, the Ranking settings card appears. Pick a preset: Balanced (65/20/15, the default), Topic first (80/10/10) or Share the work (50/30/20). The three numbers are topic fit, time since last session and fewer sessions so far.",
       "Choose Custom to set your own three weights. They must add up to 100, and topic fit must be at least 50 so it always counts most.",
       "Set the half-life: after that many days without a session, the time-since-last-session score has risen halfway to its maximum. A shorter half-life brings lecturers back sooner.",
       "Choose Save settings, or Reset to defaults first to put the weights back to Balanced and the half-life back to 90 days (the switch is left as it is). The change applies straight away and is recorded in the Audit Log with the old and new values.",
-      "Switch it off again to hide the Suggested speakers page and the best-match option. Coordinators then see an administrator turned it off if they open the page. If the server sets MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever the switch says.",
+      "Switch it off again to hide the Suggested speakers page. Coordinators then see an administrator turned it off if they open the page. If the server sets MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever the switch says.",
     ],
   },
   {
@@ -163,7 +163,7 @@ const FAQS = [
   {
     question: "What happens when ranked matching is off?",
     answer:
-      "Off is the default. Coordinators and guest lecturers filter Discovery and choose the sort order themselves, no scores are used, and the Suggested speakers page and its menu item are hidden. A coordinator who opens the page by its address sees a message that an administrator turned it off. Discovery, matches and messages carry on as normal.",
+      "Off is the default. Coordinators and guest lecturers filter Discovery themselves, no scores are used, and the Suggested speakers page and its menu item are hidden. A coordinator who opens the page by its address sees a message that an administrator turned it off. Discovery, matches and messages carry on as normal.",
   },
   {
     question: "Is every change to ranked matching recorded?",
