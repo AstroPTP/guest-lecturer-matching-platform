@@ -22,11 +22,12 @@ export class SuggestionsController {
 
   /**
    * Whether the feature is on, for the menu and the page to decide what to
-   * show and for Help to decide whether to include its questions. It is on
-   * whenever this answers at all: the guard has already answered 404, with the
+   * show, for Discovery to decide whether to offer the best-match order, and
+   * for Help to decide whether to include its questions. It is on whenever
+   * this answers at all: the guard has already answered 404, with the
    * administrator's message, when it is off. Guest lecturers may ask too,
-   * because Help has questions for them about being suggested; the list itself
-   * stays coordinator only.
+   * because they see the same Discovery options and Help has questions for
+   * them about being suggested; the list itself stays coordinator only.
    */
   @Get('status')
   @Roles(AppRole.UnitCoordinator, AppRole.GuestSpeaker)

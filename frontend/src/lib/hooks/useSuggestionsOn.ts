@@ -45,7 +45,7 @@ function ask(): Promise<Answer> {
 
 /**
  * Whether ranked matching is on, asked of the API once and then reused for a
- * few minutes by the menu, Help and the Suggested speakers page.
+ * few minutes by the menu, Help, Discovery and the Suggested speakers page.
  *
  * The API says it is on by answering, and off by answering 404, so a 404 is a
  * clear "off" and is remembered along with the error. Any other failure
@@ -79,7 +79,8 @@ export function rememberSuggestionsOff(error: unknown): void {
  * could not be asked, and null while the first answer is still on its way.
  *
  * Pass `wanted` as false on a page that has nothing to offer when it is on:
- * no request is made and the answer is false.
+ * no request is made and the answer is false. Discovery does not pass it, for
+ * either role, because the best-match order is offered only when this is true.
  */
 export function useSuggestionsOn(wanted = true): boolean | null {
   const [current, setCurrent] = useState<Answer | null>(answer);

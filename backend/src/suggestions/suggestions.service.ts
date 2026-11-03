@@ -9,6 +9,7 @@ import { ErrorCode } from '../common/error-codes';
 import { profileImageUrl } from '../images/images.service';
 import { prisma } from '../prisma';
 import { readMatchingSettings } from './matching-settings';
+import { SESSION_EVENTS_WHERE, sessionDate } from './session-history';
 import {
   DEFAULT_LIMIT,
   type SuggestionsQueryDto,
@@ -115,31 +116,6 @@ export interface SuggestionsResult {
 
 /** Match states that end the coordinator's interest in that lecturer for good. */
 const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
-
-/**
- * When a session took place, for the rotation term: the event's own date, else
- * the moment the coordinator marked it complete, else when it was created. The
- * date is the day the session was held, where the completion time is only when
- * it was marked, which may be months later. It is typed by the coordinator and
- * stored as a string, so one that does not read as a date is not used, and one
- * that does is held between when the event was created and now: a future date
- * reads as now, a back-dated one as created.
- */
-function sessionDate(
-  event: { date: string; completed_at: Date | null; created_at: Date },
-  now: Date,
-): Date {
-  const planned = new Date(event.date);
-  if (Number.isNaN(planned.getTime())) {
-    return event.completed_at ?? event.created_at;
-  }
-  return new Date(
-    Math.min(
-      now.getTime(),
-      Math.max(planned.getTime(), event.created_at.getTime()),
-    ),
-  );
-}
 
 /**
  * Ranks the guest lecturers who could give one session, for one coordinator.
@@ -330,7 +306,7 @@ export class SuggestionsService {
     const relevantGuestIds = relevant.map((entry) => entry.guest.guest_id);
     const sessionEvents = await prisma.events.findMany({
       where: {
-        status: { in: ['accepted', 'completed'] },
+        ...SESSION_EVENTS_WHERE,
         match: { is: { guest_id: { in: relevantGuestIds } } },
       },
       select: {

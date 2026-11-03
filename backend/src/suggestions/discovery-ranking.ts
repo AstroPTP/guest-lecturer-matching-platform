@@ -11,6 +11,11 @@ import {
   type ScoreWeights,
   type WeeklyAvailability,
 } from './scoring';
+import {
+  SESSION_EVENTS_WHERE,
+  sessionDate,
+  type SessionEventDates,
+} from './session-history';
 
 /**
  * The order Discovery lists people in while Suggested speakers is switched on.
@@ -41,11 +46,9 @@ interface TopicRow {
   expertise: string;
 }
 
-/** One row of `match_requests`, as far as the history of sessions needs. */
-interface AcceptedMatchRow {
-  guest_id: bigint;
-  requested_at: Date | null;
-  updated_at: Date | null;
+/** One event, as far as the history of sessions needs: its dates and the guest it is with. */
+interface SessionEventRow extends SessionEventDates {
+  match: { guest_id: bigint };
 }
 
 /** A guest card's row, as far as placing it needs. */
@@ -80,22 +83,24 @@ function groupTopics(rows: readonly TopicRow[]): Map<bigint, string[]> {
 }
 
 /**
- * Counts each guest's accepted matches and finds the latest, the same way
- * Suggested speakers does: a match counts once both sides have agreed, and
- * `updated_at` (when the second side said yes) is when it happened, falling
- * back to `requested_at` for older rows.
+ * Counts each guest's sessions and finds the latest, the same way Suggested
+ * speakers does: the rows are the events that count as sessions (see
+ * ./session-history.ts), each event is one session whatever has since
+ * happened to its match, and the date of a session is read by `sessionDate`.
  */
 export function summariseSessions(
-  rows: readonly AcceptedMatchRow[],
+  rows: readonly SessionEventRow[],
+  now: Date,
 ): SessionHistory {
   const sessions = new Map<bigint, number>();
   const lastSessionAt = new Map<bigint, Date>();
   for (const row of rows) {
-    sessions.set(row.guest_id, (sessions.get(row.guest_id) ?? 0) + 1);
-    const when = row.updated_at ?? row.requested_at;
-    const latest = lastSessionAt.get(row.guest_id);
-    if (when && (!latest || when > latest)) {
-      lastSessionAt.set(row.guest_id, when);
+    const guestId = row.match.guest_id;
+    sessions.set(guestId, (sessions.get(guestId) ?? 0) + 1);
+    const when = sessionDate(row, now);
+    const latest = lastSessionAt.get(guestId);
+    if (!latest || when > latest) {
+      lastSessionAt.set(guestId, when);
     }
   }
   return { sessions, lastSessionAt };
@@ -247,8 +252,8 @@ export function rankCoordinators<C extends RankableCoordinator>(
  *
  * `expertiseRows` is the topics of these guests, already read for the cards.
  * What is added is a fixed number of reads however many guests there are: the
- * settings, the viewer's profile and topics, and one read of the accepted
- * matches of all the guests.
+ * settings, the viewer's profile and topics, and one read of the sessions of
+ * all the guests.
  */
 export async function orderGuestsForViewer<G extends RankableGuest>(
   guests: G[],
@@ -271,21 +276,28 @@ export async function orderGuestsForViewer<G extends RankableGuest>(
     return guests;
   }
 
-  const [ownTopics, accepted] = await Promise.all([
+  const [ownTopics, sessionEvents] = await Promise.all([
     prisma.user_expertise.findMany({ where: { user_id: viewer.user_id } }),
-    prisma.match_requests.findMany({
+    prisma.events.findMany({
       where: {
-        guest_id: { in: guests.map((guest) => guest.guest_id) },
-        status: 'ACCEPTED',
+        ...SESSION_EVENTS_WHERE,
+        match: {
+          is: { guest_id: { in: guests.map((guest) => guest.guest_id) } },
+        },
       },
-      select: { guest_id: true, requested_at: true, updated_at: true },
+      select: {
+        date: true,
+        completed_at: true,
+        created_at: true,
+        match: { select: { guest_id: true } },
+      },
     }),
   ]);
 
   return rankGuests(guests, {
     viewerTopics: ownTopics.map((row) => row.expertise),
     topicsByUser: groupTopics(expertiseRows),
-    history: summariseSessions(accepted),
+    history: summariseSessions(sessionEvents, now),
     weights: settings.weights,
     halfLifeDays: settings.halfLifeDays,
     now,

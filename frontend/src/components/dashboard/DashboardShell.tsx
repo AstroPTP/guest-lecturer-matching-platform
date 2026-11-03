@@ -79,7 +79,8 @@ export default function DashboardShell({ children, menuItems, role, notification
   useLeaveWhenSignedOut();
   // Ranked matching is off until an administrator switches it on, so the items
   // that belong to it stay out of the menu until the API says it is on. A menu
-  // with no such item has nothing to wait for, so it does not ask.
+  // with no such item has nothing to wait for, so it does not ask. Discovery
+  // asks for itself, for either role, when it picks the sort options.
   const hasSuggestionsItem = menuItems.some((item) => item.feature === "suggestions");
   const suggestionsOn = useSuggestionsOn(hasSuggestionsItem) === true;
   const visibleItems = menuItems.filter((item) => item.feature !== "suggestions" || suggestionsOn);

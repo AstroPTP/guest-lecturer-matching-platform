@@ -78,7 +78,7 @@ function seed(on: boolean) {
   jest
     .spyOn(prisma.coordinators, 'findFirst')
     .mockResolvedValue({ user_id: VIEWER_USER } as never);
-  const accepted = jest.spyOn(prisma.match_requests, 'findMany');
+  const accepted = jest.spyOn(prisma.events, 'findMany');
   jest.spyOn(prisma.user_expertise, 'findMany').mockImplementation(((args: {
     where: { user_id?: bigint | { in: bigint[] } };
   }) => {
@@ -105,9 +105,10 @@ function seed(on: boolean) {
   jest.spyOn(prisma.availability, 'findMany').mockResolvedValue([] as never);
   accepted.mockResolvedValue(
     [1, 2, 3, 4, 5, 6].map((n) => ({
-      guest_id: 2n,
-      requested_at: daysAgo(n),
-      updated_at: daysAgo(n),
+      date: '2026-03-01',
+      completed_at: daysAgo(n),
+      created_at: daysAgo(n + 30),
+      match: { guest_id: 2n },
     })) as never,
   );
   // The record of sign-ins, which the active sort reads...

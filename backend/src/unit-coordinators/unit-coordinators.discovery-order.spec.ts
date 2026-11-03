@@ -118,7 +118,7 @@ function seed(
       week(203n, [1, 3], '10:00', '13:00'),
     ] as never);
   const accepted = jest
-    .spyOn(prisma.match_requests, 'findMany')
+    .spyOn(prisma.events, 'findMany')
     .mockResolvedValue([] as never);
   return { listing, profile, accepted };
 }
@@ -170,7 +170,7 @@ describe('UnitCoordinatorsService.findAll order', () => {
     expect(profile).not.toHaveBeenCalled();
   });
 
-  it('does not use how busy a coordinator is: the matches table is not read', async () => {
+  it('does not use how busy a coordinator is: no sessions are read', async () => {
     jest.spyOn(prisma.admin_settings, 'upsert').mockResolvedValue(settings());
     const { accepted } = seed();
 

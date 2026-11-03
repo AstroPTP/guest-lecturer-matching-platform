@@ -58,7 +58,7 @@ const GUIDES: Guide[] = [
       "Choose Custom to set your own three weights. They must add up to 100, and topic fit must be at least 50 so it always counts most.",
       "Set the half-life: after that many days without a session, the time-since-last-session score has risen halfway to its maximum. A shorter half-life brings lecturers back sooner.",
       "Choose Save settings, or Reset to defaults first to put the weights back to Balanced and the half-life back to 90 days (the switch is left as it is). The change applies straight away and is recorded in the Audit Log with the old and new values.",
-      "Switch it off again to hide the Suggested speakers page. Coordinators then see an administrator turned it off if they open the page. If the server sets MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever the switch says.",
+      "Switch it off again to hide the Suggested speakers page and the best-match option. Coordinators then see an administrator turned it off if they open the page. If the server sets MATCHING_SUGGESTIONS_ENABLED to false, it stays off whatever the switch says.",
     ],
   },
   {
