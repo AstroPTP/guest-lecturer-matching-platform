@@ -28,7 +28,7 @@ export const MAX_TOPICS = 5;
 export const MAX_CUSTOM_TOPICS = 3;
 export const CUSTOM_TOPIC_MIN_LENGTH = 2;
 export const CUSTOM_TOPIC_MAX_LENGTH = 40;
-const CUSTOM_TOPIC_CHARACTERS = /^[A-Za-z0-9 &\-/'.]+$/;
+export const CUSTOM_TOPIC_CHARACTERS = /^[A-Za-z0-9 &\-/'.]+$/;
 
 /**
  * The form two topics are compared in: lower case, with every run of other
