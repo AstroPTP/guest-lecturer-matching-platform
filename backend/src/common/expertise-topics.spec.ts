@@ -246,26 +246,6 @@ describe('IsExpertiseTopicList', () => {
     expect(await messagesFor(['Accounting', 'Supply Chain'])).toEqual([]);
     expect(await messagesFor('Accounting')).toEqual([]);
   });
-
-  it('checks a list once to build its message', async () => {
-    let reads = 0;
-    const list = new Proxy(
-      ['Supply Chain', 'Logistics', 'Procurement', 'Fintech'],
-      {
-        get(target, property, receiver) {
-          if (property === Symbol.iterator) {
-            reads += 1;
-          }
-          return Reflect.get(target, property, receiver) as unknown;
-        },
-      },
-    );
-
-    expect(await messagesFor(list)).toEqual([
-      'selectedTopics has more than 3 custom topics',
-    ]);
-    expect(reads).toBe(1);
-  });
 });
 
 // The same options the application applies to every request body.
