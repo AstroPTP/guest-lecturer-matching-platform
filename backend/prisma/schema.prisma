@@ -129,6 +129,7 @@ model users {
   guest                 guests?
   notifications         notifications[]
   audit_entries         audit_entries[]
+  support_threads       support_threads[]
 }
 
 model admins {
@@ -263,6 +264,7 @@ model audit_entries {
 
   @@index([occurred_at])
   @@index([action])
+  @@index([action, target_id])
 }
 
 /// Platform settings an administrator can change. A single row, id 1.
@@ -285,4 +287,55 @@ model admin_settings {
   suggestions_half_life_days  Int      @default(90)
   updated_at             DateTime @default(now()) @db.Timestamptz(6)
   updated_by             BigInt?
+}
+
+/// A request from a CCAE administrator for more details from one user, and the
+/// conversation that follows. Status is one of: open, closed.
+model support_threads {
+  thread_id           BigInt   @id @default(autoincrement())
+  user_id             BigInt
+  subject             String   @db.VarChar(150)
+  status              String   @default("open") @db.VarChar
+  /// The Auth0 id of the administrator who opened it.
+  opened_by_auth0_id  String   @db.VarChar
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  users    users              @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+  messages support_messages[]
+
+  @@index([user_id])
+  @@index([status, updated_at])
+}
+
+/// One message in a support thread. Sender is one of: admin, user.
+model support_messages {
+  message_id    BigInt    @id @default(autoincrement())
+  thread_id     BigInt
+  sender        String    @db.VarChar
+  content       String    @db.VarChar(2000)
+  attachment_id BigInt?
+  /// When the other side read it. Null while unread.
+  read_at       DateTime? @db.Timestamptz(6)
+  sent_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  thread     support_threads      @relation(fields: [thread_id], references: [thread_id], onDelete: Cascade)
+  attachment support_attachments? @relation(fields: [attachment_id], references: [attachment_id], onDelete: SetNull)
+
+  @@index([thread_id, sent_at])
+  @@index([sent_at])
+  @@index([attachment_id])
+}
+
+/// A file a user attached to a reply. Kept apart from images so it can only be
+/// reached through the support routes, which check who is asking.
+model support_attachments {
+  attachment_id BigInt   @id @default(autoincrement())
+  data          Bytes
+  mime_type     String   @db.VarChar
+  filename      String   @db.VarChar
+  size_bytes    Int
+  uploaded_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  messages support_messages[]
 }

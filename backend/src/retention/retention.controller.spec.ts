@@ -73,12 +73,17 @@ describe('RetentionController dry-run', () => {
   const controller = new RetentionController(new RetentionService());
 
   it('returns the preview and never deletes, locks or writes an audit row', async () => {
-    const queryRaw = jest
-      .spyOn(prisma, '$queryRaw')
-      .mockImplementation(((strings: TemplateStringsArray) =>
-        Promise.resolve([
-          { count: strings.join('?').includes('IS NULL') ? 3 : 12 },
-        ])) as never);
+    const queryRaw = jest.spyOn(prisma, '$queryRaw').mockImplementation(((
+      strings: TemplateStringsArray,
+    ) => {
+      const text = strings.join('?');
+      const count = text.includes('support_messages')
+        ? 5
+        : text.includes('IS NULL')
+          ? 3
+          : 12;
+      return Promise.resolve([{ count }]);
+    }) as never);
     const executeRaw = jest.spyOn(prisma, '$executeRaw');
     const transaction = jest.spyOn(prisma, '$transaction');
     const audit = jest.spyOn(prisma.audit_entries, 'create');
@@ -90,16 +95,18 @@ describe('RetentionController dry-run', () => {
       'dryRun',
       'retentionDays',
       'skippedNullSentAt',
+      'supportWouldDelete',
       'wouldDelete',
     ]);
     expect(result).toMatchObject({
       dryRun: true,
       retentionDays: 120,
       wouldDelete: 12,
+      supportWouldDelete: 5,
       skippedNullSentAt: 3,
     });
     expect(Number.isNaN(Date.parse(result.cutoff))).toBe(false);
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(3);
     expect(executeRaw).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
     expect(audit).not.toHaveBeenCalled();

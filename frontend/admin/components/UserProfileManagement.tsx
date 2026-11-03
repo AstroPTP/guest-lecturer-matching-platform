@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import arrowBackIcon from "@/assets/arrow_back.png";
+import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import { statusColors } from "@/lib/user_status";
 import { getUser, setUserStatus } from "@/services/adminApi";
 import { AccountStatus, type DirectoryUser } from "@/types/admin";
@@ -136,6 +137,7 @@ export function UserProfileManagement({ directoryId }: { directoryId: string }) 
             {pending === action ? "Saving…" : actionLabels[action]}
           </button>
         ))}
+        <RequestDetailsButton userId={directoryId} userName={user.name} />
       </div>
 
       <dialog

@@ -5,6 +5,7 @@ import {
   Header,
   Param,
   Patch,
+  Post,
   Query,
 } from '@nestjs/common';
 import { Roles } from '../auth/roles.decorator';
@@ -92,11 +93,12 @@ export class AdminController {
   auditEntries(
     @Query('limit') limit?: string,
     @Query('action') action?: string,
+    @Query('correlationId') correlationId?: string,
   ) {
-    return this.governance.auditEntries(
-      limit ? Number(limit) || undefined : undefined,
-      action,
-    );
+    const take = limit ? Number(limit) || undefined : undefined;
+    return correlationId
+      ? this.governance.auditEntriesByCorrelationId(correlationId, take, action)
+      : this.governance.auditEntries(take, action);
   }
 
   @Get('events')
@@ -116,6 +118,14 @@ export class AdminController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.governance.resolveReport(id, dto.outcome, user.id);
+  }
+
+  @Post('reports/:id/hold')
+  holdReported(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.governance.hold(id, user.id);
   }
 
   @Get('system')

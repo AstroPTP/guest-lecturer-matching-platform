@@ -3,7 +3,9 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { corsOptions } from './common/cors-options';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { requestContextMiddleware } from './common/request-context.middleware';
 import { validateEnv } from './config/env.validation';
 import { loadEnvFile } from './config/load-env';
 
@@ -26,6 +28,10 @@ async function bootstrap() {
   const env = validateEnv();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // First, so that everything after it, including a CORS preflight and a body
+  // refused for its size, has a correlation id and ends up in the request log.
+  app.use(requestContextMiddleware());
 
   app.use(
     helmet({
@@ -50,13 +56,7 @@ async function bootstrap() {
     }),
   );
 
-  app.enableCors({
-    origin: env.allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Correlation-Id'],
-    maxAge: 600,
-  });
+  app.enableCors(corsOptions(env.allowedOrigins));
 
   app.useGlobalPipes(
     new ValidationPipe({
