@@ -132,24 +132,30 @@ function visibleGuestsFor(
 /** Match states that end the coordinator's interest in that lecturer for good. */
 const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
 
-/** Event states that count as a session: the lecturer said yes, or it was held. */
-const SESSION_EVENT_STATUSES = ['accepted', 'completed'];
-
 /**
  * When a session took place, for the rotation term: the moment the coordinator
  * marked it complete, else the event's own date, else when it was created. The
- * date is stored as a string, so one that does not read as a date is not used.
+ * date is typed by the coordinator and stored as a string, so one that does not
+ * read as a date is not used, and one that does is held between when the event
+ * was created and now: a future date reads as now, a back-dated one as created.
  */
-function sessionDate(event: {
-  date: string;
-  completed_at: Date | null;
-  created_at: Date;
-}): Date {
+function sessionDate(
+  event: { date: string; completed_at: Date | null; created_at: Date },
+  now: Date,
+): Date {
   if (event.completed_at) {
     return event.completed_at;
   }
   const planned = new Date(event.date);
-  return Number.isNaN(planned.getTime()) ? event.created_at : planned;
+  if (Number.isNaN(planned.getTime())) {
+    return event.created_at;
+  }
+  return new Date(
+    Math.min(
+      now.getTime(),
+      Math.max(planned.getTime(), event.created_at.getTime()),
+    ),
+  );
 }
 
 /**
@@ -193,12 +199,14 @@ function sessionDate(event: {
  *
  * "Sessions so far" counts a lecturer's events with every coordinator, not
  * only this one, because the aim is to spread sessions across the whole pool.
- * An event is a session once the lecturer has accepted it or it has been
- * completed; an invitation still waiting, a declined one and a cancelled one
- * are not. It counts whatever has since happened to the match, so a lecturer
- * keeps their history after a match ends, and a match with no event yet counts
- * for nothing. Each event is one session, so a coordinator who has a lecturer
- * back several times adds several.
+ * An event is a session once the lecturer has agreed to it: it is accepted, or
+ * it is completed and the lecturer had replied. The status order is not
+ * enforced, so a completed event with no reply is an invitation nobody
+ * answered. An invitation still waiting, a declined one and a cancelled one
+ * are not sessions either. It counts whatever has since happened to the match,
+ * so a lecturer keeps their history after a match ends, and a match with no
+ * event yet counts for nothing. Each event is one session, so a coordinator who
+ * has a lecturer back several times adds several.
  */
 @Injectable()
 export class SuggestionsService {
@@ -340,7 +348,10 @@ export class SuggestionsService {
     const relevantGuestIds = relevant.map((entry) => entry.guest.guest_id);
     const sessionEvents = await prisma.events.findMany({
       where: {
-        status: { in: SESSION_EVENT_STATUSES },
+        OR: [
+          { status: 'accepted' },
+          { status: 'completed', responded_at: { not: null } },
+        ],
         match: { is: { guest_id: { in: relevantGuestIds } } },
       },
       select: {
@@ -356,7 +367,7 @@ export class SuggestionsService {
     for (const event of sessionEvents) {
       const guestId = event.match.guest_id;
       sessionsBy.set(guestId, (sessionsBy.get(guestId) ?? 0) + 1);
-      const when = sessionDate(event);
+      const when = sessionDate(event, now);
       const latest = lastSessionBy.get(guestId);
       if (!latest || when > latest) {
         lastSessionBy.set(guestId, when);

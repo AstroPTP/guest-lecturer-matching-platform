@@ -27,8 +27,11 @@ export default function HelpPageContent({ role, heroImage }: HelpPageContentProp
   const content = HELP_CONTENT[role];
   // Ranked matching is off until an administrator switches it on, so its
   // section and questions appear only once the API says it is on. A guide with
-  // no such section has nothing to wait for, so it does not ask.
-  const suggestionsOn = useSuggestionsOn(Boolean(content.suggestions));
+  // neither the section nor any such question has nothing to wait for, so it
+  // does not ask.
+  const hasSuggestionsContent =
+    Boolean(content.suggestions) || content.faqs.some((faq) => faq.feature === "suggestions");
+  const suggestionsOn = useSuggestionsOn(hasSuggestionsContent);
   const showSuggestions = MATCHING_SUGGESTIONS_ENABLED && suggestionsOn === true;
 
   return (

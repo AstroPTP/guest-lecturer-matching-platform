@@ -83,7 +83,7 @@ function eventOf(
     end_time: '10:00',
     responded_at: NOW,
     completed_at: null,
-    created_at: NOW,
+    created_at: new Date('2026-01-01T00:00:00.000Z'),
     match: { guest_id: guest, status: 'ACCEPTED' },
     ...overrides,
   };
@@ -903,13 +903,16 @@ describe('SuggestionsService', () => {
       expect(ada.lastSessionBand).toBe('never');
     });
 
-    it('reads only accepted and completed events, for the lecturers still in the running', async () => {
+    it('reads only agreed events, for the lecturers still in the running', async () => {
       install(build([{ name: 'Ada' }, { name: 'Off topic', topics: ['Art'] }]));
       const spy = jest.spyOn(prisma.events, 'findMany');
       await service.suggest(userId, query, NOW);
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]?.where).toEqual({
-        status: { in: ['accepted', 'completed'] },
+        OR: [
+          { status: 'accepted' },
+          { status: 'completed', responded_at: { not: null } },
+        ],
         match: { is: { guest_id: { in: [1n] } } },
       });
     });
@@ -973,6 +976,18 @@ describe('SuggestionsService', () => {
         },
       );
 
+      it('does not count a completed event the lecturer never replied to', async () => {
+        const world = build([{ name: 'Ada' }]);
+        // The status order is not enforced, so an unanswered invitation can be
+        // marked completed. The lecturer's agreement is what makes a session.
+        world.events.push(
+          eventOf(world.ids.Ada, { status: 'completed', responded_at: null }),
+        );
+        const ada = await sessionsOf(world);
+        expect(ada.sessionsBand).toBe('none');
+        expect(ada.lastSessionBand).toBe('never');
+      });
+
       it('dates a session by when it was completed, ahead of the event date', async () => {
         const world = build([{ name: 'Ada' }]);
         world.events.push(
@@ -992,10 +1007,9 @@ describe('SuggestionsService', () => {
           eventOf(world.ids.Ada, {
             status: 'accepted',
             date: '2026-08-15',
-            created_at: NOW,
           }),
         );
-        // 68 days before NOW, not the 0 days of created_at.
+        // 68 days before NOW, after the event was created.
         expect((await sessionsOf(world)).lastSessionBand).toBe('1 to 3 months');
       });
 
@@ -1009,6 +1023,33 @@ describe('SuggestionsService', () => {
           }),
         );
         expect((await sessionsOf(world)).lastSessionBand).toBe('over 3 months');
+      });
+
+      it('reads an event date in the future as now', async () => {
+        // A and B are equal in every way but the date, and A is listed first.
+        // Left in the future, A's last session would be later than B's and put
+        // B ahead of it; read as now, the two tie and A stays first.
+        const world = build([{ name: 'A' }, { name: 'B' }]);
+        world.events.push(
+          eventOf(world.ids.A, { status: 'accepted', date: '2026-12-01' }),
+          eventOf(world.ids.B, { completed_at: NOW }),
+        );
+        install(world);
+        expect(await names()).toEqual(['A', 'B']);
+      });
+
+      it('reads an event date before the event was created as when it was created', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            status: 'accepted',
+            date: '2020-01-01',
+            created_at: new Date(NOW.getTime() - 10 * DAY),
+          }),
+        );
+        expect((await sessionsOf(world)).lastSessionBand).toBe(
+          'within 30 days',
+        );
       });
 
       it('counts an accepted event dated in the future as a session', async () => {
