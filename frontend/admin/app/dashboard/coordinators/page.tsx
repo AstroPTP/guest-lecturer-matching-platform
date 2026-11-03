@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { EngagementDirectory } from "@/components/EngagementDirectory";
+import { facultyLabel } from "@/lib/faculty_labels";
 import { getCoordinators, type CoordinatorSummary } from "@/services/adminApi";
 
 export default function CoordinatorsPage() {
@@ -37,7 +38,7 @@ export default function CoordinatorsPage() {
       rows={rows.map((row) => ({
         id: row.id,
         name: row.name,
-        detail: row.faculty,
+        detail: facultyLabel(row.faculty),
         primaryMetric: String(row.requests),
         secondaryMetric: String(row.accepted),
         href: row.userId ? `/dashboard/users/${encodeURIComponent(`#UC-${row.userId}`)}` : undefined,
