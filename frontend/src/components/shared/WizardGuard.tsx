@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import BrandLogo from "@/components/brand/BrandLogo";
 import FormSkeleton from "@/components/shared/FormSkeleton";
 import { useLeaveWizardIfCompleted } from "@/lib/hooks/useOnboardingStatus";
 
@@ -23,6 +24,9 @@ export default function WizardGuard({ roleRoot, children }: WizardGuardProps) {
 
   return (
     <>
+      <div className="mx-auto mb-8 flex max-w-6xl justify-center">
+        <BrandLogo variant="compact" size={36} />
+      </div>
       {!status && <FormSkeleton />}
       <div hidden={!status || status.completed}>{children}</div>
     </>

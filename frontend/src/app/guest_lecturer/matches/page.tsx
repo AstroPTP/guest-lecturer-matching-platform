@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import MatchesPageContent from "@/components/matches/MatchesPageContent";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
+
+export const metadata: Metadata = { title: "Matches" };
 
 export default function GuestLecturerMatchesPage() {
   return (

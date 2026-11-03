@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import BrandLogo from "@/components/brand/BrandLogo";
 
 /**
  * Scrolls to the role cards without adding #role-cards to the URL. A hash link
@@ -14,8 +15,9 @@ export default function Navbar() {
   return (
     <header className="w-full">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-8 py-6">
-        <Link href="/landing#discover" className="text-2xl font-bold">
-          Curtin University
+        <Link href="/landing#discover" className="flex items-center">
+          {/* The words are hidden on a phone, where the buttons on the right need the room. */}
+          <BrandLogo variant="compact" size={40} textClassName="max-sm:hidden!" />
         </Link>
         <nav aria-label="Landing page navigation" className="hidden gap-10 md:flex">
           <Link href="/landing#discover" className="border-b-2 border-black font-medium">

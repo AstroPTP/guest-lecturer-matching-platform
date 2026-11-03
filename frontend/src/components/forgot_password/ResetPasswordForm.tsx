@@ -6,6 +6,7 @@ import { resetPassword } from "@/services/settings/settingsService";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 import check from "@/assets/check.png";
@@ -51,6 +52,9 @@ export default function ResetPasswordForm() {
   return (
     <main className="w-full max-w-md bg-white rounded-xl p-8 md:p-12">
       <div className="mb-8">
+        <div className="mb-6 flex justify-center">
+          <BrandLogo variant="compact" size={36} />
+        </div>
         <button
           type="button"
           aria-label="Go back"

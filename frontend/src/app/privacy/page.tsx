@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import InfoPage, { InfoSection } from "@/components/info/InfoPage";
 
-export const metadata: Metadata = { title: "Privacy | CCAE Academic Engagement" };
+export const metadata: Metadata = { title: "Privacy" };
 
 export default function PrivacyPage() {
   return (

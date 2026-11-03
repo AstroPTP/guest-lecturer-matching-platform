@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import check from "@/assets/check.png";
 import arrow from "@/assets/arrow.png";
 
@@ -40,6 +41,9 @@ export default function VerificationSuccess() {
 
   return (
     <main className="w-full max-w-md px-8 flex flex-col items-center justify-center text-center">
+      <div className="mb-10">
+        <BrandLogo variant="compact" size={36} />
+      </div>
       <div className="mb-12 flex justify-center">
         <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-gray-100">
           <Image src={check} alt="Success" width={52} height={52} className="object-contain" />

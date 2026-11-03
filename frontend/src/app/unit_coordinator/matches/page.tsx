@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import MatchesPageContent from "@/components/matches/MatchesPageContent";
 
 import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
 
+
+export const metadata: Metadata = { title: "Matches" };
 
 export default function UnitCoordinatorMatchesPage() {
   return (

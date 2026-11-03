@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import BrandLogo from "@/components/brand/BrandLogo";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
 
@@ -88,6 +89,9 @@ export default function LoginForm() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 via-slate-50 to-teal-50 px-4 ">
       <div className="bg-white w-full max-w-lg rounded-2xl border border-blue-100 shadow-xl shadow-blue-900/10 p-10">
+        <div className="mb-8 flex justify-center">
+          <BrandLogo variant="full" size={60} />
+        </div>
         <h1 className="text-5xl font-bold mb-4">Welcome</h1>
         <p className="text-gray-600 mb-10">Sign in to continue your academic journey.</p>
 
