@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import InfoPage, { InfoSection } from "@/components/info/InfoPage";
 
-export const metadata: Metadata = { title: "Terms | CCAE Academic Engagement" };
+export const metadata: Metadata = { title: "Terms" };
 
 export default function TermsPage() {
   return (

@@ -11,7 +11,7 @@ export default function Footer() {
   return (
     <footer className="mt-20 border-t">
       <div className="max-w-7xl mx-auto px-8 py-10 flex justify-between">
-        <p className="text-gray-600">© 2026 Curtin University</p>
+        <p className="text-gray-600">© 2026 Curtin GLMP</p>
         <div className="flex gap-6 text-gray-600">
           {LINKS.map((link) => (
             <Link key={link.href} href={link.href} className="hover:text-black transition-colors">

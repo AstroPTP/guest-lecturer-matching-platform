@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import logoutIcon from "@/assets/log_out.png";
-import schoolIcon from "@/assets/school.png";
+import BrandLogo from "@/components/brand/BrandLogo";
 import collapsedIcon from "@/assets/collapsed.png";
 import expandedIcon from "@/assets/expanded.png";
 import SidebarItem from "./SidebarItem";
@@ -26,9 +26,8 @@ export default function DashboardSidebar({ items, theme, collapsed, onToggleColl
         " border-r"
       }
     >
-      <Link href="/" className={"flex min-w-0 items-center gap-2 px-2 text-xl font-bold leading-tight text-[#242424] " + (collapsed ? "justify-center px-0" : "")}>
-        <Image src={schoolIcon} alt="" width={28} height={28} />
-        {!collapsed && <span className="truncate">Curtin University</span>}
+      <Link href="/" className={"flex min-w-0 items-center px-2 " + (collapsed ? "justify-center px-0" : "")}>
+        <BrandLogo variant={collapsed ? "mark" : "compact"} size={collapsed ? 34 : 32} />
       </Link>
 
       <nav className="mt-3 space-y-1">

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import InfoPage, { InfoSection } from "@/components/info/InfoPage";
 
-export const metadata: Metadata = { title: "Contact | CCAE Academic Engagement" };
+export const metadata: Metadata = { title: "Contact" };
 
 export default function ContactPage() {
   return (

@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import ExpertiseForm from "@/components/guest_lecturer/ExpertiseForm";
 import WizardGuard from "@/components/shared/WizardGuard";
+
+export const metadata: Metadata = { title: "Expertise" };
 
 export default function ExpertisePage() {
   return (

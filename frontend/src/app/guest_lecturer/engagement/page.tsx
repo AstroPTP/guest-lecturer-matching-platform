@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import EngagementProfileForm from "@/components/guest_lecturer/EngagementProfileForm";
 import WizardGuard from "@/components/shared/WizardGuard";
+
+export const metadata: Metadata = { title: "Engagement" };
 
 export default function AvailabilityPage() {
   return (

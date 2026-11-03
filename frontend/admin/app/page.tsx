@@ -1,9 +1,14 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { AdminLoginForm } from "@/components/AdminLoginForm";
+import BrandLogo, { BRAND_NAME } from "@/components/brand/BrandLogo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
 import infoIcon from "@/assets/info.png";
-import schoolIcon from "@/assets/school.png";
 import verifiedUserIcon from "@/assets/verified_user.png";
+
+// The root layout's title template does not apply to a page in its own
+// segment, so the full title is written out here.
+export const metadata: Metadata = { title: `${BRAND_NAME} | Admin sign in` };
 
 export default async function Home({
   searchParams,
@@ -18,9 +23,8 @@ export default async function Home({
     <main className="login-page">
       <section className="login-intro">
         <div className="login-intro-head">
-          <div className="university-brand">
-            <Image alt="" aria-hidden="true" src={schoolIcon} />
-            <span>Curtin University</span>
+          <div className="login-brand">
+            <BrandLogo variant="full" size={64} />
           </div>
           <ThemeToggle />
         </div>
@@ -40,13 +44,12 @@ export default async function Home({
           </div>
         </div>
 
-        <footer>© 2026 Global Learning Management. All rights reserved.</footer>
+        <footer>© 2026 Curtin GLMP. All rights reserved.</footer>
       </section>
 
       <section className="login-form-panel">
-        <div className="mobile-university-brand university-brand">
-          <Image alt="" aria-hidden="true" src={schoolIcon} />
-          <span>Curtin University</span>
+        <div className="mobile-login-brand">
+          <BrandLogo variant="compact" size={36} />
         </div>
         <div className="login-form-wrap">
           <h2>Administrator sign in</h2>

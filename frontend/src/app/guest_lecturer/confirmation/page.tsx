@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import ProfileCompleted from "@/components/confirmation/ProfileCompleted";
+
+export const metadata: Metadata = { title: "Profile complete" };
 
 export default function Page() {
   return (

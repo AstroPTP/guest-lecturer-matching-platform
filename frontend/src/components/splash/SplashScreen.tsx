@@ -1,9 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import school from "@/assets/school.png";
+import BrandLogo from "@/components/brand/BrandLogo";
 
 const PROGRESS_DURATION_MS = 2800;
 const REDIRECT_DELAY_MS = 3200;
@@ -29,9 +28,7 @@ export default function SplashScreen() {
   return (
     <div className="flex min-h-screen flex-col items-center justify-between overflow-hidden bg-white text-black">
       <div className="mt-12 md:mt-20">
-        <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-black">
-          <Image src={school} alt="School" width={60} height={60} />
-        </div>
+        <BrandLogo variant="full" size={72} />
       </div>
 
       <main className="flex flex-col items-center px-6 text-center">
