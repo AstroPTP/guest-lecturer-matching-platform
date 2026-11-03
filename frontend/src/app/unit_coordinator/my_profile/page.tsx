@@ -20,7 +20,7 @@ import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFor
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { cleanStoredTopics, expertiseWithCleanTopics, withFixedTopicSpelling } from "@/utils/customTopics";
+import { cleanStoredTopics, expertiseWithCleanTopics, noDroppedTopics, withFixedTopicSpelling, type DroppedTopics } from "@/utils/customTopics";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
   value: level.value,
@@ -244,7 +244,7 @@ export default function UnitCoordinatorMyProfilePage() {
   }
 
   // Saved topics that saving would remove because they break the topic rules.
-  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : [];
+  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : noDroppedTopics;
 
   if (isLoading) {
     return (
@@ -447,7 +447,7 @@ function ExpertiseEditor({
   onToggleTopic: (topic: string) => void;
   onToggleExperienceLevel: (level: string) => void;
   topicsField: Ref<CustomTopicsFieldHandle>;
-  droppedTopics: string[];
+  droppedTopics: DroppedTopics;
 }) {
   return (
     <div className="space-y-7">

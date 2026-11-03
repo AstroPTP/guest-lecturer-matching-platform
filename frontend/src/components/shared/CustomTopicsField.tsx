@@ -8,7 +8,9 @@ import {
   MAX_TOPICS,
   customTopicError,
   isCustomTopic,
+  noDroppedTopics,
   tidyTopic,
+  type DroppedTopics,
 } from "@/utils/customTopics";
 
 export interface CustomTopicsFieldHandle {
@@ -23,13 +25,13 @@ interface CustomTopicsFieldProps {
   onChange: (topics: string[]) => void;
   compact?: boolean;
   // Stored topics that will not be saved, named in a notice above the field.
-  droppedTopics?: string[];
+  droppedTopics?: DroppedTopics;
   ref?: Ref<CustomTopicsFieldHandle>;
 }
 
 // The "Other" choice under the fixed topic chips. Custom topics are kept in the
 // same list as the fixed ones, so they save and display the same way.
-export default function CustomTopicsField({ selectedTopics, onChange, compact = false, droppedTopics = [], ref }: CustomTopicsFieldProps) {
+export default function CustomTopicsField({ selectedTopics, onChange, compact = false, droppedTopics = noDroppedTopics, ref }: CustomTopicsFieldProps) {
   const customTopics = selectedTopics.filter(isCustomTopic);
   const [isOpen, setIsOpen] = useState(customTopics.length > 0);
   const [draft, setDraft] = useState("");
@@ -78,10 +80,21 @@ export default function CustomTopicsField({ selectedTopics, onChange, compact = 
 
   return (
     <div className="mt-3">
-      {droppedTopics.length > 0 && (
-        <p role="status" className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Saving will remove: {droppedTopics.join(", ")}. A profile can have up to {MAX_TOPICS} topics, with up to {MAX_CUSTOM_TOPICS} of your own.
-        </p>
+      {(droppedTopics.overLimit.length > 0 || droppedTopics.refused.length > 0) && (
+        <div role="status" className="mb-3 space-y-1 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+          {droppedTopics.overLimit.length > 0 && (
+            <p>
+              Saving will remove: {droppedTopics.overLimit.join(", ")}. A profile can have up to {MAX_TOPICS} topics, with up to {MAX_CUSTOM_TOPICS} of
+              your own.
+            </p>
+          )}
+          {droppedTopics.refused.length > 0 && (
+            <p>
+              Saving will remove: {droppedTopics.refused.join(", ")}. Topic names must be {CUSTOM_TOPIC_MIN_LENGTH} to {CUSTOM_TOPIC_MAX_LENGTH} characters
+              and can only use letters, numbers, spaces and &amp; - / &apos; . To keep one, add it again within those rules.
+            </p>
+          )}
+        </div>
       )}
       <div className={"flex flex-wrap " + (compact ? "gap-2" : "gap-3")}>
         {customTopics.map((topic) => (

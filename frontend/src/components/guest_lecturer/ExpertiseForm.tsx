@@ -7,12 +7,12 @@ import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getGuestLecturerExpertise, saveGuestLecturerExpertise } from "@/services/profile/guestLecturerProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { cleanStoredTopics } from "@/utils/customTopics";
+import { cleanStoredTopics, noDroppedTopics, type DroppedTopics } from "@/utils/customTopics";
 export default function ExpertiseForm() {
   const router = useRouter();
   const topicsField = useRef<CustomTopicsFieldHandle>(null);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [droppedTopics, setDroppedTopics] = useState<string[]>([]);
+  const [droppedTopics, setDroppedTopics] = useState<DroppedTopics>(noDroppedTopics);
   const [experienceLevel, setExperienceLevel] = useState("");
   const [hasSpeakingExperience, setHasSpeakingExperience] = useState(false);
   const [speakingDetails, setSpeakingDetails] = useState("");

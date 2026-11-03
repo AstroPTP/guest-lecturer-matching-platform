@@ -7,12 +7,12 @@ import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { cleanStoredTopics } from "@/utils/customTopics";
+import { cleanStoredTopics, noDroppedTopics, type DroppedTopics } from "@/utils/customTopics";
 export default function ExpertiseForm() {
   const router = useRouter();
   const topicsField = useRef<CustomTopicsFieldHandle>(null);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [droppedTopics, setDroppedTopics] = useState<string[]>([]);
+  const [droppedTopics, setDroppedTopics] = useState<DroppedTopics>(noDroppedTopics);
   const [experienceLevelsRequired, setExperienceLevelsRequired] = useState<string[]>([]);
   const [industryRelevance, setIndustryRelevance] = useState("");
   const [learningObjective, setLearningObjective] = useState("");

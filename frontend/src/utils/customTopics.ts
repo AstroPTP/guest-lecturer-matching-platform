@@ -62,6 +62,15 @@ export function topicMatchKey(topic: string): string {
   return topicKey(findFixedTopic(topic) ?? topic);
 }
 
+// Stored topics that saving will remove: those over the topic limits and those
+// that break the topic rules.
+export interface DroppedTopics {
+  overLimit: string[];
+  refused: string[];
+}
+
+export const noDroppedTopics: DroppedTopics = { overLimit: [], refused: [] };
+
 // Tidies the topics of a saved profile before they go into a form, so a list
 // saved under older rules still saves. A fixed topic is spelled as the list
 // spells it ("ACCOUNTING" shows as the selected "Accounting" chip), repeats are
@@ -69,10 +78,11 @@ export function topicMatchKey(topic: string): string {
 // first. A custom topic is kept only when customTopicError accepts it on its
 // own, so one the backend would refuse (length, characters, no letters or
 // numbers) does not block the save. Returns the topics kept and the topics
-// dropped, so the person can be told before they save. A topic merged into a
-// fixed topic or into an earlier copy of itself is not dropped. The saved
-// profile only changes when the person saves.
-export function cleanStoredTopics(topics: string[]): { kept: string[]; dropped: string[] } {
+// dropped, in two groups so the person can be told the right reason before they
+// save: those over the topic limits and those that break the topic rules. A
+// topic merged into a fixed topic or into an earlier copy of itself is not
+// dropped. The saved profile only changes when the person saves.
+export function cleanStoredTopics(topics: string[]): { kept: string[]; dropped: DroppedTopics } {
   const tidy = topics.map(tidyTopic).filter((topic) => topic !== "");
   const fixed = Array.from(new Set(tidy.map(findFixedTopic).filter((topic): topic is string => topic !== undefined)));
   const seen = new Set(fixed.map(topicKey));
@@ -88,7 +98,7 @@ export function cleanStoredTopics(topics: string[]): { kept: string[]; dropped: 
   }
   const kept = [...fixed, ...custom.slice(0, MAX_CUSTOM_TOPICS)].slice(0, MAX_TOPICS);
   const overLimit = [...fixed, ...custom].filter((topic) => !kept.includes(topic));
-  return { kept, dropped: [...refused, ...overLimit] };
+  return { kept, dropped: { overLimit, refused } };
 }
 
 export function expertiseWithCleanTopics<T extends { selectedTopics: string[] }>(expertise: T): T {

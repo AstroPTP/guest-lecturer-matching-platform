@@ -16,7 +16,7 @@ import { formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
 import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
-import { cleanStoredTopics, expertiseWithCleanTopics, withFixedTopicSpelling } from "@/utils/customTopics";
+import { cleanStoredTopics, expertiseWithCleanTopics, noDroppedTopics, withFixedTopicSpelling, type DroppedTopics } from "@/utils/customTopics";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
@@ -291,7 +291,7 @@ export default function GuestLecturerMyProfilePage() {
   }
 
   // Saved topics that saving would remove because they break the topic rules.
-  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : [];
+  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : noDroppedTopics;
 
   if (isLoading) {
     return (
@@ -533,7 +533,7 @@ function ExpertiseEditor({
   setDraft: React.Dispatch<React.SetStateAction<GuestLecturerExpertiseData | null>>;
   onToggleTopic: (topic: string) => void;
   topicsField: Ref<CustomTopicsFieldHandle>;
-  droppedTopics: string[];
+  droppedTopics: DroppedTopics;
 }) {
   return (
     <div className="space-y-7">
