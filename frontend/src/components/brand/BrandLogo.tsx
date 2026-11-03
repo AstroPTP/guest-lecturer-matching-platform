@@ -32,6 +32,8 @@ export interface BrandLogoProps {
   /** Height of the mark in pixels. */
   size?: number;
   className?: string;
+  /** Class for the words beside the mark, for example to hide them at a width. */
+  textClassName?: string;
 }
 
 export const BRAND_NAME = "Curtin GLMP";
@@ -103,7 +105,7 @@ function Mark({ size }: { size: number }) {
   );
 }
 
-export default function BrandLogo({ variant = "compact", size = 40, className }: BrandLogoProps) {
+export default function BrandLogo({ variant = "compact", size = 40, className, textClassName }: BrandLogoProps) {
   const showText = variant !== "mark";
   const showSubtitle = variant === "full";
 
@@ -129,7 +131,7 @@ export default function BrandLogo({ variant = "compact", size = 40, className }:
     >
       <Mark size={size} />
       {showText && (
-        <span aria-hidden="true" style={{ display: "flex", flexDirection: "column", gap: px(size * 0.07), fontFamily: FONT_STACK }}>
+        <span aria-hidden="true" className={textClassName} style={{ display: "flex", flexDirection: "column", gap: px(size * 0.07), fontFamily: FONT_STACK }}>
           <span style={{ fontSize: nameSize, fontWeight: 800, letterSpacing: "-0.01em", lineHeight: 1.05, color: NAVY }}>
             Curtin <span style={{ color: GOLD }}>GLMP</span>
           </span>
