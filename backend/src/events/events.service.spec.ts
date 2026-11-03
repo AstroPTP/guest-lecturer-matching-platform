@@ -365,6 +365,54 @@ describe('EventsService', () => {
       );
     });
 
+    describe('marking a session completed', () => {
+      it('lets the coordinator complete a confirmed session and sets completedAt', async () => {
+        signInAs('coordinator');
+        const { updateMany } = fakeEvents('accepted');
+
+        await expect(
+          service.updateStatus('1', 'completed', 'auth0|coordinator'),
+        ).resolves.toEqual(
+          expect.objectContaining({
+            status: 'completed',
+            completedAt: expect.any(String) as unknown,
+          }),
+        );
+        // Written once, and only from the one status a session can be
+        // completed from.
+        expect(updateMany).toHaveBeenCalledTimes(1);
+        expect(updateMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { event_id: 1n, status: { in: ['accepted'] } },
+          }),
+        );
+      });
+
+      it.each([
+        ['invitation-sent', 'still waiting for a reply'],
+        ['declined', 'declined'],
+      ])(
+        'refuses a session that is %s, and changes nothing',
+        async (status, words) => {
+          signInAs('coordinator');
+          const { current } = fakeEvents(status);
+
+          const failure = await service
+            .updateStatus('1', 'completed', 'auth0|coordinator')
+            .catch((error: unknown) => error);
+
+          expect(failure).toBeInstanceOf(ConflictException);
+          expect((failure as ConflictException).getResponse()).toEqual({
+            code: 'CONFLICT',
+            message: `This session is ${words}, so it cannot be marked completed.`,
+          });
+          expect(current().status).toBe(status);
+          expect(current().completed_at).toBeNull();
+          expect(notificationsService.create).not.toHaveBeenCalled();
+        },
+      );
+    });
+
     it('stops a coordinator from accepting on the guest lecturer’s behalf', async () => {
       signInAs('coordinator');
       jest.spyOn(prisma.events, 'findUnique').mockResolvedValue(eventRow());

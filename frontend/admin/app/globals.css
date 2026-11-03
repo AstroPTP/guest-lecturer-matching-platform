@@ -10,10 +10,13 @@
   color-scheme: light;
 
   /* Curtin GLMP brand colours, used by components/brand/BrandLogo. The dark
-     set is in the dark-theme blocks further down. */
+     values are defined once here and the dark-theme blocks further down point
+     at them. The gold is the same in both themes. */
   --brand-navy: #0e3b66;
   --brand-gold: #e9a93b;
   --brand-subtitle: #5f6368;
+  --brand-navy-dark: #8fbceb;
+  --brand-subtitle-dark: #aeb4bd;
 
   /* Every colour the stylesheet uses, as a token. The light values are the
      original colours, so light mode is unchanged; the dark set is below. */
@@ -243,8 +246,8 @@ a { color: inherit; text-decoration: none; }
   padding: clamp(38px, 7.3vw, 115px);
   /* This panel is dark in both themes, so the logo on it takes the dark-theme
      colours whichever theme is chosen. */
-  --brand-navy: #8fbceb;
-  --brand-subtitle: #aeb4bd;
+  --brand-navy: var(--brand-navy-dark);
+  --brand-subtitle: var(--brand-subtitle-dark);
 }
 .mobile-login-brand { display: none; }
 .login-form-wrap { margin: 0 auto; max-width: 510px; width: 100%; }
@@ -2187,9 +2190,8 @@ textarea:focus-visible,
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --brand-navy: #8fbceb;
-    --brand-gold: #e9a93b;
-    --brand-subtitle: #aeb4bd;
+    --brand-navy: var(--brand-navy-dark);
+    --brand-subtitle: var(--brand-subtitle-dark);
     --ink: #c1d7d0;
     --muted: #8b9691;
     --forest: #bcdcd2;
@@ -2358,9 +2360,8 @@ textarea:focus-visible,
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --brand-navy: #8fbceb;
-  --brand-gold: #e9a93b;
-  --brand-subtitle: #aeb4bd;
+  --brand-navy: var(--brand-navy-dark);
+  --brand-subtitle: var(--brand-subtitle-dark);
   --ink: #c1d7d0;
   --muted: #8b9691;
   --forest: #bcdcd2;

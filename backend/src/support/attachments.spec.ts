@@ -1,5 +1,12 @@
-import { BadRequestException } from '@nestjs/common';
 import {
+  BadRequestException,
+  CallHandler,
+  ExecutionContext,
+  PayloadTooLargeException,
+} from '@nestjs/common';
+import { lastValueFrom, of, throwError } from 'rxjs';
+import {
+  AttachmentTooLargeInterceptor,
   ALLOWED_ATTACHMENT_TYPES,
   MAX_ATTACHMENT_BYTES,
   dispositionFor,
@@ -212,5 +219,50 @@ describe('downloadHeaders', () => {
     expect(headers['Content-Disposition']).toMatch(
       /^attachment; filename="[A-Za-z0-9._ -]+"$/,
     );
+  });
+});
+
+describe('AttachmentTooLargeInterceptor', () => {
+  const interceptor = new AttachmentTooLargeInterceptor();
+  const run = (next: CallHandler) =>
+    lastValueFrom(interceptor.intercept({} as ExecutionContext, next));
+
+  it('gives the parser’s refusal of a large file the support code and message, keeping the 413', async () => {
+    const attempt = run({
+      handle: () =>
+        throwError(() => new PayloadTooLargeException('File too large')),
+    });
+
+    await expect(attempt).rejects.toBeInstanceOf(PayloadTooLargeException);
+    await expect(attempt).rejects.toMatchObject({
+      response: {
+        code: 'SUPPORT_ATTACHMENT_TOO_LARGE',
+        message: 'File too large. Max 5MB.',
+      },
+    });
+  });
+
+  it('leaves every other error as it was', async () => {
+    const other = new BadRequestException('Unexpected field - file');
+
+    await expect(run({ handle: () => throwError(() => other) })).rejects.toBe(
+      other,
+    );
+  });
+
+  it('passes a successful result through', async () => {
+    await expect(run({ handle: () => of('stored') })).resolves.toBe('stored');
+  });
+
+  it('says the same thing as the check on the file that reached the service', () => {
+    const big = Buffer.concat([PDF, Buffer.alloc(MAX_ATTACHMENT_BYTES)]);
+    let message = '';
+    try {
+      validateAttachment(upload(big, 'application/pdf'));
+    } catch (error) {
+      message = (error as BadRequestException).message;
+    }
+
+    expect(message).toBe('File too large. Max 5MB.');
   });
 });

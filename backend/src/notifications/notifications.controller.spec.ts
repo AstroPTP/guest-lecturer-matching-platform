@@ -45,11 +45,26 @@ describe('NotificationsController', () => {
     expect(findByRecipient).toHaveBeenCalledWith('user-1');
   });
 
-  it('returns the unread count for the calling user only', async () => {
-    const countUnread = jest.spyOn(service, 'countUnread').mockResolvedValue(4);
+  it('returns the unread count and the time of the newest notice for the calling user only', async () => {
+    const unreadSummary = jest
+      .spyOn(service, 'unreadSummary')
+      .mockResolvedValue({ count: 4, latestAt: '2026-10-12T03:30:00.000Z' });
 
-    await expect(controller.unreadCount(user)).resolves.toEqual({ count: 4 });
-    expect(countUnread).toHaveBeenCalledWith('user-1');
+    await expect(controller.unreadCount(user)).resolves.toEqual({
+      count: 4,
+      latestAt: '2026-10-12T03:30:00.000Z',
+    });
+    expect(unreadSummary).toHaveBeenCalledWith('user-1');
+  });
+
+  it('still returns the count on its own field, and a null time when there is nothing', async () => {
+    jest
+      .spyOn(service, 'unreadSummary')
+      .mockResolvedValue({ count: 0, latestAt: null });
+
+    const body = await controller.unreadCount(user);
+    expect(body.count).toBe(0);
+    expect(body.latestAt).toBeNull();
   });
 
   it('marks a single notification as read for the calling user', async () => {
@@ -102,14 +117,15 @@ describe('NotificationsController', () => {
     );
 
     it("counts the administrator's own unread notices, the figure the bell shows", async () => {
-      const countUnread = jest
-        .spyOn(service, 'countUnread')
-        .mockResolvedValue(3);
+      const unreadSummary = jest
+        .spyOn(service, 'unreadSummary')
+        .mockResolvedValue({ count: 3, latestAt: '2026-10-12T03:30:00.000Z' });
 
       await expect(controller.unreadCount(admin)).resolves.toEqual({
         count: 3,
+        latestAt: '2026-10-12T03:30:00.000Z',
       });
-      expect(countUnread).toHaveBeenCalledWith('auth0|admin');
+      expect(unreadSummary).toHaveBeenCalledWith('auth0|admin');
     });
 
     it('marks the whole inbox read for that administrator only', async () => {

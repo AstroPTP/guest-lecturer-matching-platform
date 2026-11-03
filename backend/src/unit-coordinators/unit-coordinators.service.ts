@@ -12,7 +12,7 @@ import {
   type DiscoverySort,
 } from '../suggestions/discovery-sort';
 import { noticeGuestsOfNewCoordinator } from '../suggestions/new-profile-notices';
-import { visibleCoordinatorsWhere } from './coordinator-visibility';
+import { visibleCoordinatorsWhere } from '../admin/platform-rules';
 
 type CoordinatorRow = NonNullable<
   Awaited<ReturnType<typeof prisma.coordinators.findUnique>>
@@ -209,10 +209,20 @@ export class UnitCoordinatorsService {
    * order people joined too, so a choice remembered from when it was on never
    * fails. Only the order changes: nobody is added or removed, and no score,
    * count or sign-in time is returned.
+   *
+   * `forMatches` is for listing the profiles of the viewer's own matches
+   * rather than for discovery: a person the viewer has an open report with is
+   * kept, so their conversation stays where it was.
    */
-  async findAll(viewerAuth0Id?: string, sort?: DiscoverySort) {
+  async findAll(
+    viewerAuth0Id?: string,
+    sort?: DiscoverySort,
+    forMatches = false,
+  ) {
     const coordinators = await prisma.coordinators.findMany({
-      where: await visibleCoordinatorsWhere(viewerAuth0Id),
+      where: await visibleCoordinatorsWhere(viewerAuth0Id, {
+        keepReportedPair: forMatches,
+      }),
       orderBy: { coordinator_id: 'asc' },
     });
     const userIds = coordinators.flatMap((coordinator) =>

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { CreateUserProfileDto } from './dto/create-user-profile.dto';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { demoBypassEnabled } from '../auth/demo-user';
+import { recordSignIn } from '../auth/record-sign-in';
 
 import { prisma } from '../prisma';
 
@@ -43,22 +45,36 @@ export class UsersService {
    * race each other into a duplicate. A deleted account cannot be revived
    * here: JwtAuthGuard refuses its tokens before this runs.
    *
-   * It never writes `lastloginat`. JwtAuthGuard is the only writer, because it
-   * writes the time and the `user.signed_in` audit entry together, and only
-   * when the stored time is missing or over an hour old. A row created here
-   * with the time already set would hide a new account's first sign-in from
-   * the guard for an hour, and a write here would race the guard's.
+   * The guard runs first and finds no row to update for a new account, so the
+   * row this call creates is handed to the same `recordSignIn` the guard uses.
+   * That one conditional write sets `lastloginat` and leaves the
+   * `user.signed_in` audit entry, and it only writes while the stored time is
+   * missing or over an hour old, so it cannot double up with a write the guard
+   * makes for a request that arrives a moment later. The row is created with
+   * no `lastloginat` so that write can happen.
    */
   async ensureForUser(user: AuthenticatedUser) {
-    return prisma.users.upsert({
+    const createdAt = new Date();
+    const row = await prisma.users.upsert({
       where: { auth0Id: user.id },
       update: {},
       create: {
         auth0Id: user.id,
         email: user.email,
         role: user.roles[0],
-        createdat: new Date(),
+        createdat: createdAt,
       },
     });
+
+    // The creation time is the one passed in only when this call made the row.
+    // Were another call to create it in the same millisecond, both would reach
+    // recordSignIn, whose conditional write lets only one of them record it.
+    if (row.createdat?.getTime() === createdAt.getTime()) {
+      // The demo bypass signs in a simulated user, who is not a person and is
+      // kept out of the audit trail as the guard keeps it out.
+      await recordSignIn(user.id, { audit: !demoBypassEnabled() });
+    }
+
+    return row;
   }
 }

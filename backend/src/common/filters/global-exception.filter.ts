@@ -10,11 +10,7 @@ import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { monitoringStore } from '../../monitoring/monitoring.store';
 import { ErrorCode, ErrorEnvelope } from '../error-codes';
-import {
-  acceptInboundCorrelationId,
-  CORRELATION_HEADER,
-  currentCorrelationId,
-} from '../request-context';
+import { currentCorrelationId } from '../request-context';
 
 /**
  * Turns every error into the four-field envelope.
@@ -38,7 +34,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = http.getResponse<Response>();
     const request = http.getRequest<Request>();
 
-    const correlationId = resolveCorrelationId(request);
+    const correlationId = resolveCorrelationId();
     const status = resolveStatus(exception);
     const { code, message } = resolveCodeAndMessage(exception, status);
 
@@ -108,16 +104,12 @@ function numericUserIdOf(request: Request): number | null {
  * The id the request middleware already settled on, so the envelope, the log
  * line and the response header all agree.
  *
- * The rest is for an error that arrives with no request context, which means
- * the middleware did not run for it: reuse a well-formed inbound id and
- * otherwise mint one, so an envelope never goes out without an id.
+ * An error that arrives with no request context means the middleware did not
+ * run for it: mint an id here, so an envelope never goes out without one. A
+ * header the caller sent is never used.
  */
-function resolveCorrelationId(request: Request): string {
-  return (
-    currentCorrelationId() ??
-    acceptInboundCorrelationId(request.header(CORRELATION_HEADER)) ??
-    randomUUID()
-  );
+function resolveCorrelationId(): string {
+  return currentCorrelationId() ?? randomUUID();
 }
 
 function resolveStatus(exception: unknown): HttpStatus {

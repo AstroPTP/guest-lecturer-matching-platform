@@ -10,6 +10,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
+import { DiscoveryQueryDto } from '../suggestions/dto/discovery-query.dto';
 
 describe('GuestSpeakersController', () => {
   let controller: GuestSpeakersController;
@@ -33,7 +34,7 @@ describe('GuestSpeakersController', () => {
 
     await controller.findAll({ id: 'auth0|viewer', roles: [] });
 
-    expect(findAll).toHaveBeenCalledWith('auth0|viewer', undefined);
+    expect(findAll).toHaveBeenCalledWith('auth0|viewer', undefined, false);
   });
 
   it('passes the chosen sort on, and none when none was chosen', async () => {
@@ -43,9 +44,33 @@ describe('GuestSpeakersController', () => {
     await controller.findAll(viewer, { sort: 'name' });
     await controller.findAll(viewer, {});
 
-    expect(findAll).toHaveBeenNthCalledWith(1, 'auth0|viewer', 'name');
-    expect(findAll).toHaveBeenNthCalledWith(2, 'auth0|viewer', undefined);
+    expect(findAll).toHaveBeenNthCalledWith(1, 'auth0|viewer', 'name', false);
+    expect(findAll).toHaveBeenNthCalledWith(
+      2,
+      'auth0|viewer',
+      undefined,
+      false,
+    );
   });
+
+  it.each([
+    ['true', true],
+    ['false', false],
+    ['yes', false],
+    [undefined, false],
+  ])(
+    'lists the caller’s matched profiles only for forMatches=%s',
+    async (value, expected) => {
+      const findAll = jest.spyOn(service, 'findAll').mockResolvedValue([]);
+
+      await controller.findAll(
+        { id: 'auth0|viewer', roles: [] },
+        { forMatches: value },
+      );
+
+      expect(findAll).toHaveBeenCalledWith('auth0|viewer', undefined, expected);
+    },
+  );
 });
 
 describe('GuestSpeakersController behaviour', () => {
@@ -83,7 +108,7 @@ describe('GuestSpeakersController behaviour', () => {
     expect(expertise).toHaveBeenCalledWith('auth0|jane', dto);
     expect(engagement).toHaveBeenCalledWith('auth0|jane', dto);
     expect(consent).toHaveBeenCalledWith('auth0|jane', dto);
-    expect(list).toHaveBeenCalledWith('auth0|jane', undefined);
+    expect(list).toHaveBeenCalledWith('auth0|jane', undefined, false);
   });
 
   describe('request validation', () => {
@@ -95,6 +120,23 @@ describe('GuestSpeakersController behaviour', () => {
     });
     const body = (metatype: ArgumentMetadata['metatype']) =>
       ({ type: 'body', metatype }) as ArgumentMetadata;
+
+    it('accepts forMatches beside a sort on the Discovery query, and refuses a key it does not know', async () => {
+      const query = {
+        type: 'query',
+        metatype: DiscoveryQueryDto,
+      } as ArgumentMetadata;
+
+      await expect(
+        pipe.transform({ sort: 'name', forMatches: 'true' }, query),
+      ).resolves.toMatchObject({ sort: 'name', forMatches: 'true' });
+      await expect(
+        pipe.transform({ forMatches: 'true', page: '2' }, query),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        pipe.transform({ sort: 'score', forMatches: 'true' }, query),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
 
     it('refuses an expertise update with no experience level, since it is stored', async () => {
       const dto: ExpertiseDto = {

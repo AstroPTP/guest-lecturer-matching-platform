@@ -1,6 +1,6 @@
 import { prisma } from '../prisma';
 import { runInRequestContext } from '../common/request-context';
-import { recordAudit } from './platform-rules';
+import { readSettings, recordAudit } from './platform-rules';
 
 /** The first argument of the spy's first call. */
 function firstArg(spy: jest.SpyInstance): unknown {
@@ -12,6 +12,36 @@ function createdDetail(create: jest.SpyInstance): unknown {
   const [args] = create.mock.calls[0] as [{ data: { detail?: unknown } }];
   return args.data.detail;
 }
+
+describe('readSettings', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns an existing row without writing anything', async () => {
+    const row = { id: 1, contact_limit_days: 90 };
+    jest
+      .spyOn(prisma.admin_settings, 'findUnique')
+      .mockResolvedValue(row as never);
+    const upsert = jest.spyOn(prisma.admin_settings, 'upsert');
+
+    await expect(readSettings()).resolves.toBe(row);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('creates the row, as an upsert, only when it is missing', async () => {
+    jest.spyOn(prisma.admin_settings, 'findUnique').mockResolvedValue(null);
+    const created = { id: 1, contact_limit_days: 90 };
+    const upsert = jest
+      .spyOn(prisma.admin_settings, 'upsert')
+      .mockResolvedValue(created as never);
+
+    await expect(readSettings()).resolves.toBe(created);
+    expect(upsert).toHaveBeenCalledWith({
+      where: { id: 1 },
+      update: {},
+      create: { id: 1 },
+    });
+  });
+});
 
 describe('recordAudit', () => {
   let create: jest.SpyInstance;

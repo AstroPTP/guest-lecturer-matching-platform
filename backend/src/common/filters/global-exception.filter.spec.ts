@@ -210,18 +210,12 @@ describe('GlobalExceptionFilter', () => {
     expect(sent.body?.code).toBe('INTERNAL_ERROR');
   });
 
-  it('reuses a well-formed inbound correlation id', () => {
-    const sent = run(new BadRequestException(), {
-      'x-correlation-id': 'abc-123_DEF',
-    });
-    expect(sent.body?.correlationId).toBe('abc-123_DEF');
-  });
-
   it.each([
+    ['well-formed', 'abc-123_DEF'],
     ['too long', 'a'.repeat(65)],
     ['a log-injection attempt', 'abc\nFAKE LOG LINE'],
     ['unexpected characters', '<script>'],
-  ])('replaces an inbound correlation id that is %s', (_label, inbound) => {
+  ])('ignores an inbound correlation id that is %s', (_label, inbound) => {
     const sent = run(new BadRequestException(), {
       'x-correlation-id': inbound,
     });
@@ -249,7 +243,7 @@ describe('GlobalExceptionFilter request context', () => {
     expect(sent?.body?.correlationId).toBe('01HZX3K9QJ0000000000000000');
   });
 
-  it('prefers the context id over an inbound header, so envelope and log line agree', () => {
+  it('answers with the context id whatever header the caller sent, so envelope and log line agree', () => {
     let sent: ReturnType<typeof run> | undefined;
     inContext('from-context', () => {
       sent = run(new BadRequestException(), {
@@ -282,7 +276,7 @@ describe('GlobalExceptionFilter request context', () => {
     ]);
   });
 
-  it('falls back to a UUID when there is no context and no usable header', () => {
+  it('falls back to a UUID when there is no request context', () => {
     const sent = run(new BadRequestException());
 
     expect(sent.body?.correlationId).toMatch(/^[0-9a-f-]{36}$/);

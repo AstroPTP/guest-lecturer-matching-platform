@@ -4,12 +4,12 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import type { Prisma } from '../../generated/prisma/client';
 import { visibleGuestsWhere } from '../admin/platform-rules';
 import { ErrorCode } from '../common/error-codes';
 import { profileImageUrl } from '../images/images.service';
 import { prisma } from '../prisma';
 import { readMatchingSettings } from './matching-settings';
+import { SESSION_EVENTS_WHERE, sessionDate } from './session-history';
 import {
   DEFAULT_LIMIT,
   type SuggestionsQueryDto,
@@ -73,7 +73,7 @@ export interface Suggestion {
   sharedTopics: string[];
   matchStatus: SuggestionMatchStatus;
   score: SuggestionScore;
-  /** How long since the lecturer last matched with anyone. */
+  /** How long since the lecturer last had a session with anyone. */
   lastSessionBand: LastSessionBand;
   /** How many sessions the lecturer has had with anyone. */
   sessionsBand: SessionsBand;
@@ -114,21 +114,6 @@ export interface SuggestionsResult {
   suggestions: Suggestion[];
 }
 
-/**
- * The shared visibility rule, called with the viewer. The cast keeps this
- * compiling whether or not the rule takes one, and the call is made here, not
- * captured at import, so a test can replace the rule.
- */
-function visibleGuestsFor(
-  viewerAuth0Id: string,
-): Promise<Prisma.guestsWhereInput> {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-  const rule = visibleGuestsWhere as (
-    viewerAuth0Id?: string,
-  ) => Promise<Prisma.guestsWhereInput>;
-  return rule(viewerAuth0Id);
-}
-
 /** Match states that end the coordinator's interest in that lecturer for good. */
 const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
 
@@ -137,9 +122,9 @@ const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
  *
  * No ranking is stored: there is no ranking table and no counter to keep in
  * step. Only the administrator's settings are. How many sessions a lecturer has had, and when they last
- * had one, are read from the ACCEPTED rows of `match_requests` each time. That
- * is the same table the Matches page shows, so the list cannot disagree with it
- * or drift away from it.
+ * had one, are read from the `events` table each time. That is the same table
+ * the Event page shows, so the list cannot disagree with it or drift away
+ * from it.
  *
  * Every part of the request is optional. No date means any day, no times means
  * any time, and no topics means the coordinator's own expertise. An
@@ -169,12 +154,17 @@ const CLOSED_MATCH_STATUSES = new Set(['UNMATCHED', 'REJECTED']);
  *
  * The ranking uses exact values. The response does not: it carries bands and
  * the fit only, because the exact numbers would show one coordinator when
- * another matched with a lecturer. See Suggestion.
+ * another had a session with a lecturer. See Suggestion.
  *
- * "Sessions so far" counts a lecturer's ACCEPTED matches with every
- * coordinator, not only this one, because the aim is to spread sessions across
- * the whole pool. A match is counted as soon as both sides have agreed,
- * whether or not an event has been created for it yet.
+ * "Sessions so far" counts a lecturer's events with every coordinator, not
+ * only this one, because the aim is to spread sessions across the whole pool.
+ * An event is a session once the lecturer has agreed to it: it is accepted, or
+ * it is completed, which an event can only be after being accepted. An
+ * invitation still waiting, a declined one and a cancelled one are not
+ * sessions. It counts whatever has since happened to the match, so a lecturer
+ * keeps their history after a match ends, and a match with no event yet counts
+ * for nothing. Each event is one session, so a coordinator who has a lecturer
+ * back several times adds several.
  */
 @Injectable()
 export class SuggestionsService {
@@ -193,9 +183,9 @@ export class SuggestionsService {
     // Rule 1: eligible. Visibility is the platform's shared rule; the profile
     // checks are pushed into the query so only candidates are read.
     // Passes the viewer so contact paused by a report also hides the pair here.
-    const visible = await visibleGuestsFor(auth0Id);
-    const [visibleGuests, guests] = await Promise.all([
-      prisma.guests.findMany({ where: visible, select: { guest_id: true } }),
+    const visible = await visibleGuestsWhere(auth0Id);
+    const [consideredCount, guests] = await Promise.all([
+      prisma.guests.count({ where: visible }),
       prisma.guests.findMany({
         where: {
           AND: [
@@ -248,7 +238,7 @@ export class SuggestionsService {
     });
 
     const stages: SuggestionStages = {
-      considered: visibleGuests.length,
+      considered: consideredCount,
       eligible: eligible.length,
       available: 0,
       sharesTopic: 0,
@@ -314,20 +304,28 @@ export class SuggestionsService {
 
     // The sessions behind rotation and exposure, for the lecturers still in.
     const relevantGuestIds = relevant.map((entry) => entry.guest.guest_id);
-    const acceptedMatches = await prisma.match_requests.findMany({
-      where: { guest_id: { in: relevantGuestIds }, status: 'ACCEPTED' },
-      select: { guest_id: true, requested_at: true, updated_at: true },
+    const sessionEvents = await prisma.events.findMany({
+      where: {
+        ...SESSION_EVENTS_WHERE,
+        match: { is: { guest_id: { in: relevantGuestIds } } },
+      },
+      select: {
+        date: true,
+        completed_at: true,
+        created_at: true,
+        match: { select: { guest_id: true } },
+      },
     });
 
     const sessionsBy = new Map<bigint, number>();
     const lastSessionBy = new Map<bigint, Date>();
-    for (const match of acceptedMatches) {
-      sessionsBy.set(match.guest_id, (sessionsBy.get(match.guest_id) ?? 0) + 1);
-      // updated_at is when the second side said yes. Older rows may lack it.
-      const when = match.updated_at ?? match.requested_at;
-      const latest = lastSessionBy.get(match.guest_id);
-      if (when && (!latest || when > latest)) {
-        lastSessionBy.set(match.guest_id, when);
+    for (const event of sessionEvents) {
+      const guestId = event.match.guest_id;
+      sessionsBy.set(guestId, (sessionsBy.get(guestId) ?? 0) + 1);
+      const when = sessionDate(event, now);
+      const latest = lastSessionBy.get(guestId);
+      if (!latest || when > latest) {
+        lastSessionBy.set(guestId, when);
       }
     }
 

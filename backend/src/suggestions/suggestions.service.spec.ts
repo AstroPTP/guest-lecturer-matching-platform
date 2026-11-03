@@ -34,7 +34,8 @@ interface LecturerSpec {
   to?: string | null;
   consent?: boolean | null;
   deleted?: boolean;
-  accepted?: Date[];
+  /** Completed sessions, each held on the given date. */
+  sessions?: Date[];
   completed?: number;
   broken?: number;
   hasProfileName?: boolean;
@@ -52,19 +53,40 @@ interface World {
     status: string | null;
     requested_by: string | null;
   }[];
-  accepted: { guest_id: bigint; requested_at: Date; updated_at: Date | null }[];
   availability: Record<string, unknown>[];
   expertise: { user_id: bigint; expertise: string }[];
   /** The signed-in coordinator is user 1. Their own topics. */
   coordinatorTopics: string[];
-  events: {
-    date: string;
-    status: string;
-    start_time: string;
-    end_time: string;
-    responded_at: Date | null;
-    match: { guest_id: bigint };
-  }[];
+  events: WorldEvent[];
+}
+
+interface WorldEvent {
+  date: string;
+  status: string;
+  start_time: string;
+  end_time: string;
+  responded_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+  match: { guest_id: bigint; status: string };
+}
+
+/** An event row; the match it belongs to is accepted unless said otherwise. */
+function eventOf(
+  guest: bigint,
+  overrides: Partial<WorldEvent> = {},
+): WorldEvent {
+  return {
+    date: '2026-03-01',
+    status: 'completed',
+    start_time: '09:00',
+    end_time: '10:00',
+    responded_at: NOW,
+    completed_at: null,
+    created_at: new Date('2026-01-01T00:00:00.000Z'),
+    match: { guest_id: guest, status: 'ACCEPTED' },
+    ...overrides,
+  };
 }
 
 function clock(value: string | null | undefined): Date | null {
@@ -77,7 +99,6 @@ function build(specs: LecturerSpec[]): World & { ids: Record<string, bigint> } {
     guests: [],
     dismissals: [],
     ownMatches: [],
-    accepted: [],
     availability: [],
     expertise: [],
     coordinatorTopics: [],
@@ -123,32 +144,22 @@ function build(specs: LecturerSpec[]): World & { ids: Record<string, bigint> } {
     for (const topic of spec.topics ?? ['Economics']) {
       world.expertise.push({ user_id: userId, expertise: topic });
     }
-    for (const when of spec.accepted ?? []) {
-      world.accepted.push({
-        guest_id: guestId,
-        requested_at: when,
-        updated_at: when,
-      });
+    for (const when of spec.sessions ?? []) {
+      world.events.push(
+        eventOf(guestId, {
+          date: when.toISOString().slice(0, 10),
+          completed_at: when,
+          created_at: new Date(when.getTime() - DAY),
+        }),
+      );
     }
     for (let i = 0; i < (spec.completed ?? 0); i += 1) {
-      world.events.push({
-        date: '2026-03-01',
-        status: 'completed',
-        start_time: '09:00',
-        end_time: '10:00',
-        responded_at: NOW,
-        match: { guest_id: guestId },
-      });
+      world.events.push(eventOf(guestId));
     }
     for (let i = 0; i < (spec.broken ?? 0); i += 1) {
-      world.events.push({
-        date: '2026-04-01',
-        status: 'cancelled',
-        start_time: '09:00',
-        end_time: '10:00',
-        responded_at: NOW,
-        match: { guest_id: guestId },
-      });
+      world.events.push(
+        eventOf(guestId, { date: '2026-04-01', status: 'cancelled' }),
+      );
     }
   });
 
@@ -219,24 +230,35 @@ function install(world: World) {
         ),
       )) as never);
   jest
+    .spyOn(prisma.guests, 'count')
+    .mockImplementation(((args: { where: Where }) =>
+      Promise.resolve(
+        world.guests.filter((row) =>
+          matches(row as Record<string, unknown>, args.where),
+        ).length,
+      )) as never);
+  jest
     .spyOn(prisma.dismissals, 'findMany')
     .mockResolvedValue(world.dismissals as never);
 
   jest.spyOn(prisma.match_requests, 'findMany').mockImplementation(((args: {
     where: Where;
   }) => {
-    // The coordinator's own rows are asked for by coordinator_id; the rows
-    // that count sessions are asked for by guest ids and ACCEPTED.
-    if (args.where.coordinator_id !== undefined) {
-      return Promise.resolve(world.ownMatches);
-    }
-    const wanted = idList(args.where.guest_id);
+    // The coordinator's own rows are asked for by coordinator_id. Any other
+    // question of this table gets no rows, so sessions cannot come from it.
     return Promise.resolve(
-      args.where.status === 'ACCEPTED'
-        ? world.accepted.filter((row) => wanted.includes(row.guest_id))
-        : [],
+      args.where.coordinator_id !== undefined ? world.ownMatches : [],
     );
   }) as never);
+
+  jest
+    .spyOn(prisma.events, 'findMany')
+    .mockImplementation(((args: { where: Where }) =>
+      Promise.resolve(
+        world.events.filter((row) =>
+          matches(row as unknown as Record<string, unknown>, args.where),
+        ),
+      )) as never);
 
   jest.spyOn(prisma.availability, 'findMany').mockImplementation(((args: {
     where: Where;
@@ -405,6 +427,20 @@ describe('SuggestionsService', () => {
       expect(JSON.stringify(candidates)).toContain('"consentstate":true');
       expect(JSON.stringify(candidates)).toContain('"deletedat":null');
       expect(JSON.stringify(candidates)).toContain('"first_name":{"not":null}');
+    });
+
+    it('counts the visible lecturers instead of loading them', async () => {
+      install(build([{ name: 'Ada' }, { name: 'Ben', consent: false }]));
+      const count = jest.spyOn(prisma.guests, 'count');
+      const read = jest.spyOn(prisma.guests, 'findMany');
+      const { stages } = await service.suggest(userId, query, NOW);
+
+      expect(count).toHaveBeenCalledTimes(1);
+      expect(read).toHaveBeenCalledTimes(1);
+      // The one load is the candidates, which are used; none is only a count.
+      expect(read.mock.calls[0][0]?.select).toHaveProperty('first_name', true);
+      expect(stages.considered).toBe(2);
+      expect(stages.eligible).toBe(1);
     });
 
     describe("the platform's visibility rule", () => {
@@ -600,37 +636,36 @@ describe('SuggestionsService', () => {
     });
 
     describe("other coordinators' bookings", () => {
-      const booking = (guest: bigint) => ({
-        date: '2026-10-28',
-        status: 'accepted',
-        start_time: '10:00',
-        end_time: '11:00',
-        responded_at: null,
-        match: { guest_id: guest },
-      });
+      const booking = (guest: bigint, date = '2026-10-28') =>
+        eventOf(guest, {
+          date,
+          status: 'accepted',
+          start_time: '10:00',
+          end_time: '11:00',
+          responded_at: null,
+        });
 
-      it('are not consulted: a lecturer with an overlapping event is still listed, and events are never read', async () => {
+      it('are not consulted: a lecturer with an overlapping event is still listed', async () => {
         const world = build([{ name: 'Ada' }]);
         world.events.push(booking(world.ids.Ada));
         install(world);
-        const read = jest.spyOn(prisma.events, 'findMany');
 
         expect(await names()).toEqual(['Ada']);
-        expect(read).not.toHaveBeenCalled();
       });
 
-      it('cannot be probed: the same search with and without a booking gives the same answer', async () => {
-        const free = build([{ name: 'Ada' }]);
-        install(free);
-        const without = await service.suggest(userId, query, NOW);
+      it('cannot be probed: the answer is the same whether the booking overlaps the requested time or not', async () => {
+        const overlapping = build([{ name: 'Ada' }]);
+        overlapping.events.push(booking(overlapping.ids.Ada));
+        install(overlapping);
+        const clashing = await service.suggest(userId, query, NOW);
         jest.restoreAllMocks();
 
-        const booked = build([{ name: 'Ada' }]);
-        booked.events.push(booking(booked.ids.Ada));
-        install(booked);
-        const withBooking = await service.suggest(userId, query, NOW);
+        const elsewhere = build([{ name: 'Ada' }]);
+        elsewhere.events.push(booking(elsewhere.ids.Ada, '2026-11-04'));
+        install(elsewhere);
+        const otherDay = await service.suggest(userId, query, NOW);
 
-        expect(withBooking).toEqual(without);
+        expect(clashing).toEqual(otherDay);
       });
     });
   });
@@ -749,13 +784,6 @@ describe('SuggestionsService', () => {
       expect(result.stages.reliable).toBe(3);
     });
 
-    it('does not read events at all', async () => {
-      install(build([{ name: 'Ada', broken: 4 }]));
-      const read = jest.spyOn(prisma.events, 'findMany');
-      await service.suggest(userId, query, NOW);
-      expect(read).not.toHaveBeenCalled();
-    });
-
     it('does not let cancelled sessions change the order', async () => {
       install(
         build([
@@ -818,8 +846,8 @@ describe('SuggestionsService', () => {
       // used recently put the busiest lecturer first.
       install(
         build([
-          { name: 'Yesterday', accepted: [new Date(NOW.getTime() - DAY)] },
-          { name: 'LastYear', accepted: [new Date(NOW.getTime() - 365 * DAY)] },
+          { name: 'Yesterday', sessions: [new Date(NOW.getTime() - DAY)] },
+          { name: 'LastYear', sessions: [new Date(NOW.getTime() - 365 * DAY)] },
         ]),
       );
       expect(await names()).toEqual(['LastYear', 'Yesterday']);
@@ -829,8 +857,8 @@ describe('SuggestionsService', () => {
       const longAgo = new Date(NOW.getTime() - 200 * DAY);
       install(
         build([
-          { name: 'Busy', accepted: [longAgo, longAgo, longAgo, longAgo] },
-          { name: 'Quiet', accepted: [longAgo] },
+          { name: 'Busy', sessions: [longAgo, longAgo, longAgo, longAgo] },
+          { name: 'Quiet', sessions: [longAgo] },
         ]),
       );
       expect(await names()).toEqual(['Quiet', 'Busy']);
@@ -842,7 +870,7 @@ describe('SuggestionsService', () => {
         build([
           {
             name: 'Popular',
-            accepted: Array.from({ length: 40 }, () => recent),
+            sessions: Array.from({ length: 40 }, () => recent),
           },
           { name: 'Fresh1' },
           { name: 'Fresh2' },
@@ -863,7 +891,7 @@ describe('SuggestionsService', () => {
           {
             name: 'BusyButExact',
             topics: ['Economics', 'Taxation Law'],
-            accepted: [
+            sessions: [
               new Date(NOW.getTime() - 5 * DAY),
               new Date(NOW.getTime() - 9 * DAY),
             ],
@@ -890,7 +918,7 @@ describe('SuggestionsService', () => {
       // Two sessions, the latest 20 days ago.
       const older = new Date(NOW.getTime() - 200 * DAY);
       const newer = new Date(NOW.getTime() - 20 * DAY);
-      install(build([{ name: 'Ada', accepted: [older, newer] }]));
+      install(build([{ name: 'Ada', sessions: [older, newer] }]));
       const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
       expect(ada.sessionsBand).toBe('1 to 2');
       expect(ada.lastSessionBand).toBe('within 30 days');
@@ -903,27 +931,161 @@ describe('SuggestionsService', () => {
       expect(ada.lastSessionBand).toBe('never');
     });
 
-    it('falls back to requested_at when an old match has no updated_at', async () => {
-      const world = build([{ name: 'Ada' }]);
-      const requestedAt = new Date(NOW.getTime() - 45 * DAY);
-      world.accepted.push({
-        guest_id: world.ids.Ada,
-        requested_at: requestedAt,
-        updated_at: null,
+    it('reads only accepted and completed events, for the lecturers still in the running', async () => {
+      install(build([{ name: 'Ada' }, { name: 'Off topic', topics: ['Art'] }]));
+      const spy = jest.spyOn(prisma.events, 'findMany');
+      await service.suggest(userId, query, NOW);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]?.where).toEqual({
+        status: { in: ['accepted', 'completed'] },
+        match: { is: { guest_id: { in: [1n] } } },
       });
-      install(world);
-      const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
-      expect(ada.lastSessionBand).toBe('1 to 3 months');
     });
 
-    it('counts only ACCEPTED matches as sessions', async () => {
-      install(build([{ name: 'Ada' }]));
-      const spy = jest.spyOn(prisma.match_requests, 'findMany');
-      await service.suggest(userId, query, NOW);
-      const wheres = spy.mock.calls.map(([args]) => args?.where);
-      expect(wheres).toContainEqual({
-        guest_id: { in: [1n] },
-        status: 'ACCEPTED',
+    describe('sessions are events, whatever has happened to the match', () => {
+      const sessionsOf = async (
+        world: World & { ids: Record<string, bigint> },
+      ) => {
+        install(world);
+        const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
+        return ada;
+      };
+
+      it('still counts a session after the match has ended', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            date: '2026-10-12',
+            match: { guest_id: world.ids.Ada, status: 'UNMATCHED' },
+          }),
+        );
+        const ada = await sessionsOf(world);
+        expect(ada.sessionsBand).toBe('1 to 2');
+        expect(ada.lastSessionBand).toBe('within 30 days');
+      });
+
+      it('counts two events with the same coordinator as two sessions', async () => {
+        const world = build([{ name: 'Ada' }]);
+        // A match is one row per coordinator and lecturer, so repeat sessions
+        // are separate events on the same match.
+        world.events.push(
+          eventOf(world.ids.Ada, { status: 'completed' }),
+          eventOf(world.ids.Ada, { status: 'accepted' }),
+          eventOf(world.ids.Ada, { status: 'completed' }),
+        );
+        const ada = await sessionsOf(world);
+        expect(ada.sessionsBand).toBe('3 to 5');
+      });
+
+      it('counts an accepted match with no event as no session', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.ownMatches.push({
+          guest_id: world.ids.Ada,
+          status: 'ACCEPTED',
+          requested_by: 'coordinator',
+        });
+        const ada = await sessionsOf(world);
+        expect(ada.matchStatus).toBe('matched');
+        expect(ada.sessionsBand).toBe('none');
+        expect(ada.lastSessionBand).toBe('never');
+      });
+
+      it.each(['invitation-sent', 'declined', 'cancelled'])(
+        'does not count an event that is %s',
+        async (status) => {
+          const world = build([{ name: 'Ada' }]);
+          world.events.push(eventOf(world.ids.Ada, { status }));
+          const ada = await sessionsOf(world);
+          expect(ada.sessionsBand).toBe('none');
+          expect(ada.lastSessionBand).toBe('never');
+        },
+      );
+
+      it('dates a session by its event date, not by when it was marked complete', async () => {
+        const world = build([{ name: 'Ada' }]);
+        // Held in June and marked complete in late October.
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            date: '2026-06-10',
+            completed_at: new Date('2026-10-21T00:00:00.000Z'),
+          }),
+        );
+        expect((await sessionsOf(world)).lastSessionBand).toBe('over 3 months');
+      });
+
+      it('uses the time it was marked complete when the event date cannot be read', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            date: 'next Tuesday',
+            completed_at: new Date(NOW.getTime() - 10 * DAY),
+            created_at: new Date(NOW.getTime() - 200 * DAY),
+          }),
+        );
+        expect((await sessionsOf(world)).lastSessionBand).toBe(
+          'within 30 days',
+        );
+      });
+
+      it('uses the event date when nothing was completed', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            status: 'accepted',
+            date: '2026-08-15',
+          }),
+        );
+        // 68 days before NOW, after the event was created.
+        expect((await sessionsOf(world)).lastSessionBand).toBe('1 to 3 months');
+      });
+
+      it('falls back to when the event was created if its date cannot be read', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            status: 'accepted',
+            date: 'next Tuesday',
+            created_at: new Date(NOW.getTime() - 120 * DAY),
+          }),
+        );
+        expect((await sessionsOf(world)).lastSessionBand).toBe('over 3 months');
+      });
+
+      it('reads an event date in the future as now', async () => {
+        // A and B are equal in every way but the date, and A is listed first.
+        // Left in the future, A's last session would be later than B's and put
+        // B ahead of it; read as now, the two tie and A stays first.
+        const world = build([{ name: 'A' }, { name: 'B' }]);
+        world.events.push(
+          eventOf(world.ids.A, { status: 'accepted', date: '2026-12-01' }),
+          eventOf(world.ids.B, { date: '2026-10-22' }),
+        );
+        install(world);
+        expect(await names()).toEqual(['A', 'B']);
+      });
+
+      it('reads an event date before the event was created as when it was created', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, {
+            status: 'accepted',
+            date: '2020-01-01',
+            created_at: new Date(NOW.getTime() - 10 * DAY),
+          }),
+        );
+        expect((await sessionsOf(world)).lastSessionBand).toBe(
+          'within 30 days',
+        );
+      });
+
+      it('counts an accepted event dated in the future as a session', async () => {
+        const world = build([{ name: 'Ada' }]);
+        world.events.push(
+          eventOf(world.ids.Ada, { status: 'accepted', date: '2026-12-01' }),
+        );
+        const ada = await sessionsOf(world);
+        expect(ada.sessionsBand).toBe('1 to 2');
+        expect(ada.lastSessionBand).toBe('within 30 days');
       });
     });
   });
@@ -1010,12 +1172,12 @@ describe('SuggestionsService', () => {
 
     it('gives the fit and the history as bands, and no other part of the score', async () => {
       // Three sessions, the latest exactly 90 days ago.
-      const accepted = [90, 120, 150].map(
+      const sessions = [90, 120, 150].map(
         (days) => new Date(NOW.getTime() - days * DAY),
       );
       install(
         build([
-          { name: 'Ada', topics: ['Economics', 'Taxation Law'], accepted },
+          { name: 'Ada', topics: ['Economics', 'Taxation Law'], sessions },
         ]),
       );
       const [ada] = (await service.suggest(userId, query, NOW)).suggestions;
@@ -1118,7 +1280,7 @@ describe('SuggestionsService', () => {
         build([
           {
             name: 'Busy',
-            accepted: [
+            sessions: [
               day(3),
               day(40),
               day(80),
@@ -1129,7 +1291,7 @@ describe('SuggestionsService', () => {
             ],
             completed: 3,
           },
-          { name: 'Quiet', accepted: [day(100)], broken: 2 },
+          { name: 'Quiet', sessions: [day(100)], broken: 2 },
           { name: 'New' },
         ]),
       );
@@ -1203,8 +1365,8 @@ describe('SuggestionsService', () => {
       const when = new Date(NOW.getTime() - 30 * DAY);
       install(
         build([
-          { name: 'Six', accepted: Array.from({ length: 6 }, () => when) },
-          { name: 'Nine', accepted: Array.from({ length: 9 }, () => when) },
+          { name: 'Six', sessions: Array.from({ length: 6 }, () => when) },
+          { name: 'Nine', sessions: Array.from({ length: 9 }, () => when) },
         ]),
       );
       const { suggestions } = await service.suggest(userId, query, NOW);
@@ -1235,8 +1397,8 @@ describe('SuggestionsService', () => {
       // so would win a tie, but B was untouched for longer, so B ranks higher.
       install(
         build([
-          { name: 'A', accepted: [new Date(NOW.getTime() - 95 * DAY)] },
-          { name: 'B', accepted: [new Date(NOW.getTime() - 100 * DAY)] },
+          { name: 'A', sessions: [new Date(NOW.getTime() - 95 * DAY)] },
+          { name: 'B', sessions: [new Date(NOW.getTime() - 100 * DAY)] },
         ]),
       );
       const { suggestions } = await service.suggest(userId, query, NOW);
@@ -1271,7 +1433,7 @@ describe('SuggestionsService', () => {
         {
           name: 'A',
           topics: ['Economics', 'Taxation Law'],
-          accepted: [new Date(NOW.getTime() - 20 * DAY)],
+          sessions: [new Date(NOW.getTime() - 20 * DAY)],
         },
         { name: 'B', topics: ['Economics', 'X', 'Y', 'Z'] },
       ]);
@@ -1320,12 +1482,12 @@ describe('SuggestionsService', () => {
             {
               name: 'R',
               topics: ['Economics', 'Taxation Law'],
-              accepted: [new Date(NOW.getTime() - 10 * DAY)],
+              sessions: [new Date(NOW.getTime() - 10 * DAY)],
             },
             {
               name: 'S',
               topics: ['Economics'],
-              accepted: [new Date(NOW.getTime() - 120 * DAY)],
+              sessions: [new Date(NOW.getTime() - 120 * DAY)],
             },
           ]),
         );

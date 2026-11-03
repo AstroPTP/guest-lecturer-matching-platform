@@ -9,6 +9,7 @@ import {
   type RankableCoordinator,
   type RankableGuest,
 } from './discovery-ranking';
+import { SESSION_EVENTS_WHERE } from './session-history';
 import {
   DEFAULT_WEIGHTS,
   exposureScore,
@@ -28,6 +29,17 @@ afterEach(() => {
 const NOW = new Date('2026-10-22T00:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
 const daysAgo = (days: number) => new Date(NOW.getTime() - days * DAY);
+
+/** An event the guest agreed to, held `days` ago: one session on that day. */
+const session = (guestId: bigint, days: number) => ({
+  date: daysAgo(days).toISOString().slice(0, 10),
+  completed_at: daysAgo(days),
+  created_at: daysAgo(days + 30),
+  match: { guest_id: guestId },
+});
+
+const summarise = (rows: Parameters<typeof summariseSessions>[0]) =>
+  summariseSessions(rows, NOW);
 
 const guest = (
   id: number,
@@ -52,7 +64,7 @@ const coordinator = (
 const topicsOf = (entries: [number, string[]][]) =>
   new Map(entries.map(([user, topics]) => [BigInt(user), topics]));
 
-const noHistory = summariseSessions([]);
+const noHistory = summarise([]);
 
 const ids = (rows: { guest_id: bigint }[]) =>
   rows.map((r) => Number(r.guest_id));
@@ -72,25 +84,75 @@ const guestContext = (
 });
 
 describe('summariseSessions', () => {
-  it('counts accepted matches per guest and keeps the latest date', () => {
-    const history = summariseSessions([
-      { guest_id: 1n, requested_at: daysAgo(50), updated_at: daysAgo(40) },
-      { guest_id: 1n, requested_at: daysAgo(20), updated_at: daysAgo(10) },
-      { guest_id: 2n, requested_at: daysAgo(5), updated_at: null },
-    ]);
+  it('counts sessions per guest and keeps the latest date', () => {
+    const history = summariseSessions(
+      [session(1n, 40), session(1n, 10), session(2n, 5)],
+      NOW,
+    );
     expect(history.sessions.get(1n)).toBe(2);
     expect(history.lastSessionAt.get(1n)).toEqual(daysAgo(10));
-    // updated_at is when the second side agreed; older rows fall back to requested_at.
     expect(history.lastSessionAt.get(2n)).toEqual(daysAgo(5));
     expect(history.sessions.get(3n)).toBeUndefined();
   });
 
-  it('counts a match with no dates at all, without inventing a date', () => {
-    const history = summariseSessions([
-      { guest_id: 4n, requested_at: null, updated_at: null },
+  it('counts each event as a session, so a guest who is back with the same coordinator adds one each time', () => {
+    const history = summarise([
+      session(1n, 30),
+      session(1n, 20),
+      session(1n, 10),
+    ]);
+    expect(history.sessions.get(1n)).toBe(3);
+  });
+
+  it('dates a session by its event date, not by when it was marked complete', () => {
+    // Held ten days ago and marked complete only a day ago.
+    const history = summarise([
+      { ...session(1n, 10), completed_at: daysAgo(1) },
+    ]);
+    expect(history.lastSessionAt.get(1n)).toEqual(daysAgo(10));
+  });
+
+  it('holds the event date between when the event was created and now', () => {
+    const created = new Date('2026-06-01T00:00:00Z');
+    const open = (date: string) => ({
+      date,
+      completed_at: null,
+      created_at: created,
+      match: { guest_id: 1n },
+    });
+    expect(summarise([open('2026-08-15')]).lastSessionAt.get(1n)).toEqual(
+      new Date('2026-08-15'),
+    );
+    // A back-dated event reads as created, and a future one as now.
+    expect(summarise([open('2026-01-01')]).lastSessionAt.get(1n)).toEqual(
+      created,
+    );
+    expect(summarise([open('2027-01-01')]).lastSessionAt.get(1n)).toEqual(NOW);
+  });
+
+  it('uses the time it was marked complete when the event date cannot be read', () => {
+    const history = summarise([
+      {
+        date: 'next Tuesday',
+        completed_at: daysAgo(3),
+        created_at: daysAgo(40),
+        match: { guest_id: 4n },
+      },
     ]);
     expect(history.sessions.get(4n)).toBe(1);
-    expect(history.lastSessionAt.has(4n)).toBe(false);
+    expect(history.lastSessionAt.get(4n)).toEqual(daysAgo(3));
+  });
+
+  it('falls back to when the event was created if the date cannot be read and nothing was completed', () => {
+    const history = summarise([
+      {
+        date: 'next Tuesday',
+        completed_at: null,
+        created_at: daysAgo(7),
+        match: { guest_id: 4n },
+      },
+    ]);
+    expect(history.lastSessionAt.get(4n)).toEqual(daysAgo(7));
   });
 });
 
@@ -128,10 +190,10 @@ describe('rankGuests', () => {
       [102, ['Economics', 'Taxation Law']],
       [103, ['Taxation Law']],
     ]);
-    const history = summariseSessions([
-      { guest_id: 2n, requested_at: daysAgo(3), updated_at: daysAgo(2) },
-      { guest_id: 2n, requested_at: daysAgo(9), updated_at: daysAgo(8) },
-      { guest_id: 3n, requested_at: daysAgo(300), updated_at: daysAgo(299) },
+    const history = summarise([
+      session(2n, 2),
+      session(2n, 8),
+      session(3n, 299),
     ]);
     const expected = guests
       .map((g) => {
@@ -159,14 +221,10 @@ describe('rankGuests', () => {
       guest(3, '2026-01-03'),
     ];
     const same = ['Economics', 'Taxation Law'];
-    const history = summariseSessions([
+    const history = summarise([
       // Guest 1: five recent sessions. Guest 2: one, long ago. Guest 3: none.
-      ...[1, 2, 3, 4, 5].map((n) => ({
-        guest_id: 1n,
-        requested_at: daysAgo(n),
-        updated_at: daysAgo(n),
-      })),
-      { guest_id: 2n, requested_at: daysAgo(400), updated_at: daysAgo(400) },
+      ...[1, 2, 3, 4, 5].map((n) => session(1n, n)),
+      session(2n, 400),
     ]);
     const ranked = rankGuests(
       guests,
@@ -189,13 +247,7 @@ describe('rankGuests', () => {
       [101, ['Economics', 'Taxation Law']],
       [102, ['Economics']],
     ]);
-    const history = summariseSessions(
-      [1, 2, 3, 4, 5, 6].map((n) => ({
-        guest_id: 1n,
-        requested_at: daysAgo(n),
-        updated_at: daysAgo(n),
-      })),
-    );
+    const history = summarise([1, 2, 3, 4, 5, 6].map((n) => session(1n, n)));
     const topicFirst = { fit: 0.9, rotation: 0.05, exposure: 0.05 };
     const shareTheWork = { fit: 0.5, rotation: 0.25, exposure: 0.25 };
 
@@ -224,13 +276,9 @@ describe('rankGuests', () => {
       [102, ['Economics']],
     ]);
     // Guest 1 has had six sessions, the last 60 days ago. Guest 2 has had one, 20 days ago.
-    const history = summariseSessions([
-      ...[60, 70, 80, 90, 100, 110].map((n) => ({
-        guest_id: 1n,
-        requested_at: daysAgo(n),
-        updated_at: daysAgo(n),
-      })),
-      { guest_id: 2n, requested_at: daysAgo(20), updated_at: daysAgo(20) },
+    const history = summarise([
+      ...[60, 70, 80, 90, 100, 110].map((n) => session(1n, n)),
+      session(2n, 20),
     ]);
     const weights = { fit: 0, rotation: 0.5, exposure: 0.5 };
     const rank = (halfLifeDays: number) =>
@@ -290,9 +338,7 @@ describe('rankGuests', () => {
 
   it('orders by rotation and exposure alone when the viewer names no topics', () => {
     const guests = [guest(1, '2026-01-01'), guest(2, '2026-01-02')];
-    const history = summariseSessions([
-      { guest_id: 1n, requested_at: daysAgo(2), updated_at: daysAgo(2) },
-    ]);
+    const history = summarise([session(1n, 2)]);
     const ranked = rankGuests(
       guests,
       guestContext({
@@ -544,10 +590,10 @@ describe('orderGuestsForViewer', () => {
         { user_id: 50n, expertise: 'Economics' },
         { user_id: 50n, expertise: 'Taxation Law' },
       ] as never);
-    const accepted = jest
-      .spyOn(prisma.match_requests, 'findMany')
+    const sessionEvents = jest
+      .spyOn(prisma.events, 'findMany')
       .mockResolvedValue([] as never);
-    return { settings, profile, topics, accepted };
+    return { settings, profile, topics, sessionEvents };
   }
 
   it('orders the guests for a coordinator while the setting is on', async () => {
@@ -562,7 +608,7 @@ describe('orderGuestsForViewer', () => {
   });
 
   it('returns the guests exactly as given while the setting is off, and reads nothing more', async () => {
-    const { profile, topics, accepted } = stub({ enabled: false });
+    const { profile, topics, sessionEvents } = stub({ enabled: false });
     const ordered = await orderGuestsForViewer(
       guests,
       expertise,
@@ -573,14 +619,14 @@ describe('orderGuestsForViewer', () => {
     expect(ids(ordered)).toEqual([1, 2, 3]);
     expect(profile).not.toHaveBeenCalled();
     expect(topics).not.toHaveBeenCalled();
-    expect(accepted).not.toHaveBeenCalled();
+    expect(sessionEvents).not.toHaveBeenCalled();
   });
 
   it.each(['false', 'FALSE', ' false '])(
     'returns the guests exactly as given when the server has MATCHING_SUGGESTIONS_ENABLED=%j, even with the setting on',
     async (value) => {
       process.env.MATCHING_SUGGESTIONS_ENABLED = value;
-      const { settings, profile, topics, accepted } = stub();
+      const { settings, profile, topics, sessionEvents } = stub();
 
       const ordered = await orderGuestsForViewer(
         guests,
@@ -595,7 +641,7 @@ describe('orderGuestsForViewer', () => {
       expect(settings).not.toHaveBeenCalled();
       expect(profile).not.toHaveBeenCalled();
       expect(topics).not.toHaveBeenCalled();
-      expect(accepted).not.toHaveBeenCalled();
+      expect(sessionEvents).not.toHaveBeenCalled();
     },
   );
 
@@ -612,7 +658,7 @@ describe('orderGuestsForViewer', () => {
   });
 
   it('treats a missing setting as off, as ranked matching is off until an administrator switches it on', async () => {
-    const { profile, topics, accepted } = stub();
+    const { profile, topics, sessionEvents } = stub();
     jest
       .spyOn(prisma.admin_settings, 'upsert')
       .mockResolvedValue({ id: 1 } as never);
@@ -626,11 +672,11 @@ describe('orderGuestsForViewer', () => {
     expect(ids(ordered)).toEqual([1, 2, 3]);
     expect(profile).not.toHaveBeenCalled();
     expect(topics).not.toHaveBeenCalled();
-    expect(accepted).not.toHaveBeenCalled();
+    expect(sessionEvents).not.toHaveBeenCalled();
   });
 
   it('leaves the order alone for a viewer who is not a coordinator', async () => {
-    const { topics, accepted } = stub({ viewer: null });
+    const { topics, sessionEvents } = stub({ viewer: null });
     const ordered = await orderGuestsForViewer(
       guests,
       expertise,
@@ -639,7 +685,7 @@ describe('orderGuestsForViewer', () => {
     );
     expect(ordered).toBe(guests);
     expect(topics).not.toHaveBeenCalled();
-    expect(accepted).not.toHaveBeenCalled();
+    expect(sessionEvents).not.toHaveBeenCalled();
   });
 
   it('leaves the order alone with no viewer, or fewer than two guests, without any read', async () => {
@@ -654,13 +700,21 @@ describe('orderGuestsForViewer', () => {
     expect(settings).not.toHaveBeenCalled();
   });
 
-  it('reads the accepted matches of every guest in one query, never one per guest', async () => {
-    const { accepted, topics, profile } = stub();
+  it('reads the sessions of every guest in one query, never one per guest, by the rule Suggested speakers uses', async () => {
+    const { sessionEvents, topics, profile } = stub();
     await orderGuestsForViewer(guests, expertise, 'auth0|coord', NOW);
-    expect(accepted).toHaveBeenCalledTimes(1);
-    expect(accepted).toHaveBeenCalledWith({
-      where: { guest_id: { in: [1n, 2n, 3n] }, status: 'ACCEPTED' },
-      select: { guest_id: true, requested_at: true, updated_at: true },
+    expect(sessionEvents).toHaveBeenCalledTimes(1);
+    expect(sessionEvents).toHaveBeenCalledWith({
+      where: {
+        ...SESSION_EVENTS_WHERE,
+        match: { is: { guest_id: { in: [1n, 2n, 3n] } } },
+      },
+      select: {
+        date: true,
+        completed_at: true,
+        created_at: true,
+        match: { select: { guest_id: true } },
+      },
     });
     // The guests' own topics were already read for the cards; only the viewer's are added.
     expect(topics).toHaveBeenCalledTimes(1);
@@ -679,12 +733,14 @@ describe('orderGuestsForViewer', () => {
       suggestions_exposure_weight: 50,
       suggestions_half_life_days: 90,
     } as never);
-    jest.spyOn(prisma.match_requests, 'findMany').mockResolvedValue([
-      { guest_id: 3n, requested_at: daysAgo(1), updated_at: daysAgo(1) },
-      { guest_id: 3n, requested_at: daysAgo(2), updated_at: daysAgo(2) },
-      { guest_id: 3n, requested_at: daysAgo(3), updated_at: daysAgo(3) },
-      { guest_id: 3n, requested_at: daysAgo(4), updated_at: daysAgo(4) },
-    ] as never);
+    jest
+      .spyOn(prisma.events, 'findMany')
+      .mockResolvedValue([
+        session(3n, 1),
+        session(3n, 2),
+        session(3n, 3),
+        session(3n, 4),
+      ] as never);
     const ordered = await orderGuestsForViewer(
       guests,
       expertise,
@@ -693,6 +749,180 @@ describe('orderGuestsForViewer', () => {
     );
     // Guest 3 fits best but has had four sessions; guest 2 fits less and has had none.
     expect(ids(ordered)).toEqual([2, 3, 1]);
+  });
+});
+
+describe('orderGuestsForViewer: what counts as a session', () => {
+  const guests = [
+    guest(1, '2026-01-01'),
+    guest(2, '2026-01-02'),
+    guest(3, '2026-01-03'),
+  ];
+  const expertise = [
+    { user_id: 101n, expertise: 'Marketing Strategy' },
+    { user_id: 102n, expertise: 'Economics' },
+    { user_id: 103n, expertise: 'Economics' },
+    { user_id: 103n, expertise: 'Taxation Law' },
+  ];
+
+  /** The columns of an event row that the filter and the ranking read. */
+  interface FakeEvent {
+    date: string;
+    status: string;
+    responded_at: Date | null;
+    completed_at: Date | null;
+    created_at: Date;
+    match: { guest_id: bigint; status: string };
+  }
+
+  /** A completed event the guest replied to, on a match that is accepted unless said otherwise. */
+  const eventOf = (
+    guestId: bigint,
+    days: number,
+    overrides: Partial<FakeEvent> = {},
+  ): FakeEvent => ({
+    ...session(guestId, days),
+    status: 'completed',
+    responded_at: daysAgo(days),
+    match: { guest_id: guestId, status: 'ACCEPTED' },
+    ...overrides,
+  });
+
+  type Where = Record<string, unknown>;
+
+  /** Whether a row passes a Prisma filter, for the parts of the language the queries here use. */
+  function passes(row: Record<string, unknown>, where: Where): boolean {
+    return Object.entries(where).every(([key, condition]) => {
+      if (key === 'OR') {
+        return (condition as Where[]).some((inner) => passes(row, inner));
+      }
+      if (key === 'AND') {
+        return (condition as Where[]).every((inner) => passes(row, inner));
+      }
+      const value = row[key];
+      if (condition !== null && typeof condition === 'object') {
+        if ('is' in condition) {
+          return (
+            value !== null &&
+            value !== undefined &&
+            passes(value as Record<string, unknown>, condition.is as Where)
+          );
+        }
+        if ('not' in condition) {
+          return value !== condition.not;
+        }
+        if ('in' in condition) {
+          return (condition.in as unknown[]).includes(value);
+        }
+        throw new Error(
+          `the fake does not understand ${key}: ${JSON.stringify(condition)}`,
+        );
+      }
+      return value === condition;
+    });
+  }
+
+  /** Answers the events query from these rows, by the filter the query sends. */
+  function install(rows: FakeEvent[]) {
+    const eventsRead = jest
+      .spyOn(prisma.events, 'findMany')
+      .mockImplementation(((args: { where: Where }) =>
+        Promise.resolve(
+          rows.filter((row) =>
+            passes(row as unknown as Record<string, unknown>, args.where),
+          ),
+        )) as never);
+    // A match row cannot supply a session: asking this table for one is a failure.
+    const matchRows = jest
+      .spyOn(prisma.match_requests, 'findMany')
+      .mockResolvedValue([
+        {
+          guest_id: 3n,
+          status: 'ACCEPTED',
+          requested_at: daysAgo(5),
+          updated_at: daysAgo(4),
+        },
+      ] as never);
+    jest.spyOn(prisma.admin_settings, 'upsert').mockResolvedValue({
+      id: 1,
+      suggestions_enabled: true,
+      suggestions_fit_weight: 50,
+      suggestions_rotation_weight: 0,
+      suggestions_exposure_weight: 50,
+      suggestions_half_life_days: 90,
+    } as never);
+    jest
+      .spyOn(prisma.coordinators, 'findFirst')
+      .mockResolvedValue({ user_id: 50n } as never);
+    jest.spyOn(prisma.user_expertise, 'findMany').mockResolvedValue([
+      { user_id: 50n, expertise: 'Economics' },
+      { user_id: 50n, expertise: 'Taxation Law' },
+    ] as never);
+    return { matchRows, eventsRead };
+  }
+
+  const order = async () =>
+    ids(await orderGuestsForViewer(guests, expertise, 'auth0|coord', NOW));
+
+  // Guest 3 fits best; with exposure counting for half, four sessions put
+  // guest 3 behind guest 2, who fits less and has had none.
+  const FOUR = [1, 2, 3, 4];
+
+  it('puts the best fit first when nobody has had a session', async () => {
+    install([]);
+    expect(await order()).toEqual([3, 2, 1]);
+  });
+
+  it('counts a session after the match has ended', async () => {
+    install(
+      FOUR.map((day) =>
+        eventOf(3n, day, { match: { guest_id: 3n, status: 'UNMATCHED' } }),
+      ),
+    );
+    expect(await order()).toEqual([2, 3, 1]);
+  });
+
+  it('counts each of several sessions on the same match', async () => {
+    install(FOUR.map((day) => eventOf(3n, day)));
+    expect(await order()).toEqual([2, 3, 1]);
+  });
+
+  it('counts a session whose event is accepted, completed or not', async () => {
+    install(
+      FOUR.map((day) =>
+        eventOf(3n, day, { status: 'accepted', completed_at: null }),
+      ),
+    );
+    expect(await order()).toEqual([2, 3, 1]);
+  });
+
+  it('counts an accepted match with no event as no session', async () => {
+    const { matchRows } = install([]);
+    expect(await order()).toEqual([3, 2, 1]);
+    // The ACCEPTED match is in the table, yet it was not read for a session.
+    expect(matchRows).not.toHaveBeenCalled();
+  });
+
+  it('counts a completed event whether or not it records a reply time', async () => {
+    install(FOUR.map((day) => eventOf(3n, day, { responded_at: null })));
+    expect(await order()).toEqual([2, 3, 1]);
+  });
+
+  it.each(['invitation-sent', 'declined', 'cancelled'])(
+    'does not count an event that is %s',
+    async (status) => {
+      install(FOUR.map((day) => eventOf(3n, day, { status })));
+      expect(await order()).toEqual([3, 2, 1]);
+    },
+  );
+
+  it('does not filter the events by the status of their match', async () => {
+    const { eventsRead } = install([]);
+    await order();
+    const query = eventsRead.mock.calls[0][0] as {
+      where: { match: { is: Record<string, unknown> } };
+    };
+    expect(Object.keys(query.where.match.is)).toEqual(['guest_id']);
   });
 });
 
@@ -749,10 +979,10 @@ describe('orderCoordinatorsForViewer', () => {
       available_from: null,
       available_to: null,
     } as never);
-    const accepted = jest
-      .spyOn(prisma.match_requests, 'findMany')
+    const sessionEvents = jest
+      .spyOn(prisma.events, 'findMany')
       .mockResolvedValue([] as never);
-    return { profile, topics, accepted };
+    return { profile, topics, sessionEvents };
   }
 
   it('orders the coordinators for a guest while the setting is on', async () => {
@@ -812,14 +1042,14 @@ describe('orderCoordinatorsForViewer', () => {
   });
 
   it('never reads the matches of coordinators, so how busy they are cannot matter', async () => {
-    const { accepted } = stub();
+    const { sessionEvents } = stub();
     await orderCoordinatorsForViewer(
       coordinators,
       expertise,
       availability,
       'auth0|guest',
     );
-    expect(accepted).not.toHaveBeenCalled();
+    expect(sessionEvents).not.toHaveBeenCalled();
   });
 
   it('reads only the viewer’s own profile, topics and hours', async () => {

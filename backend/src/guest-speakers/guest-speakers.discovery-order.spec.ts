@@ -95,15 +95,14 @@ function seed(
     ]);
   }) as never);
   jest.spyOn(prisma.availability, 'findMany').mockResolvedValue([] as never);
-  const accepted = jest
-    .spyOn(prisma.match_requests, 'findMany')
-    .mockResolvedValue(
-      [1, 2, 3, 4, 5, 6].map((n) => ({
-        guest_id: 2n,
-        requested_at: daysAgo(n),
-        updated_at: daysAgo(n),
-      })) as never,
-    );
+  const accepted = jest.spyOn(prisma.events, 'findMany').mockResolvedValue(
+    [1, 2, 3, 4, 5, 6].map((n) => ({
+      date: '2026-03-01',
+      completed_at: daysAgo(n),
+      created_at: daysAgo(n + 30),
+      match: { guest_id: 2n },
+    })) as never,
+  );
   return { listing, profile, accepted };
 }
 
@@ -198,9 +197,7 @@ describe('GuestSpeakersService.findAll order', () => {
               expertise: 'Economics',
             })),
       )) as never);
-    jest
-      .spyOn(prisma.match_requests, 'findMany')
-      .mockResolvedValue([] as never);
+    jest.spyOn(prisma.events, 'findMany').mockResolvedValue([] as never);
 
     expect(names(await service.findAll('auth0|coord'))).toEqual([
       'Dee',

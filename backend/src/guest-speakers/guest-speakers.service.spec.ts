@@ -265,6 +265,53 @@ describe('GuestSpeakersService', () => {
           { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
         ]);
       });
+
+      describe('listing the viewer’s own matches', () => {
+        async function matchesOfViewer() {
+          const query = jest.spyOn(prisma.guests, 'findMany');
+          await service.findAll('auth0|viewer', undefined, true);
+          const { where } = query.mock.calls[0][0] as {
+            where: { AND: unknown[] };
+          };
+          query.mockRestore();
+          return where;
+        }
+
+        it('keeps a guest the viewer has reported, so their conversation stays', async () => {
+          reports([[1n, '7']]);
+
+          expect((await matchesOfViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [] } }] },
+          ]);
+        });
+
+        it('keeps a guest who reported the viewer', async () => {
+          reports([[7n, '1']]);
+
+          expect((await matchesOfViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [] } }] },
+          ]);
+        });
+
+        it('still leaves out a guest who is on hold for everyone', async () => {
+          reports([
+            [8n, '7'],
+            [9n, '7'],
+          ]);
+
+          expect((await matchesOfViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+          ]);
+        });
+
+        it('leaves Discovery as it was when the flag is not set', async () => {
+          reports([[1n, '7']]);
+
+          expect((await hiddenFromViewer()).AND).toEqual([
+            { OR: [{ user_id: null }, { user_id: { notIn: [7n] } }] },
+          ]);
+        });
+      });
     });
   });
 });

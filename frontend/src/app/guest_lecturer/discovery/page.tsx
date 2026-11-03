@@ -44,7 +44,7 @@ export default function GuestLecturerDiscoveryPage() {
     async function loadDiscovery() {
       setErrorMessage(null);
       try {
-        const profiles = await getPublicUnitCoordinatorProfiles(sort);
+        const profiles = await getPublicUnitCoordinatorProfiles({ sort });
         if (!active) {
           return;
         }
