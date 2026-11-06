@@ -20,6 +20,8 @@ import verifiedUserIcon from "@/assets/verified_user.png";
 import visibilityIcon from "@/assets/visibility.png";
 import BrandLogo from "@/components/brand/BrandLogo";
 import ThemeToggle from "@/components/theme/ThemeToggle";
+import { startUnreadCountPolling, UNREAD_COUNT_CHANGED_EVENT } from "@/lib/unreadCountPoller";
+import { getUnreadNotificationCount } from "@/services/adminApi";
 
 interface NavigationItem {
   href: string;
@@ -95,6 +97,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
     };
   }, [pathname]);
 
+  // The bell's count. Asked for every 30 seconds while this tab is visible.
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    return startUnreadCountPolling({
+      fetchCount: getUnreadNotificationCount,
+      onCount: setUnreadCount,
+      onChange: () => window.dispatchEvent(new Event(UNREAD_COUNT_CHANGED_EVENT)),
+    });
+  }, []);
+
   // The greeting named "Admin" as a literal, so every administrator was
   // greeted as somebody else.
   const displayName = user?.name || user?.email?.split("@")[0] || "Administrator";
@@ -139,7 +151,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <p className="control-greeting" suppressHydrationWarning>
             {greeting}, <strong>{displayName}!</strong>
           </p>
-          <ThemeToggle />
+          <div className="control-topbar-actions">
+            <Link
+              className="notification-button"
+              href="/dashboard/notifications"
+              aria-label={"Notifications" + (unreadCount > 0 ? ", " + unreadCount + " unread" : "")}
+              title="Notifications"
+            >
+              <Image alt="" aria-hidden="true" src={notificationIcon} />
+              {unreadCount > 0 && <span aria-hidden="true">{unreadCount > 9 ? "9+" : unreadCount}</span>}
+            </Link>
+            <ThemeToggle />
+          </div>
         </header>
         <main className="control-main">{children}</main>
       </div>

@@ -1,10 +1,15 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
 import { CreateEventDto } from './dto/create-event.dto';
+import { buildEventIcs, minutesOfDay } from './event-calendar';
+import { adminSessionNotice } from './event-notice';
+import { buildPrefill, displayName, type EventPrefill } from './event-prefill';
 import { ErrorCode } from '../common/error-codes';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MatchRequestsService } from '../match-requests/match-requests.service';
@@ -32,6 +37,20 @@ export interface Event extends CreateEventDto {
 
 const GUEST_LECTURER_ACTIONS: EventStatus[] = ['accepted', 'declined'];
 const COORDINATOR_ACTIONS: EventStatus[] = ['cancelled', 'completed'];
+
+/**
+ * The statuses an event may be moved from, by the status it is moved to. A
+ * page that was opened before the other person acted still offers the old
+ * buttons, and this keeps a late click from undoing what they did, such as a
+ * guest accepting an invitation the coordinator has since cancelled.
+ */
+const MOVES_FROM: Record<EventStatus, EventStatus[]> = {
+  'invitation-sent': [],
+  accepted: ['invitation-sent'],
+  declined: ['invitation-sent'],
+  cancelled: ['invitation-sent', 'accepted'],
+  completed: ['accepted'],
+};
 
 const STATUS_WORDS: Record<EventStatus, string> = {
   'invitation-sent': 'still waiting for a reply',
@@ -82,6 +101,8 @@ type EventRow = {
  */
 @Injectable()
 export class EventsService {
+  private readonly logger = new Logger(EventsService.name);
+
   constructor(
     private readonly notificationsService: NotificationsService,
     private readonly matchRequests: MatchRequestsService,
@@ -103,12 +124,35 @@ export class EventsService {
     if (side !== 'coordinator') {
       throw new ForbiddenException('Only coordinators can create events');
     }
+    // Compared as minutes, so the end is checked against the start rather than
+    // as text. A session that ends before it starts cannot go in a calendar.
+    const startsAt = minutesOfDay(dto.startTime);
+    const endsAt = minutesOfDay(dto.endTime);
+    if (startsAt === null || endsAt === null || endsAt <= startsAt) {
+      throw new BadRequestException({
+        code: ErrorCode.ValidationFailed,
+        message: 'The end time must be later than the start time',
+      });
+    }
+
+    // Both names come from the two profiles, not from the request: they are
+    // shown to the other person, to administrators and in the calendar file.
+    const parties = await prisma.match_requests.findUnique({
+      where: { match_id: matchId },
+      select: {
+        coordinator: { select: { first_name: true, last_name: true } },
+        guest: { select: { first_name: true, last_name: true } },
+      },
+    });
+    if (!parties) {
+      throw new NotFoundException('Match not found');
+    }
 
     const row = await prisma.events.create({
       data: {
         match_id: matchId,
-        coordinator_name: dto.coordinatorName,
-        guest_lecturer_name: dto.guestLecturerName,
+        coordinator_name: displayName(parties.coordinator, 'Unit Coordinator'),
+        guest_lecturer_name: displayName(parties.guest, 'Guest Lecturer'),
         title: dto.title,
         description: dto.description,
         date: dto.date,
@@ -183,18 +227,17 @@ export class EventsService {
       );
     }
 
-    // A session is completed only after the guest lecturer confirmed it, so an
-    // invitation nobody answered, or one that was declined, cannot be.
-    if (status === 'completed' && event.status !== 'accepted') {
-      throw new ConflictException({
-        code: ErrorCode.Conflict,
-        message: `This session is ${STATUS_WORDS[event.status as EventStatus] ?? event.status}, so it cannot be marked completed.`,
-      });
-    }
-
+    // One conditional write, so the status is checked and changed in the same
+    // statement. Two requests that arrive together, such as an accept and a
+    // cancel or a double click, cannot both pass a check made beforehand: the
+    // first moves the row and the second finds it no longer in a status it may
+    // move from, and writes nothing.
     const now = new Date();
-    const row = await prisma.events.update({
-      where: { event_id: event.event_id },
+    const { count } = await prisma.events.updateMany({
+      where: {
+        event_id: event.event_id,
+        status: { in: MOVES_FROM[status] },
+      },
       data: {
         status,
         ...(status === 'accepted' || status === 'declined'
@@ -202,11 +245,158 @@ export class EventsService {
           : {}),
         ...(status === 'completed' ? { completed_at: now } : {}),
       },
-      include: { match: matchParties },
     });
 
+    if (count === 0) {
+      // Read again for the message, since the status that stopped this request
+      // is the one that is there now.
+      const latest = await prisma.events.findUnique({
+        where: { event_id: event.event_id },
+        select: { status: true },
+      });
+      if (!latest) {
+        throw new NotFoundException('Event not found');
+      }
+      throw new ConflictException({
+        code: ErrorCode.Conflict,
+        message: `This session is ${STATUS_WORDS[latest.status as EventStatus] ?? latest.status}, so it cannot be marked ${status}.`,
+      });
+    }
+
+    const row = await prisma.events.findUnique({
+      where: { event_id: event.event_id },
+      include: { match: matchParties },
+    });
+    if (!row) {
+      throw new NotFoundException('Event not found');
+    }
+
+    // Only a request that changed the row gets here, so only it notifies.
     await this.notifyStatusChange(row, status);
     return this.toEvent(row);
+  }
+
+  /**
+   * Starting values for a session with one matched guest, drawn from the two
+   * profiles. Only the caller's own accepted match is read: the match comes
+   * from their token and the guest's profile id, as it does when the event is
+   * created.
+   */
+  async prefill(
+    guestLecturerId: string,
+    coordinatorAuth0Id: string,
+  ): Promise<EventPrefill> {
+    const { side, matchId } = await this.matchRequests.findAcceptedMatch(
+      coordinatorAuth0Id,
+      guestLecturerId,
+    );
+    if (side !== 'coordinator') {
+      throw new ForbiddenException('Only coordinators can schedule sessions');
+    }
+
+    const match = await prisma.match_requests.findUnique({
+      where: { match_id: matchId },
+      select: {
+        guest_id: true,
+        coordinator: {
+          select: {
+            user_id: true,
+            first_name: true,
+            last_name: true,
+            learning_objective: true,
+            discipline: true,
+            duration: true,
+            location: true,
+            format_online: true,
+            format_inperson: true,
+            format_prerecorded: true,
+          },
+        },
+        guest: {
+          select: {
+            user_id: true,
+            first_name: true,
+            last_name: true,
+            format_online: true,
+            format_inperson: true,
+            format_prerecorded: true,
+          },
+        },
+      },
+    });
+    if (!match) {
+      throw new NotFoundException('Match not found');
+    }
+
+    const userIds = [match.coordinator.user_id, match.guest.user_id].filter(
+      (userId): userId is bigint => userId !== null,
+    );
+    const topicRows =
+      userIds.length === 0
+        ? []
+        : await prisma.user_expertise.findMany({
+            where: { user_id: { in: userIds } },
+            select: { user_id: true, expertise: true },
+          });
+    const topicsOf = (userId: bigint | null) =>
+      topicRows
+        .filter((row) => row.user_id === userId)
+        .map((row) => row.expertise);
+
+    return buildPrefill({
+      matchId,
+      guestProfileId: match.guest_id,
+      coordinator: match.coordinator,
+      guest: match.guest,
+      coordinatorTopics: topicsOf(match.coordinator.user_id),
+      guestTopics: topicsOf(match.guest.user_id),
+    });
+  }
+
+  /**
+   * The calendar file for a confirmed session. Only the event's own
+   * coordinator or guest can have it, and only once it is confirmed; for
+   * anyone else, and for an event in any other state, it is reported as
+   * missing, so nothing about it is revealed.
+   */
+  async calendarFile(
+    id: string,
+    callerAuth0Id: string,
+  ): Promise<{ eventId: string; ics: string }> {
+    const notFound = () => new NotFoundException('Event not found');
+    const { matches } = await this.matchRequests
+      .findAcceptedMatches(callerAuth0Id)
+      .catch((error: unknown) => {
+        // Someone with no profile is a party to no event.
+        throw error instanceof ForbiddenException ? notFound() : error;
+      });
+    const event = await prisma.events.findUnique({
+      where: { event_id: toId(id, 'id') },
+      include: { match: matchParties },
+    });
+    if (
+      !event ||
+      event.status !== 'accepted' ||
+      !matches.some((match) => match.matchId === event.match_id)
+    ) {
+      throw notFound();
+    }
+
+    return {
+      eventId: String(event.event_id),
+      ics: buildEventIcs({
+        id: String(event.event_id),
+        title: event.title,
+        description: event.description,
+        date: event.date,
+        startTime: event.start_time,
+        endTime: event.end_time,
+        location: event.location,
+        coordinatorName: event.coordinator_name,
+        guestLecturerName: event.guest_lecturer_name,
+        stampedAt: event.responded_at ?? event.created_at,
+      }),
+    };
   }
 
   private async notifyStatusChange(
@@ -241,6 +431,31 @@ export class EventsService {
         actionLabel: 'View event',
         href: '/guest_lecturer/events',
       });
+    }
+
+    if (status === 'accepted' || status === 'cancelled') {
+      await this.notifyAdmins(event, status);
+    }
+  }
+
+  /**
+   * Tells every active administrator that a session was confirmed or
+   * cancelled. The change is already saved, so a notice that cannot be saved
+   * is logged and dropped rather than failing the request that made it.
+   */
+  private async notifyAdmins(
+    event: EventRow,
+    status: 'accepted' | 'cancelled',
+  ): Promise<void> {
+    try {
+      await this.notificationsService.createForAdmins(
+        adminSessionNotice(event, status),
+      );
+    } catch (error) {
+      this.logger.error(
+        `Could not notify administrators that event ${event.event_id} was ${status}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 

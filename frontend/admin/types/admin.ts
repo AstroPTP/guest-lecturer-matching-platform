@@ -80,19 +80,19 @@ export interface AuditEntry {
   correlationId: string | null;
 }
 
-export type NotificationType = "Matching" | "User" | "Security" | "Event";
-export type NotificationGroup = "Today" | "Yesterday" | "Earlier";
+/** The kinds of notice the API raises. */
+export type NotificationType = "match" | "event" | "message" | "profile" | "admin";
 
+/** A notice in the administrator's own inbox, as the API returns it. */
 export interface AdminNotification {
-  id: number;
+  id: string;
+  type: NotificationType;
   title: string;
   description: string;
-  time: string;
-  group: NotificationGroup;
-  type: NotificationType;
   actionLabel: string;
   href: string;
   read: boolean;
+  createdAt: string;
 }
 
 export interface AdminConfiguration {

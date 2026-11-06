@@ -577,18 +577,20 @@ a { color: inherit; text-decoration: none; }
   align-items: center;
   background: var(--c-303030);
   border: 2px solid var(--c-ffffff);
-  border-radius: 50%;
+  border-radius: 9px;
   color: var(--c-ffffff);
   display: flex;
   font-size: 7px;
   font-weight: 700;
-  height: 15px;
+  height: 18px;
   justify-content: center;
+  min-width: 18px;
+  padding: 0 3px;
   position: absolute;
-  right: -1px;
-  top: -1px;
-  width: 15px;
+  right: -5px;
+  top: -4px;
 }
+.control-topbar-actions { align-items: center; display: flex; gap: 12px; }
 .control-main { padding: 24px 24px 22px; }
 .overview-page { margin: 0 auto; max-width: 1060px; }
 .overview-heading h1 {
@@ -1365,6 +1367,12 @@ a { color: inherit; text-decoration: none; }
 .notification-list article > div > span { color: var(--c-8c8c92); font-size: 6px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
 .notification-list article > button { background: transparent; border: 0; color: var(--c-55555b); font-size: 7px; font-weight: 750; padding: 8px; text-transform: uppercase; }
 .notifications-empty { color: var(--c-8d8d92); font-size: 10px; padding: 60px 20px; text-align: center; }
+.notification-list article > a { color: var(--c-156874); font-size: 12px; font-weight: 750; white-space: nowrap; }
+.notification-list article > a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.notification-list article > a:focus-visible,
+.notification-list article > button:focus-visible,
+.notification-button:focus-visible { outline: 2px solid var(--c-156874); outline-offset: 2px; }
+.visually-hidden { border: 0; clip: rect(0 0 0 0); height: 1px; margin: -1px; overflow: hidden; padding: 0; position: absolute; white-space: nowrap; width: 1px; }
 
 @media (max-width: 560px) {
   .notifications-heading { align-items: flex-start; flex-direction: column; gap: 18px; }

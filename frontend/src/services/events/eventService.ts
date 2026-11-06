@@ -1,5 +1,5 @@
 import { backendFetch } from "@/lib/api/backendClient";
-import type { AcademicEvent, CreateAcademicEventData } from "@/types/events/eventTypes";
+import type { AcademicEvent, CreateAcademicEventData, EventPrefill } from "@/types/events/eventTypes";
 
 export async function createEvent(data: CreateAcademicEventData): Promise<AcademicEvent> {
   return backendFetch("/events", { method: "POST", body: JSON.stringify(data) });
@@ -27,4 +27,9 @@ export async function cancelEvent(eventId: string): Promise<AcademicEvent> {
 
 export async function completeEvent(eventId: string): Promise<AcademicEvent> {
   return backendFetch(`/events/${eventId}/complete`, { method: "PATCH" });
+}
+
+/** The starting values for a session with one matched guest lecturer (coordinators only). */
+export async function getEventPrefill(guestLecturerId: string): Promise<EventPrefill> {
+  return backendFetch(`/events/prefill/${encodeURIComponent(guestLecturerId)}`);
 }

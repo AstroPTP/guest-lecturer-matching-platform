@@ -179,6 +179,16 @@ const FAQS = [
     answer: "It only counts people who used the platform in the last 30 days. Sign-ins are recorded from the day this version went live.",
   },
   {
+    question: "Where do I see confirmed sessions?",
+    answer:
+      "Open Events in the menu and choose accepted in the Status filter. Each row shows the title, date, coordinator and guest lecturer. You are also told in your notifications each time a guest lecture is confirmed or cancelled, and the notice links to the same page.",
+  },
+  {
+    question: "What does the bell show?",
+    answer:
+      "The number of notifications you have not read yet. Choose the bell to open them, newest first, with a dot on the unread ones. Use Mark all read to clear the number, or follow a notice to the page it is about. The number updates about every 30 seconds while the page is open.",
+  },
+  {
     question: "Can I use the portal in dark mode?",
     answer: "Yes. Use the Light, System and Dark switch in the top bar. System follows your device setting.",
   },

@@ -5,6 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ErrorCode } from '../common/error-codes';
+import {
+  adminSessionNotice,
+  type NoticedSession,
+} from '../events/event-notice';
 import { isUniqueViolation } from '../common/prisma-errors';
 import { personLabel } from '../notifications/person-label';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -305,7 +309,9 @@ export class MatchRequestsService {
     const finished = confirmed
       .filter((event) => hasEnded(event, now))
       .map((event) => event.event_id);
-    await prisma.events.updateMany({
+    // The write hands back the events it cancelled, and only those, so the
+    // administrators are told about exactly what this request changed.
+    const cancelled = await prisma.events.updateManyAndReturn({
       where: {
         match_id: existing.match_id,
         OR: [
@@ -314,8 +320,42 @@ export class MatchRequestsService {
         ],
       },
       data: { status: 'cancelled' },
+      select: {
+        title: true,
+        date: true,
+        start_time: true,
+        end_time: true,
+        coordinator_name: true,
+        guest_lecturer_name: true,
+        responded_at: true,
+      },
     });
+    await this.notifyAdminsOfCancellations(cancelled);
     await this.notifyUnmatch(pair, caller.side);
+  }
+
+  /**
+   * Tells every active administrator about the sessions an unmatch cancelled.
+   * The administrators are looked up once and every notice goes in together.
+   * The cancellation is already saved, so a notice that cannot be saved is
+   * logged and dropped rather than undoing the unmatch.
+   */
+  private async notifyAdminsOfCancellations(
+    sessions: NoticedSession[],
+  ): Promise<void> {
+    if (sessions.length === 0) {
+      return;
+    }
+    try {
+      await this.notificationsService.createForAdmins(
+        sessions.map((session) => adminSessionNotice(session, 'cancelled')),
+      );
+    } catch (error) {
+      this.logger.error(
+        'Could not notify administrators of sessions cancelled by an unmatch',
+        error instanceof Error ? error.stack : undefined,
+      );
+    }
   }
 
   /**

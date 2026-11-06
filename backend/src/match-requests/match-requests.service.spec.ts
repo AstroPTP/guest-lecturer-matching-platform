@@ -1258,7 +1258,7 @@ describe('MatchRequestsService', () => {
         const read = jest
           .spyOn(prisma.events, 'findMany')
           .mockResolvedValue(accepted as never);
-        const cancel = jest.spyOn(prisma.events, 'updateMany');
+        const cancel = jest.spyOn(prisma.events, 'updateManyAndReturn');
         const notify = jest
           .spyOn(notifications, 'create')
           .mockResolvedValue({} as never);
@@ -1281,16 +1281,18 @@ describe('MatchRequestsService', () => {
 
       it('cancels every invitation still waiting, and tells the other person', async () => {
         const { cancel, notify } = await endMatchWith([]);
-        expect(cancel).toHaveBeenCalledWith({
-          where: {
-            match_id: 6007n,
-            OR: [
-              { status: 'invitation-sent' },
-              { status: 'accepted', event_id: { notIn: [] } },
-            ],
-          },
-          data: { status: 'cancelled' },
-        });
+        expect(cancel).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              match_id: 6007n,
+              OR: [
+                { status: 'invitation-sent' },
+                { status: 'accepted', event_id: { notIn: [] } },
+              ],
+            },
+            data: { status: 'cancelled' },
+          }),
+        );
         expect(notify).toHaveBeenCalledTimes(1);
         expect(notify).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1340,9 +1342,147 @@ describe('MatchRequestsService', () => {
         .spyOn(prisma.match_requests, 'updateMany')
         .mockResolvedValue({ count: 0 });
       const notify = jest.spyOn(notifications, 'create');
+      const cancelEvents = jest.spyOn(prisma.events, 'updateManyAndReturn');
+      const tellAdmins = jest.spyOn(notifications, 'createForAdmins');
 
       await service.remove(userId, '2001');
       expect(notify).not.toHaveBeenCalled();
+      expect(cancelEvents).not.toHaveBeenCalled();
+      expect(tellAdmins).not.toHaveBeenCalled();
+    });
+
+    describe('administrators', () => {
+      const confirmed = {
+        title: 'Cloud Security Talk',
+        date: '2026-10-15',
+        start_time: '10:00',
+        end_time: '11:00',
+        coordinator_name: 'Ada Lee',
+        guest_lecturer_name: 'Sam Tran',
+        responded_at: new Date('2026-10-02T03:00:00.000Z'),
+      };
+      const invited = {
+        title: 'Follow-up Q&A',
+        date: '2026-10-22',
+        start_time: '13:00',
+        end_time: '14:00',
+        coordinator_name: 'Ada Lee',
+        guest_lecturer_name: 'Sam Tran',
+        responded_at: null,
+      };
+
+      /** An accepted match the guest ends, with `cancelled` the events the write returns. */
+      function endMatch(cancelled: object[]) {
+        signInAsGuest(7n);
+        existingRow('ACCEPTED');
+        jest
+          .spyOn(prisma.match_requests, 'updateMany')
+          .mockResolvedValue({ count: 1 });
+        jest.spyOn(prisma.coordinators, 'findUnique').mockResolvedValueOnce({
+          first_name: 'Ada',
+          last_name: 'Lee',
+          users: { auth0Id: 'auth0|coordinator' },
+        } as never);
+        jest.spyOn(prisma.guests, 'findUnique').mockResolvedValueOnce({
+          first_name: 'Sam',
+          last_name: 'Tran',
+          users: { auth0Id: 'auth0|guest' },
+        } as never);
+        const notify = jest
+          .spyOn(notifications, 'create')
+          .mockResolvedValue({} as never);
+        return {
+          notify,
+          cancelEvents: jest
+            .spyOn(prisma.events, 'updateManyAndReturn')
+            .mockResolvedValue(cancelled as never),
+          tellAdmins: jest
+            .spyOn(notifications, 'createForAdmins')
+            .mockResolvedValue(2),
+        };
+      }
+
+      it('are told about each confirmed or invited event the unmatch cancelled, in one call', async () => {
+        const { tellAdmins } = endMatch([confirmed, invited]);
+
+        await service.remove(userId, '2001');
+
+        // One call for the lot, so the administrators are looked up once.
+        expect(tellAdmins).toHaveBeenCalledTimes(1);
+        expect(tellAdmins).toHaveBeenCalledWith([
+          {
+            type: 'event',
+            title: 'Guest lecture cancelled',
+            description:
+              'Cloud Security Talk, 2026-10-15 10:00 to 11:00, Ada Lee with Sam Tran',
+            actionLabel: 'View events',
+            href: '/dashboard/events',
+          },
+          {
+            type: 'event',
+            title: 'Guest lecture invitation withdrawn',
+            description:
+              'Follow-up Q&A, 2026-10-22 13:00 to 14:00, Ada Lee with Sam Tran',
+            actionLabel: 'View events',
+            href: '/dashboard/events',
+          },
+        ]);
+      });
+
+      it('are told only after the cancellation has been written', async () => {
+        const { cancelEvents, tellAdmins } = endMatch([confirmed]);
+
+        await service.remove(userId, '2001');
+
+        expect(cancelEvents.mock.invocationCallOrder[0]).toBeLessThan(
+          tellAdmins.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('only cancel, and so only announce, events that were invited or confirmed and not finished', async () => {
+        const { cancelEvents } = endMatch([]);
+
+        await service.remove(userId, '2001');
+
+        expect(cancelEvents).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              match_id: 6007n,
+              OR: [
+                { status: 'invitation-sent' },
+                { status: 'accepted', event_id: { notIn: [] } },
+              ],
+            },
+          }),
+        );
+      });
+
+      it('are not told when the unmatch cancelled nothing', async () => {
+        const { tellAdmins } = endMatch([]);
+
+        await service.remove(userId, '2001');
+
+        expect(tellAdmins).not.toHaveBeenCalled();
+      });
+
+      it('failing to tell them does not stop the rest of the unmatch', async () => {
+        const { tellAdmins, notify } = endMatch([confirmed, invited]);
+        tellAdmins.mockRejectedValue(new Error('database busy'));
+        jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation(() => undefined);
+
+        await expect(service.remove(userId, '2001')).resolves.toBeUndefined();
+
+        // The other person was still told.
+        expect(tellAdmins).toHaveBeenCalledTimes(1);
+        expect(notify).toHaveBeenCalledWith(
+          expect.objectContaining({
+            recipientId: 'auth0|coordinator',
+            title: 'Match ended',
+          }),
+        );
+      });
     });
   });
   describe('findAcceptedMatch and open reports', () => {

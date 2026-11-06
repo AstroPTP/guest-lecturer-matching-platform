@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Patch, Body, Param } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Body, Param, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/authenticated-user';
@@ -16,6 +17,15 @@ export class EventsController {
     return this.eventsService.create(dto, user.id);
   }
 
+  @Get('prefill/:guestLecturerId')
+  @Roles(AppRole.UnitCoordinator)
+  prefill(
+    @Param('guestLecturerId') guestLecturerId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.eventsService.prefill(guestLecturerId, user.id);
+  }
+
   @Get('coordinator')
   @Roles(AppRole.UnitCoordinator)
   findForCoordinator(@CurrentUser() user: AuthenticatedUser) {
@@ -26,6 +36,26 @@ export class EventsController {
   @Roles(AppRole.GuestSpeaker)
   findForGuestLecturer(@CurrentUser() user: AuthenticatedUser) {
     return this.eventsService.findMine(user.id);
+  }
+
+  /**
+   * The confirmed session as a calendar file. Sent as an attachment and never
+   * kept by a cache, since it is the caller's own.
+   */
+  @Get(':id/calendar.ics')
+  @Roles(AppRole.UnitCoordinator, AppRole.GuestSpeaker)
+  async calendar(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<string> {
+    const { eventId, ics } = await this.eventsService.calendarFile(id, user.id);
+    response.set({
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'Content-Disposition': `attachment; filename="guest-lecture-${eventId}.ics"`,
+      'Cache-Control': 'private, no-store',
+    });
+    return ics;
   }
 
   @Patch(':id/accept')

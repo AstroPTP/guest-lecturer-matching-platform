@@ -6,6 +6,7 @@ import {
   type AuditAction,
   type AuditActorRole,
   type AuditCategory,
+  type AdminNotification,
   type AuditEntry,
   type DirectoryUser,
   type SecuritySignals,
@@ -589,4 +590,27 @@ export async function setRequestStatus(
  */
 export function requestAttachmentHref(attachmentId: string): string {
   return `/api/backend/support/attachments/${encodeURIComponent(attachmentId)}`;
+}
+
+// ---------------------------------------------------------------------------
+// The administrator's own notifications
+// ---------------------------------------------------------------------------
+
+/** The caller's notifications, newest first. */
+export async function getNotifications(): Promise<AdminNotification[]> {
+  return backendFetch<AdminNotification[]>('/notifications');
+}
+
+/** How many of the caller's notifications are unread, for the bell. */
+export async function getUnreadNotificationCount(): Promise<number> {
+  const { count } = await backendFetch<{ count: number }>('/notifications/unread-count');
+  return count;
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  await backendFetch<AdminNotification>(`/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await backendFetch<{ success: boolean }>('/notifications/read-all', { method: 'PATCH' });
 }

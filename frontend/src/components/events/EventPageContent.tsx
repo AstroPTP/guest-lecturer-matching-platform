@@ -9,6 +9,7 @@ import UpcomingEventCard from "./UpcomingEventCard";
 import type { AcademicEvent, CreateAcademicEventData } from "@/types/events/eventTypes";
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
 import type { UserRole } from "@/types/shared/userRole";
+import { BackendError } from "@/lib/api/backendClient";
 
 import { acceptEvent, cancelEvent,completeEvent, createEvent, declineEvent, getEventsForCoordinator, getEventsForGuestLecturer} from "@/services/events/eventService";
 
@@ -88,18 +89,22 @@ export default function EventPageContent({
     }, 4000);
   }
   const NOT_INTEGRATED_MESSAGE = "This isn't connected to a backend yet, so that action couldn't be saved.";
-  async function handleCreateEvent(data: CreateAcademicEventData): Promise<boolean> {
+  /** The reason the API gave, when it gave one, since it says what to change. */
+  function failureText(error: unknown): string {
+    return error instanceof BackendError && error.message ? error.message : NOT_INTEGRATED_MESSAGE;
+  }
+
+  async function handleCreateEvent(data: CreateAcademicEventData): Promise<string | null> {
     try {
       await createEvent(data);
-    } catch {
-      showActionError(NOT_INTEGRATED_MESSAGE);
-      return false;
+    } catch (error) {
+      return failureText(error);
     }
 
     setShowCreateModal(false);
     await loadEvents();
     showMessage("Event invitation sent successfully.");
-    return true;
+    return null;
   }
 
   /**
@@ -113,8 +118,10 @@ export default function EventPageContent({
     setBusyEventId(eventId);
     try {
       await action(eventId);
-    } catch {
-      showActionError(NOT_INTEGRATED_MESSAGE);
+    } catch (error) {
+      showActionError(failureText(error));
+      // The other person may have changed the event since this page loaded.
+      await loadEvents();
       return;
     } finally {
       setBusyEventId(null);
