@@ -6,6 +6,7 @@ import {
 import { AppRole } from '../auth/roles';
 import { prisma, resolveUserId, toId } from '../prisma';
 import { CreateNotificationDto } from './dto/create-notification.dto';
+import { forgetPush, notePushed, pushToUsers, repeatPushDue } from './push';
 
 /** A notice before it is addressed to anyone. */
 export type AdminNotice = Omit<CreateNotificationDto, 'recipientId'>;
@@ -59,6 +60,11 @@ const NOTIFICATION_LOCK_NAMESPACE = 0x6e6f7469;
  * Notifications, stored so they survive a restart. Recipients are addressed by
  * their Auth0 id, the same id the caller's token carries, and stored against
  * the numeric user row.
+ *
+ * Every way of raising a notice also sends it to the recipient's phones and
+ * computers once it is stored. That send is started and left to finish on its
+ * own: the request that raised the notice neither waits for it nor hears of a
+ * failure in it.
  */
 @Injectable()
 export class NotificationsService {
@@ -67,6 +73,7 @@ export class NotificationsService {
     const row = await prisma.notifications.create({
       data: this.toRowData(userId, dto),
     });
+    void pushToUsers([userId], dto);
     return this.toNotification(dto.recipientId, row);
   }
 
@@ -95,6 +102,10 @@ export class NotificationsService {
         list.map((notice) => this.toRowData(admin.userid, notice)),
       ),
     });
+    const adminIds = admins.map((admin) => admin.userid);
+    for (const notice of list) {
+      void pushToUsers(adminIds, notice);
+    }
     return count;
   }
 
@@ -123,6 +134,7 @@ export class NotificationsService {
     }
 
     await prisma.notifications.create({ data: this.toRowData(userId, dto) });
+    void pushToUsers([userId], dto);
     return true;
   }
 
@@ -164,7 +176,7 @@ export class NotificationsService {
     const userId = await resolveUserId(dto.recipientId);
     const lockKey = String(userId) + ':' + dto.href;
 
-    await prisma.$transaction(async (tx) => {
+    const moved = await prisma.$transaction(async (tx) => {
       // cspell:disable-next-line -- hashtext is a Postgres function
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(${NOTIFICATION_LOCK_NAMESPACE}::int, hashtext(${lockKey}::text))`;
 
@@ -180,6 +192,22 @@ export class NotificationsService {
       if (count === 0) {
         await tx.notifications.create({ data: this.toRowData(userId, dto) });
       }
+      return count > 0;
+    });
+
+    // A new notice is always pushed. One that only moved an unread notice back
+    // to the top is pushed too, so a reply in a conversation the person has not
+    // opened still reaches them, but not again within five minutes of the last
+    // push for that conversation: a run of quick messages is one buzz, as it is
+    // one entry in the bell. Sent after the transaction, once the notice is stored.
+    if (moved && !repeatPushDue(userId, dto.href)) {
+      return;
+    }
+    notePushed(userId, dto.href);
+    void pushToUsers([userId], dto).then((sent) => {
+      // Nothing reached a device, as for someone with none or whose account is
+      // deactivated, so there was no buzz for the next message to wait out.
+      if (sent === 0) forgetPush(userId, dto.href);
     });
   }
 

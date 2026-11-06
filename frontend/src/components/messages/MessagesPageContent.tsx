@@ -13,6 +13,7 @@ import type { ChatMessage, Conversation, ConversationParticipant, ConversationSe
 import type { UserRole } from "@/types/shared/userRole";
 import { ServiceError } from "@/lib/serviceErrors";
 import CreateEventModal from "@/components/events/CreateEventModal";
+import PushPromptBanner from "./PushPromptBanner";
 import SessionCard from "./SessionCard";
 import { acceptEvent, createEvent, declineEvent, getEventPrefill, getEventsForCoordinator, getEventsForGuestLecturer } from "@/services/events/eventService";
 import type { AcademicEvent, CreateAcademicEventData, EventPrefill } from "@/types/events/eventTypes";
@@ -425,41 +426,47 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         onSelect={selectConversation}
       />
 
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col">
+        {conversationSeeds.length > 0 && (
+          <PushPromptBanner settingsHref={userType === "unitCoordinator" ? "/unit_coordinator/settings" : "/guest_lecturer/settings"} />
+        )}
+
         {actionError && (
           <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-700" role="alert">
             {actionError}
           </div>
         )}
 
-        {selectedConversation ? (
-          <ChatThread
-            conversation={selectedConversation}
-            messages={messages}
-            messageText={messageText}
-            setMessageText={setMessageText}
-            onSubmit={handleSubmit}
-            onShowInfo={() => setShowInfoPanel(true)}
-            sessions={sessionsWith(sessions, userType, selectedConversation)}
-            viewer={userType}
-            busySessionId={busySessionId}
-            onAcceptSession={(eventId) => void respondToSession(eventId, acceptEvent)}
-            onDeclineSession={(eventId) => void respondToSession(eventId, declineEvent)}
-            onSchedule={userType === "unitCoordinator" && selectedConversation.kind !== "support" ? () => void handleSchedule(selectedConversation) : undefined}
-            isPreparingSession={isPreparingSession}
-            canReply={selectedConversation.kind !== "support" || Boolean(replyThread)}
-            attachment={attachment}
-            attachmentError={attachmentError}
-            onChooseAttachment={chooseAttachment}
-            onRemoveAttachment={() => {
-              setAttachment(null);
-              setAttachmentError(null);
-            }}
-            isSending={isSending}
-          />
-        ) : (
-          <EmptyChatState />
-        )}
+        <div className="min-h-0 flex-1">
+          {selectedConversation ? (
+            <ChatThread
+              conversation={selectedConversation}
+              messages={messages}
+              messageText={messageText}
+              setMessageText={setMessageText}
+              onSubmit={handleSubmit}
+              onShowInfo={() => setShowInfoPanel(true)}
+              sessions={sessionsWith(sessions, userType, selectedConversation)}
+              viewer={userType}
+              busySessionId={busySessionId}
+              onAcceptSession={(eventId) => void respondToSession(eventId, acceptEvent)}
+              onDeclineSession={(eventId) => void respondToSession(eventId, declineEvent)}
+              onSchedule={userType === "unitCoordinator" && selectedConversation.kind !== "support" ? () => void handleSchedule(selectedConversation) : undefined}
+              isPreparingSession={isPreparingSession}
+              canReply={selectedConversation.kind !== "support" || Boolean(replyThread)}
+              attachment={attachment}
+              attachmentError={attachmentError}
+              onChooseAttachment={chooseAttachment}
+              onRemoveAttachment={() => {
+                setAttachment(null);
+                setAttachmentError(null);
+              }}
+              isSending={isSending}
+            />
+          ) : (
+            <EmptyChatState />
+          )}
+        </div>
       </div>
 
       {showInfoPanel && selectedConversation && selectedConversation.kind !== "support" && (

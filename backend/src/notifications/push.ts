@@ -1,0 +1,625 @@
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  HttpStatus,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { createECDH, timingSafeEqual } from 'node:crypto';
+import * as webPush from 'web-push';
+import { loadModerationState } from '../admin/open-reports';
+import { isUniqueViolation } from '../common/prisma-errors';
+import { prisma, resolveUserId } from '../prisma';
+
+/**
+ * Pushed notifications, the Web Push protocol with VAPID.
+ *
+ * Every notice raised in the application is also sent to the phones and
+ * computers the person has chosen to receive them on. The browser's own push
+ * service (Google, Mozilla, Apple or Microsoft, depending on the browser)
+ * carries the message, so there is no mail server and no outside account to
+ * set up. The only configuration is a key pair, and without it all of this is
+ * off.
+ *
+ * Plain functions rather than an injectable, so the notifications service and
+ * the routes need one import and no module dependency.
+ */
+
+const logger = new Logger('Push');
+
+/** The most devices one person can have set up. A newer one replaces the least recently used. */
+export const MAX_SUBSCRIPTIONS_PER_USER = 5;
+
+/** The longest body a push carries, in characters. */
+export const BODY_LIMIT = 140;
+
+/** The longest push address stored. Real ones are a few hundred characters. */
+export const MAX_ENDPOINT_LENGTH = 2048;
+
+/** How long the push service holds a message for a device that is switched off. */
+const TTL_SECONDS = 24 * 60 * 60;
+
+/** How long to wait for a push service to answer before giving up on it. */
+const SEND_TIMEOUT_MS = 10_000;
+
+export interface PushConfig {
+  publicKey: string;
+  privateKey: string;
+  subject: string;
+}
+
+/** What a push is built from: the parts of a notice a device is shown. */
+export interface PushNotice {
+  title: string;
+  description: string;
+  href: string;
+}
+
+/** The whole of what leaves the server for a device. Nothing else is added to it. */
+export interface PushPayload {
+  title: string;
+  body: string;
+  href: string;
+}
+
+let warnedAboutConfig = false;
+
+/**
+ * The key pair and contact address, or null when any of the three is missing
+ * or malformed. Read from the environment each time it is needed, so the
+ * result is never stale and a test can switch push on and off.
+ *
+ * A malformed value turns push off instead of stopping the application: push
+ * is an extra, and a typo in it should not take sign-in down.
+ */
+export function readPushConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): PushConfig | null {
+  const publicKey = env.VAPID_PUBLIC_KEY?.trim() ?? '';
+  const privateKey = env.VAPID_PRIVATE_KEY?.trim() ?? '';
+  const subject = env.VAPID_SUBJECT?.trim() ?? '';
+  if (!publicKey || !privateKey || !subject) {
+    return null;
+  }
+
+  // A public key is an uncompressed P-256 point (65 bytes, starting 0x04) and a
+  // private key is its 32-byte scalar, both as URL-safe base64.
+  const publicBytes = Buffer.from(publicKey, 'base64url');
+  const privateBytes = Buffer.from(privateKey, 'base64url');
+  const valid =
+    publicBytes.length === 65 &&
+    publicBytes[0] === 0x04 &&
+    privateBytes.length === 32 &&
+    (/^mailto:.+@.+/.test(subject) || /^https:\/\/.+/.test(subject));
+  if (!valid) {
+    if (!warnedAboutConfig) {
+      warnedAboutConfig = true;
+      logger.warn(
+        'Push notifications are off: the VAPID settings are present but not valid.',
+      );
+    }
+    return null;
+  }
+
+  return { publicKey, privateKey, subject };
+}
+
+/** Whether pushed notifications are switched on. */
+export function pushEnabled(): boolean {
+  return readPushConfig() !== null;
+}
+
+/** The public key a browser needs to subscribe, or nothing when push is off. */
+export function publicKeyStatus(): {
+  enabled: boolean;
+  publicKey: string | null;
+} {
+  const config = readPushConfig();
+  return { enabled: config !== null, publicKey: config?.publicKey ?? null };
+}
+
+/** Push services whose full address is known. */
+const PUSH_HOSTS = new Set([
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'web.push.apple.com',
+]);
+
+/** Push services that use a different subdomain per region or per device. */
+const PUSH_HOST_SUFFIXES = ['.notify.windows.com'];
+
+/**
+ * The push address in its canonical form, or null when it is not one this
+ * application will send to.
+ *
+ * The server makes an HTTPS request to whatever address a browser reports, so
+ * an unchecked one would let a signed-in user have the server call any host it
+ * can reach, internal ones included. Only https, on the default port, with no
+ * credentials, at a known push service, is accepted.
+ *
+ * The address that is stored and used is the parser's own serialisation, not
+ * the string that arrived. The library that sends the request parses addresses
+ * with an older parser than the one used here, and the two can disagree about
+ * which host a string with backslashes or similar names. Handing it the
+ * canonical form leaves nothing for them to disagree about.
+ */
+export function normalisePushEndpoint(raw: string): string | null {
+  if (raw.length > MAX_ENDPOINT_LENGTH) {
+    return null;
+  }
+  // Whitespace, backslashes and control characters are where parsers differ.
+  // eslint-disable-next-line no-control-regex
+  if (/[\s\\\u0000-\u001f\u007f]/.test(raw)) {
+    return null;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+
+  if (url.protocol !== 'https:' || url.username || url.password || url.port) {
+    return null;
+  }
+
+  const host = url.hostname;
+  const known =
+    PUSH_HOSTS.has(host) ||
+    PUSH_HOST_SUFFIXES.some(
+      (suffix) => host.endsWith(suffix) && host.length > suffix.length,
+    );
+  return known ? url.href : null;
+}
+
+/** An href that stays on this site: a path, never a full address or a protocol-relative one. */
+function safeHref(href: string): string {
+  return href.startsWith('/') && !href.startsWith('//') && !/[\\\s]/.test(href)
+    ? href
+    : '/';
+}
+
+/** The text cut to the limit at a whole character, with an ellipsis when something was left out. */
+function truncate(text: string, limit: number): string {
+  const characters = Array.from(text.trim());
+  if (characters.length <= limit) {
+    return characters.join('');
+  }
+  return (
+    characters
+      .slice(0, limit - 1)
+      .join('')
+      .trimEnd() + '…'
+  );
+}
+
+/**
+ * What a device is sent. Exactly three fields: the notice's title, its
+ * description cut to 140 characters, and where it leads. The recipient, the
+ * notice type and the id stay on the server.
+ */
+export function buildPayload(notice: PushNotice): PushPayload {
+  return {
+    title: notice.title,
+    body: truncate(notice.description, BODY_LIMIT),
+    href: safeHref(notice.href),
+  };
+}
+
+function statusOf(error: unknown): number | undefined {
+  if (typeof error === 'object' && error !== null && 'statusCode' in error) {
+    const { statusCode } = error;
+    return typeof statusCode === 'number' ? statusCode : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Sends one notice to every device the given people have set up, and returns
+ * how many devices the push services accepted it for.
+ *
+ * Never throws. A device the push service says is gone (404 or 410), or whose
+ * stored keys cannot encrypt a message, is deleted so it is not tried again.
+ * Any other failure is logged by status only: the error object is left out
+ * because it carries the device's address.
+ */
+async function deliver(userIds: bigint[], notice: PushNotice): Promise<number> {
+  const config = readPushConfig();
+  if (!config || userIds.length === 0) {
+    return 0;
+  }
+
+  try {
+    // Someone held after reports is not sent anything until the hold is lifted,
+    // as they are not sent messages.
+    const held = (await loadModerationState()).held;
+    const recipients = userIds.filter((id) => !held.has(id));
+    if (recipients.length === 0) {
+      return 0;
+    }
+
+    // A deactivated account is not sent anything either. The devices are kept,
+    // so reactivating the account resumes them.
+    const devices = await prisma.push_subscriptions.findMany({
+      where: { user_id: { in: recipients }, users: { deletedat: null } },
+      select: {
+        subscription_id: true,
+        endpoint: true,
+        p256dh: true,
+        auth: true,
+      },
+    });
+    if (devices.length === 0) {
+      return 0;
+    }
+
+    const message = JSON.stringify(buildPayload(notice));
+    const accepted: bigint[] = [];
+    const gone: bigint[] = [];
+
+    await Promise.all(
+      devices.map(async (device) => {
+        // Encrypting is the one step that depends only on the device's own
+        // keys, so a failure here means the stored keys are no use, and the
+        // device is removed. A failure while sending is not that: the network
+        // or the push service may be briefly down, and the device is kept.
+        try {
+          webPush.encrypt(device.p256dh, device.auth, message, 'aes128gcm');
+        } catch {
+          gone.push(device.subscription_id);
+          return;
+        }
+
+        try {
+          await webPush.sendNotification(
+            {
+              endpoint: device.endpoint,
+              keys: { p256dh: device.p256dh, auth: device.auth },
+            },
+            message,
+            {
+              vapidDetails: {
+                subject: config.subject,
+                publicKey: config.publicKey,
+                privateKey: config.privateKey,
+              },
+              TTL: TTL_SECONDS,
+              urgency: 'normal',
+              timeout: SEND_TIMEOUT_MS,
+            },
+          );
+          accepted.push(device.subscription_id);
+        } catch (error) {
+          const status = statusOf(error);
+          if (status === 404 || status === 410) {
+            gone.push(device.subscription_id);
+          } else {
+            logger.warn(
+              `A push was not delivered (${status ?? (error instanceof Error ? error.name : 'unknown error')})`,
+            );
+          }
+        }
+      }),
+    );
+
+    if (gone.length > 0) {
+      await prisma.push_subscriptions.deleteMany({
+        where: { subscription_id: { in: gone } },
+      });
+    }
+    if (accepted.length > 0) {
+      await prisma.push_subscriptions.updateMany({
+        where: { subscription_id: { in: accepted } },
+        data: { last_used_at: new Date() },
+      });
+    }
+    return accepted.length;
+  } catch (error) {
+    logger.warn(
+      `Pushes were not sent (${error instanceof Error ? error.name : 'unknown error'})`,
+    );
+    return 0;
+  }
+}
+
+/**
+ * Sends a notice to the given people's devices without making the caller wait,
+ * and without the caller ever hearing of a failure. The returned promise never
+ * rejects; it is returned only so a test can wait for the sending to finish.
+ */
+export function pushToUsers(
+  userIds: bigint[],
+  notice: PushNotice,
+): Promise<number> {
+  // Started inside .then() so that even a synchronous throw lands in the
+  // catch instead of failing the request that raised the notice.
+  return Promise.resolve()
+    .then(() => deliver(userIds, notice))
+    .catch(() => 0);
+}
+
+/** Refuses the request when push is off. */
+function requirePush(): void {
+  if (!pushEnabled()) {
+    throw new NotFoundException('Notifications are not switched on here.');
+  }
+}
+
+export interface SubscriptionInput {
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+}
+
+/**
+ * Whether the key is a real point on the P-256 curve in uncompressed form,
+ * which is what a browser's subscription key always is. A value that only has
+ * the right length would be stored and then fail every time a push is encrypted
+ * for it.
+ */
+function isP256Point(key: string): boolean {
+  const bytes = Buffer.from(key, 'base64url');
+  if (bytes.length !== 65 || bytes[0] !== 0x04) {
+    return false;
+  }
+  try {
+    const ecdh = createECDH('prime256v1');
+    ecdh.generateKeys();
+    ecdh.computeSecret(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether two keys are the same, without the time taken telling how much of them matched. */
+function sameKey(stored: string, submitted: string): boolean {
+  const a = Buffer.from(stored);
+  const b = Buffer.from(submitted);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Records the device against the caller, or refuses.
+ *
+ * - No row for the address: one is created for the caller.
+ * - A row of the caller's own: its keys and last-used time are refreshed.
+ * - A row of someone else's: it is handed over only when the submitted keys
+ *   are exactly the stored ones. That is the same browser subscription, which
+ *   happens when another person signs in on a shared computer. Different keys
+ *   mean the caller does not hold the subscription the row describes, so the
+ *   answer is 409 and the row is left as it is. Another person's keys are
+ *   never overwritten.
+ *
+ * The update repeats the conditions that were just checked, so a row that
+ * changed between the read and the write is not overwritten; the decision is
+ * then made again from what is there now.
+ */
+async function claimDevice(
+  endpoint: string,
+  userId: bigint,
+  input: SubscriptionInput,
+  userAgent: string | null,
+): Promise<void> {
+  const fields = {
+    p256dh: input.p256dh,
+    auth: input.auth,
+    user_agent: userAgent,
+    last_used_at: new Date(),
+  };
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const existing = await prisma.push_subscriptions.findUnique({
+      where: { endpoint },
+      select: {
+        subscription_id: true,
+        user_id: true,
+        p256dh: true,
+        auth: true,
+      },
+    });
+
+    if (!existing) {
+      try {
+        await prisma.push_subscriptions.create({
+          data: { user_id: userId, endpoint, ...fields },
+        });
+        return;
+      } catch (error) {
+        // Two requests for a new address arrived together and the other won.
+        // Read what it wrote and decide again.
+        if (isUniqueViolation(error)) continue;
+        throw error;
+      }
+    }
+
+    const sameBrowserSubscription =
+      sameKey(existing.p256dh, input.p256dh) &&
+      sameKey(existing.auth, input.auth);
+    if (existing.user_id !== userId && !sameBrowserSubscription) {
+      break;
+    }
+
+    const { count } = await prisma.push_subscriptions.updateMany({
+      where: {
+        subscription_id: existing.subscription_id,
+        OR: [{ user_id: userId }, { p256dh: input.p256dh, auth: input.auth }],
+      },
+      data: { user_id: userId, ...fields },
+    });
+    if (count === 1) return;
+  }
+
+  throw new ConflictException(
+    'That device is already set up for another account.',
+  );
+}
+
+/**
+ * Stores a device for the caller, under the rules in claimDevice.
+ *
+ * Keeps at most five devices per person by removing the least recently used.
+ */
+export async function saveSubscription(
+  callerId: string,
+  input: SubscriptionInput,
+  userAgent?: string,
+): Promise<{ subscribed: true }> {
+  requirePush();
+
+  const endpoint = normalisePushEndpoint(input.endpoint);
+  if (!endpoint) {
+    throw new BadRequestException(
+      'That device address is not from a push service this application can use.',
+    );
+  }
+
+  if (!isP256Point(input.p256dh)) {
+    throw new BadRequestException('That device key is not valid.');
+  }
+
+  const userId = await resolveUserId(callerId);
+  await claimDevice(
+    endpoint,
+    userId,
+    input,
+    userAgent?.trim().slice(0, 200) || null,
+  );
+
+  const surplus = await prisma.push_subscriptions.findMany({
+    where: { user_id: userId },
+    orderBy: [{ last_used_at: 'desc' }, { subscription_id: 'desc' }],
+    skip: MAX_SUBSCRIPTIONS_PER_USER,
+    select: { subscription_id: true },
+  });
+  if (surplus.length > 0) {
+    await prisma.push_subscriptions.deleteMany({
+      where: {
+        subscription_id: { in: surplus.map((row) => row.subscription_id) },
+      },
+    });
+  }
+
+  return { subscribed: true };
+}
+
+/**
+ * Removes the caller's own device with this address. Another person's device
+ * is never touched: the delete is filtered by the caller as well as the
+ * address, and asking for one that is not theirs removes nothing.
+ */
+export async function removeSubscription(
+  callerId: string,
+  endpoint: string,
+): Promise<{ removed: boolean }> {
+  const userId = await resolveUserId(callerId);
+  const { count } = await prisma.push_subscriptions.deleteMany({
+    where: {
+      user_id: userId,
+      endpoint: normalisePushEndpoint(endpoint) ?? endpoint,
+    },
+  });
+  return { removed: count > 0 };
+}
+
+/** How many tests one person may send in the window. */
+export const TEST_PUSH_LIMIT = 3;
+const TEST_PUSH_WINDOW_MS = 60_000;
+
+/** When each person last sent a test, within the window. Pruned on every use. */
+const recentTests = new Map<string, number[]>();
+
+/**
+ * Counts a test against the person, or refuses with 429 when they have already
+ * sent the limit within the last minute.
+ *
+ * Kept here, per person, instead of in the request throttler: that runs before
+ * the sign-in check and so can only see the caller's address, and behind the
+ * web app's proxy that is the same address for everyone. The count is held in
+ * this process, so with several instances running the limit is per instance.
+ */
+function takeTestSlot(userId: bigint, now: number = Date.now()): void {
+  for (const [person, times] of recentTests) {
+    const live = times.filter((time) => now - time < TEST_PUSH_WINDOW_MS);
+    if (live.length === 0) recentTests.delete(person);
+    else if (live.length !== times.length) recentTests.set(person, live);
+  }
+
+  const key = userId.toString();
+  const live = recentTests.get(key) ?? [];
+  if (live.length >= TEST_PUSH_LIMIT) {
+    throw new HttpException(
+      'You can send three tests a minute. Wait a moment and try again.',
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  live.push(now);
+  recentTests.set(key, live);
+}
+
+/**
+ * Sends a short test to the caller's own devices and reports how many were
+ * reached. Waits for the push services, since the answer is what the person
+ * asked for. At most three a minute per person.
+ */
+export async function sendTest(callerId: string): Promise<{ sent: number }> {
+  requirePush();
+
+  const userId = await resolveUserId(callerId);
+  takeTestSlot(userId);
+  const sent = await pushToUsers([userId], {
+    title: 'Curtin GLMP',
+    description: 'Notifications are working on this device.',
+    href: '/',
+  });
+  return { sent };
+}
+
+/** How long a conversation's notice goes without another push after one. */
+const REPEAT_PUSH_MS = 5 * 60 * 1000;
+
+/** When each conversation's notice was last pushed to each person. Pruned on every use. */
+const lastPushed = new Map<string, number>();
+
+/**
+ * Whether a notice that was already unread, and is only being moved back to the
+ * top of the person's list, should be pushed again: not if the same
+ * conversation's notice was pushed in the last five minutes.
+ *
+ * A run of replies is one entry in the bell, and it is one push as well. A
+ * phone that buzzed for each of ten quick messages would be switched off.
+ * Held in this process, so with several instances running it is per instance.
+ */
+export function repeatPushDue(
+  userId: bigint,
+  href: string,
+  now: number = Date.now(),
+): boolean {
+  for (const [key, time] of lastPushed) {
+    if (now - time >= REPEAT_PUSH_MS) lastPushed.delete(key);
+  }
+  return !lastPushed.has(`${userId}:${href}`);
+}
+
+/**
+ * Takes back a record made by notePushed, for a push that reached no device, so
+ * that the next message in the conversation is not held back for nothing.
+ */
+export function forgetPush(userId: bigint, href: string): void {
+  lastPushed.delete(`${userId}:${href}`);
+}
+
+/**
+ * Records that the conversation's notice was pushed to the person just now.
+ * Made when the push is started, not when it ends, so that messages arriving
+ * while it is still on its way are held back too.
+ */
+export function notePushed(
+  userId: bigint,
+  href: string,
+  now: number = Date.now(),
+): void {
+  lastPushed.set(`${userId}:${href}`, now);
+}

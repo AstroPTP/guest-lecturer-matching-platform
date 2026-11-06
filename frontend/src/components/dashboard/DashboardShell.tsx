@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useSyncExternalStore } from "react";
+import { releaseDeviceBeforeSignOut } from "@/lib/push/signOutCleanup";
 import DashboardHeader from "./DashboardHeader";
 import DashboardSidebar from "./DashboardSidebar";
 import { DashboardMenuItem } from "./dashboardTypes";
@@ -56,6 +57,7 @@ function useLeaveWhenSignedOut() {
         const response = await fetch("/api/auth/session", { credentials: "same-origin", cache: "no-store" });
         const body = (await response.json()) as { user: unknown };
         if (!body.user) {
+          await releaseDeviceBeforeSignOut();
           window.location.replace("/login");
           return;
         }

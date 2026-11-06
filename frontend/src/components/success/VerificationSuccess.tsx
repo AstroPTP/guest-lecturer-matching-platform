@@ -6,6 +6,7 @@ import Image from "next/image";
 import BrandLogo from "@/components/brand/BrandLogo";
 import check from "@/assets/check.png";
 import arrow from "@/assets/arrow.png";
+import { releaseDeviceBeforeSignOut } from "@/lib/push/signOutCleanup";
 
 export default function VerificationSuccess() {
   const searchParams = useSearchParams();
@@ -19,7 +20,8 @@ export default function VerificationSuccess() {
   // which carries no role. End it, then sign in with the password account,
   // which holds the role. returnTo must be absolute and listed under Allowed
   // Logout URLs in Auth0, because the SDK passes it to Auth0 unchanged.
-  const logoutAndLogin = useCallback(() => {
+  const logoutAndLogin = useCallback(async () => {
+    await releaseDeviceBeforeSignOut();
     const returnTo = `${window.location.origin}/login?role=${role}`;
     window.location.href = `/auth/logout?returnTo=${encodeURIComponent(returnTo)}`;
   }, [role]);
@@ -30,7 +32,7 @@ export default function VerificationSuccess() {
     }, 1000);
 
     const redirect = setTimeout(() => {
-      logoutAndLogin();
+      void logoutAndLogin();
     }, 5000);
 
     return () => {
@@ -54,7 +56,7 @@ export default function VerificationSuccess() {
       <div className="w-full space-y-6">
         <button
           type="button"
-          onClick={logoutAndLogin}
+          onClick={() => void logoutAndLogin()}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#2d2d2d] px-6 py-4 text-lg font-medium text-white transition-colors hover:bg-black"
         >
           <span>Sign in to continue</span>

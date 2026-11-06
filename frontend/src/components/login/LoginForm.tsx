@@ -6,6 +6,7 @@ import Image from "next/image";
 import BrandLogo from "@/components/brand/BrandLogo";
 import visibility from "@/assets/visibility.png";
 import visibility_off from "@/assets/visibility_off.png";
+import { releaseDeviceIfSignedOut } from "@/lib/push/signOutCleanup";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -14,6 +15,14 @@ export default function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const searchParams = useSearchParams();
+
+  // Arriving here with no session, whether sent by the server or after
+  // signing out, means this device should no longer receive the previous
+  // person's notifications. Sign-outs that run in the page do this themselves
+  // first; this covers the ones that only redirect.
+  useEffect(() => {
+    void releaseDeviceIfSignedOut();
+  }, []);
 
   // The browser can bring this page back from its back/forward cache with the
   // email and password still typed in. Empty the form when that happens.

@@ -441,9 +441,9 @@ export class SettingsService {
 
   /**
    * Removes the caller's rows (profiles, profile photos, topics, availability,
-   * notifications, and the requests for details sent to them with their
-   * messages and attached files), then deletes the Auth0 user, then marks the
-   * users row.
+   * notifications, the devices set up to receive them, and the requests for
+   * details sent to them with their messages and attached files), then deletes
+   * the Auth0 user, then marks the users row.
    *
    * The database goes first, in one transaction, so a failure there leaves
    * Auth0 untouched and the person can still sign in to try again. If the
@@ -481,6 +481,10 @@ export class SettingsService {
       await tx.availability.deleteMany({ where: { user_id: userId } });
       await tx.user_expertise.deleteMany({ where: { user_id: userId } });
       await tx.notifications.deleteMany({ where: { user_id: userId } });
+      // The users row stays, so the cascade from it never runs. Left in place,
+      // these would keep delivering to the person's devices after the account
+      // was gone.
+      await tx.push_subscriptions.deleteMany({ where: { user_id: userId } });
       // Requests for details sent to this person. The users row stays, so the
       // cascade from it never runs and nothing else would remove them. The
       // attached files are found first, deleted last, and only if no other

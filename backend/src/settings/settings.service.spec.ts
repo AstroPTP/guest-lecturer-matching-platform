@@ -417,6 +417,9 @@ describe('deleteAccount', () => {
       availability: { deleteMany: jest.fn(() => record('availability')) },
       user_expertise: { deleteMany: jest.fn(() => record('user_expertise')) },
       notifications: { deleteMany: jest.fn(() => record('notifications')) },
+      push_subscriptions: {
+        deleteMany: jest.fn(() => record('push_subscriptions')),
+      },
       support_messages: {
         findMany: jest.fn(() => {
           order.push('support_messages.findMany');
@@ -496,6 +499,32 @@ describe('deleteAccount', () => {
     expect(tx.notifications.deleteMany).toHaveBeenCalledWith({
       where: { user_id: 1n },
     });
+  });
+
+  it("removes the caller's devices set up for pushed notifications", async () => {
+    const tx = deletionTransaction({});
+
+    await deleteWith(tx).result;
+
+    expect(tx.push_subscriptions.deleteMany).toHaveBeenCalledWith({
+      where: { user_id: 1n },
+    });
+  });
+
+  it('removes the devices inside the deletion transaction, before the user row is blanked', async () => {
+    const tx = deletionTransaction({});
+    const outside = jest.spyOn(prisma.push_subscriptions, 'deleteMany');
+
+    await deleteWith(tx).result;
+
+    // On the transaction's own client, so it commits or rolls back with the
+    // rest of the deletion, and never on a separate connection.
+    expect(tx.push_subscriptions.deleteMany).toHaveBeenCalledTimes(1);
+    expect(outside).not.toHaveBeenCalled();
+    expect(tx.order.indexOf('push_subscriptions')).toBeGreaterThanOrEqual(0);
+    expect(tx.order.indexOf('push_subscriptions')).toBeLessThan(
+      tx.order.indexOf('users.update'),
+    );
   });
 
   it('removes the requests for details sent to the caller, with their messages', async () => {

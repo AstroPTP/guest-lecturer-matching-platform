@@ -100,5 +100,12 @@ export async function proxy(request) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png).*)'],
+  // Left out: static assets, and the files a browser fetches before anyone has
+  // signed in, or from a background process with no session: the install
+  // manifest, the service worker, the favicon and the icons, drawn or stored.
+  // Each name has to be the whole first segment, so a route that merely starts
+  // with one is still checked.
+  matcher: [
+    '/((?!(?:_next/static|_next/image|favicon\\.ico|icon\\.svg|apple-icon\\.png|icon|push-badge|manifest\\.webmanifest|sw\\.js)(?:/|$)).*)',
+  ],
 };
