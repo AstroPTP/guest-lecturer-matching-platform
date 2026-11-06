@@ -1,5 +1,6 @@
 "use client";
 
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 import { getInitials } from "@/utils/displayFormatters";
 
 import Image from "next/image";
@@ -59,7 +60,7 @@ function GuestLecturerProfileView({ item, onBack, onChat}: {
 
           <ProfileSection title="Expertise">
             <div className="space-y-7">
-              <TagList label="Expertise Topics" items={expertise.selectedTopics} />
+              <TagList label="Expertise Topics" items={withFixedTopicSpelling(expertise.selectedTopics)} />
               <ProfileGrid>
                 <ProfileField label="Experience Level" value={experienceLevelLabel(expertise.experienceLevel)} />
                 <ProfileField label="Speaking Experience" value={expertise.hasSpeakingExperience ? "Yes" : "No"} />
@@ -141,7 +142,7 @@ function UnitCoordinatorProfileView({ item, onBack, onChat}: {
 
           <ProfileSection title="Guest Lecturer Requirements">
             <div className="space-y-7">
-              <TagList label="Expertise Topics" items={expertise.selectedTopics} />
+              <TagList label="Expertise Topics" items={withFixedTopicSpelling(expertise.selectedTopics)} />
               <TagList label="Required Experience Levels" items={expertise.experienceLevelsRequired.map(experienceLevelLabel)} />
               <ProfileField label="Industry Relevance" value={expertise.industryRelevance} />
               <ProfileField label="Learning Objective" value={expertise.learningObjective} />

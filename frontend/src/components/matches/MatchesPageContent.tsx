@@ -8,6 +8,7 @@ import MatchCard from "./MatchCard";
 import MatchedProfileView from "./MatchedProfileView";
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 import type { UserRole } from "@/types/shared/userRole";
 
 interface MatchesPageContentProps {
@@ -43,7 +44,7 @@ export default function MatchesPageContent({ currentUserType, title, description
     loadMatches();
   }, [currentUserType]);
   const filteredProfiles = matchedProfiles.filter((item) => {
-    const searchableText = [item.profile.basicInformation.fullName, ...item.profile.expertise.selectedTopics].join(" ").toLowerCase();
+    const searchableText = [item.profile.basicInformation.fullName, ...withFixedTopicSpelling(item.profile.expertise.selectedTopics)].join(" ").toLowerCase();
     return searchableText.includes(search.trim().toLowerCase());
   });
 
