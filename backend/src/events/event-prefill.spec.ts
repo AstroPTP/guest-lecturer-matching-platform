@@ -5,6 +5,7 @@ import {
   parseDurationMinutes,
   sharedTopicsOf,
   suggestTitle,
+  trimTrailingStops,
   type CoordinatorSide,
   type GuestSide,
 } from './event-prefill';
@@ -134,25 +135,134 @@ describe('event prefill', () => {
   });
 
   describe('title', () => {
-    it('is the learning objective', () => {
-      expect(suggestTitle('  Apply theory\n to a campaign ', 'Marketing')).toBe(
-        'Apply theory to a campaign',
+    it('is the discipline and the guest lecturer’s name', () => {
+      expect(suggestTitle('Marketing', 'Greta Gray')).toBe(
+        'Guest lecture: Marketing with Greta Gray',
+      );
+      expect(suggestTitle('  Consumer\n behaviour ', ' Greta  Gray ')).toBe(
+        'Guest lecture: Consumer behaviour with Greta Gray',
       );
     });
 
-    it('is the discipline when there is no objective', () => {
-      expect(suggestTitle(null, 'Marketing')).toBe('Guest lecture: Marketing');
-      expect(suggestTitle('   ', 'Marketing')).toBe('Guest lecture: Marketing');
+    it('is short, and never the long learning objective', () => {
+      const title = buildPrefill({
+        matchId: 1n,
+        guestProfileId: 2n,
+        coordinator: {
+          ...coordinator,
+          learning_objective:
+            'Students will apply consumer behaviour theory to plan, run and evaluate a live campaign for a real client, and explain the ethical choices they made along the way.',
+        },
+        guest,
+        coordinatorTopics: [],
+        guestTopics: [],
+      }).title;
+      expect(title).toBe('Guest lecture: Marketing with Greta Gray');
+      expect(title).not.toContain('Students will');
     });
 
-    it('is empty when there is neither', () => {
-      expect(suggestTitle(null, null)).toBe('');
+    it('is just the guest lecturer when there is no discipline', () => {
+      expect(suggestTitle(null, 'Greta Gray')).toBe(
+        'Guest lecture with Greta Gray',
+      );
+      expect(suggestTitle('   ', 'Greta Gray')).toBe(
+        'Guest lecture with Greta Gray',
+      );
     });
 
-    it('cuts a long objective at a word', () => {
-      const title = suggestTitle('word '.repeat(60), null);
+    it('is never empty, and says so plainly when it knows neither', () => {
+      expect(suggestTitle(null, '')).toBe('Guest lecture');
+    });
+
+    it('cuts a long discipline at a word and keeps the guest’s name whole', () => {
+      const title = suggestTitle('word '.repeat(60), 'Greta Gray');
       expect(title.length).toBeLessThanOrEqual(100);
-      expect(title.endsWith('word...')).toBe(true);
+      expect(title.startsWith('Guest lecture: word word')).toBe(true);
+      expect(title.endsWith('word... with Greta Gray')).toBe(true);
+    });
+
+    it('stays within 100 characters for any length of discipline or name', () => {
+      for (const field of ['', 'a', 'x'.repeat(500), 'word '.repeat(90)]) {
+        for (const name of ['', 'Greta', 'Gwendolyn '.repeat(30)]) {
+          expect(suggestTitle(field, name).length).toBeLessThanOrEqual(100);
+        }
+      }
+    });
+  });
+
+  describe('trimming the end of the learning objective', () => {
+    /**
+     * The fastest of a few runs, in milliseconds. A slow machine or a busy one
+     * can make a single run slow for no reason of the code's own; a quadratic
+     * trim takes seconds on every run, so the fastest still shows it.
+     */
+    const fastest = (run: () => void, runs = 5) => {
+      let best = Infinity;
+      for (let i = 0; i < runs; i += 1) {
+        const started = performance.now();
+        run();
+        best = Math.min(best, performance.now() - started);
+      }
+      return best;
+    };
+
+    it('removes trailing full stops and whitespace and nothing else', () => {
+      expect(trimTrailingStops('Apply theory. ')).toBe('Apply theory');
+      expect(trimTrailingStops('Apply theory...')).toBe('Apply theory');
+      expect(trimTrailingStops(' . .\n\t. ')).toBe('');
+      expect(trimTrailingStops('')).toBe('');
+      expect(trimTrailingStops('No stop')).toBe('No stop');
+      expect(trimTrailingStops('A. B')).toBe('A. B');
+      expect(trimTrailingStops('Costs 3.5')).toBe('Costs 3.5');
+    });
+
+    it('takes a 100,000-character run of dots and spaces ending in a letter in under 50 ms', () => {
+      const hostile = '. '.repeat(50_000) + 'x';
+      expect(hostile).toHaveLength(100_001);
+      let prefill: ReturnType<typeof buildPrefill> | undefined;
+
+      const elapsed = fastest(() => {
+        expect(trimTrailingStops(hostile)).toBe(hostile);
+        prefill = buildPrefill({
+          matchId: 1n,
+          guestProfileId: 2n,
+          coordinator: { ...coordinator, learning_objective: hostile },
+          guest,
+          coordinatorTopics: [],
+          guestTopics: [],
+        });
+      });
+
+      expect(prefill?.description).toContain('Learning objective: ');
+      expect(elapsed).toBeLessThan(50);
+    });
+
+    it('is just as quick when the whole text is dots and spaces', () => {
+      let prefill: ReturnType<typeof buildPrefill> | undefined;
+      const elapsed = fastest(() => {
+        prefill = buildPrefill({
+          matchId: 1n,
+          guestProfileId: 2n,
+          coordinator: {
+            ...coordinator,
+            learning_objective: '. '.repeat(50_000),
+          },
+          guest,
+          coordinatorTopics: [],
+          guestTopics: [],
+        });
+      });
+      expect(elapsed).toBeLessThan(50);
+      expect(prefill?.description).not.toContain('Learning objective');
+    });
+
+    it('is just as quick for a very long discipline in the title', () => {
+      let title = '';
+      const elapsed = fastest(() => {
+        title = suggestTitle('. '.repeat(50_000) + 'x', 'Greta Gray');
+      });
+      expect(elapsed).toBeLessThan(50);
+      expect(title.length).toBeLessThanOrEqual(100);
     });
   });
 
@@ -172,9 +282,9 @@ describe('event prefill', () => {
         guestLecturerId: '3002',
         guestLecturerName: 'Greta Gray',
         coordinatorName: 'Cara Coord',
-        title: 'Apply consumer behaviour theory to a live campaign',
+        title: 'Guest lecture: Marketing with Greta Gray',
         description:
-          'Guest lecture by Greta Gray, invited by Cara Coord. Shared topics: Marketing Strategy, Management.',
+          'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply consumer behaviour theory to a live campaign. Shared topics: Marketing Strategy, Management.',
         format: 'online',
         location: 'Building 402, Room 201',
         durationMinutes: 90,
@@ -189,7 +299,21 @@ describe('event prefill', () => {
       });
       expect(sharedTopics).toEqual([]);
       expect(description).toBe(
-        'Guest lecture by Greta Gray, invited by Cara Coord.',
+        'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply consumer behaviour theory to a live campaign.',
+      );
+    });
+
+    it('keeps the whole learning objective in the description, tidied, with no doubled full stop', () => {
+      const { description } = buildPrefill({
+        ...input,
+        coordinator: {
+          ...coordinator,
+          learning_objective: '  Apply theory\n to a campaign.  ',
+        },
+        guestTopics: [],
+      });
+      expect(description).toBe(
+        'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply theory to a campaign.',
       );
     });
 
@@ -243,7 +367,7 @@ describe('event prefill', () => {
         expect.objectContaining({
           coordinatorName: 'the coordinator',
           guestLecturerName: 'Greta',
-          title: '',
+          title: 'Guest lecture with Greta',
           format: 'face-to-face',
           durationMinutes: null,
         }),

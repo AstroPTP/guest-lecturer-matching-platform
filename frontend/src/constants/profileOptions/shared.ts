@@ -66,8 +66,10 @@ export interface SelectOption {
   label: string;
 }
 
+// The one set of labels for a delivery format, used by the profile forms, the
+// session form and every place a session's format is shown.
 export const formatOptions: SelectOption[] = [
-  { value: "face-to-face", label: "Face-to-Face" },
+  { value: "face-to-face", label: "Face-to-face" },
   { value: "online", label: "Online" },
   { value: "pre-recorded", label: "Pre-recorded" },
 ];

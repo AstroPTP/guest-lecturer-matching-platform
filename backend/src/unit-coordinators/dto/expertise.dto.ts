@@ -6,6 +6,8 @@ import {
   tidyTopics,
 } from '../../common/expertise-topics';
 
+import { MaxExpertiseText } from './expertise-text-limit';
+
 export class ExpertiseDto {
   @Transform(({ value }) => tidyTopics(value))
   @IsArray()
@@ -20,9 +22,11 @@ export class ExpertiseDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxExpertiseText()
   industryRelevance: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxExpertiseText()
   learningObjective: string;
 }

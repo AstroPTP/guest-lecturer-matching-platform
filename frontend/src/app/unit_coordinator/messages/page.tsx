@@ -7,7 +7,8 @@ import { unitCoordinatorMenu } from "@/config/unitCoordinatorDashboard";
 import { BackendError } from "@/lib/api/backendClient";
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
 import type { ConversationSeed } from "@/types/messages/messageTypes";
-import { formatStoredValue } from "@/utils/displayFormatters";
+import { formatOptions } from "@/constants/profileOptions/shared";
+import { formatOptionLabel, formatStoredValue } from "@/utils/displayFormatters";
 
 export default function UnitCoordinatorMessagesPage() {
   const [conversationSeeds, setConversationSeeds] = useState<ConversationSeed[]>([]);
@@ -39,7 +40,11 @@ export default function UnitCoordinatorMessagesPage() {
 
             matchedUnit: {
             location: engagementProfile.primaryLocation,
-            format: formatStoredValue(engagementProfile.format) || "Not specified",
+            format:
+              (engagementProfile.formats ?? engagementProfile.format.split(","))
+                .map((value) => formatOptionLabel(value.trim(), formatOptions))
+                .filter(Boolean)
+                .join(", ") || "Not specified",
             duration: formatStoredValue(engagementProfile.sessionDuration) || "Not specified",
             semester: "Sem 2",
             },

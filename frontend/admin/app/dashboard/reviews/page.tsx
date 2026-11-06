@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { RequestDetailsButton } from "@/components/RequestDetailsButton";
 import {
   approveGuest,
@@ -24,6 +25,8 @@ export default function ReviewsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // The profile the administrator is being asked to reject.
+  const [rejecting, setRejecting] = useState<PendingProfile | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -47,13 +50,14 @@ export default function ReviewsPage() {
     };
   }, []);
 
-  async function decide(row: PendingProfile, decision: "approve" | "reject") {
+  /** Rejecting asks first, in the page; the dialog's Confirm then calls this with `confirmed`. */
+  async function decide(row: PendingProfile, decision: "approve" | "reject", confirmed = false) {
     if (decision === "reject") {
       if (!row.userId) return;
-      const confirmed = window.confirm(
-        `Reject ${row.name}? Their account will be deactivated and hidden from coordinators. You can reactivate it later.`,
-      );
-      if (!confirmed) return;
+      if (!confirmed) {
+        setRejecting(row);
+        return;
+      }
     }
 
     setPendingId(row.guestId);
@@ -144,6 +148,21 @@ export default function ReviewsPage() {
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        confirmLabel="Reject"
+        danger
+        onCancel={() => setRejecting(null)}
+        onConfirm={() => {
+          const row = rejecting;
+          setRejecting(null);
+          if (row) void decide(row, "reject", true);
+        }}
+        open={rejecting !== null}
+        title={`Reject ${rejecting?.name ?? "this profile"}?`}
+      >
+        <p>Their account will be deactivated and hidden from coordinators. You can reactivate it later.</p>
+      </ConfirmDialog>
     </div>
   );
 }

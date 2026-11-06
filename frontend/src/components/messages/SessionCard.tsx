@@ -3,7 +3,8 @@
 import AddToCalendar from "@/components/events/AddToCalendar";
 import type { AcademicEvent, EventStatus } from "@/types/events/eventTypes";
 import type { UserRole } from "@/types/shared/userRole";
-import { formatStoredValue } from "@/utils/displayFormatters";
+import { formatOptions } from "@/constants/profileOptions/shared";
+import { formatOptionLabel } from "@/utils/displayFormatters";
 
 /** What each status is called to the people in the chat. */
 const STATUS_STYLES: Record<EventStatus, { label: string; className: string }> = {
@@ -52,7 +53,7 @@ export default function SessionCard({ event, viewer, isBusy, onAccept, onDecline
         <div className="flex gap-2">
           <dt className="font-semibold text-[#2d2d2d]">Where:</dt>
           <dd>
-            {event.location} ({formatStoredValue(event.format)})
+            {event.location} ({formatOptionLabel(event.format, formatOptions)})
           </dd>
         </div>
         <div className="flex gap-2">

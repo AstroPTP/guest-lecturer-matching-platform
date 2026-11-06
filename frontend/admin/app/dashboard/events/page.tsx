@@ -5,6 +5,13 @@ import { getAdminEvents, type AdminEvents } from "@/services/adminApi";
 
 const STATUSES = ["all", "invitation-sent", "accepted", "declined", "completed", "cancelled"];
 
+// The same labels the student app uses for a session's format.
+const FORMAT_LABELS: Record<string, string> = {
+  "face-to-face": "Face-to-face",
+  online: "Online",
+  "pre-recorded": "Pre-recorded",
+};
+
 /**
  * Every guest lecture booked through the platform, and how notifications are
  * being used. Read-only: events belong to the coordinator and lecturer.
@@ -100,7 +107,7 @@ export default function EventsPage() {
                   </td>
                   <td>{row.coordinator}</td>
                   <td>{row.guestLecturer}</td>
-                  <td>{row.format}</td>
+                  <td>{FORMAT_LABELS[row.format] ?? row.format}</td>
                   <td>
                     <b className={"audit-status " + (row.status === "completed" ? "success" : "pending")}>
                       {row.status.replace(/-/g, " ")}

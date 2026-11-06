@@ -804,9 +804,9 @@ describe('EventsService', () => {
         guestLecturerId: '3002',
         guestLecturerName: 'Greta Gray',
         coordinatorName: 'Cara Coord',
-        title: 'Apply theory to a live campaign',
+        title: 'Guest lecture: Marketing with Greta Gray',
         description:
-          'Guest lecture by Greta Gray, invited by Cara Coord. Shared topics: Marketing Strategy.',
+          'Guest lecture by Greta Gray, invited by Cara Coord. Learning objective: Apply theory to a live campaign. Shared topics: Marketing Strategy.',
         format: 'online',
         location: 'Building 402',
         durationMinutes: 60,

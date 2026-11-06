@@ -169,7 +169,7 @@ export default function Dashboard() {
                 <div className="recent-person" key={registration.id}>
                   <span className="person-placeholder" />
                   <p>
-                    <strong>{registration.email || "Unnamed"}</strong>
+                    <strong title={registration.email || undefined}>{registration.email || "Unnamed"}</strong>
                     <small>
                       {registration.registeredAt
                         ? new Date(registration.registeredAt).toLocaleDateString("en-AU", {

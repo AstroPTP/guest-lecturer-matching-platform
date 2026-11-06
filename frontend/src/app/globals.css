@@ -115,6 +115,9 @@ body {
   :root[data-theme="system"] .bg-\[\#fafafa\],
   :root[data-theme="system"] .bg-\[\#f8f8f8\] { background-color: #12151a; }
   :root[data-theme="system"] .bg-\[\#e2e2e2\] { background-color: #2a2f38; }
+  /* A received chat bubble is bg-gray-100, the same dark as the page behind it, so it gets a
+     surface of its own. Its text stays the light text colour above. */
+  :root[data-theme="system"] .rounded-tl-sm.bg-gray-100 { background-color: #23262d; }
   :root[data-theme="system"] .text-\[\#156874\] { color: #4fc3b8; }
   :root[data-theme="system"] .border-\[\#156874\],
   :root[data-theme="system"] .focus\:border-\[\#156874\]:focus { border-color: #4fc3b8; }
@@ -215,6 +218,9 @@ body {
 :root[data-theme="dark"] .bg-\[\#fafafa\],
 :root[data-theme="dark"] .bg-\[\#f8f8f8\] { background-color: #12151a; }
 :root[data-theme="dark"] .bg-\[\#e2e2e2\] { background-color: #2a2f38; }
+/* A received chat bubble is bg-gray-100, the same dark as the page behind it, so it gets a
+   surface of its own. Its text stays the light text colour above. */
+:root[data-theme="dark"] .rounded-tl-sm.bg-gray-100 { background-color: #23262d; }
 :root[data-theme="dark"] .text-\[\#156874\] { color: #4fc3b8; }
 :root[data-theme="dark"] .border-\[\#156874\],
 :root[data-theme="dark"] .focus\:border-\[\#156874\]:focus { border-color: #4fc3b8; }

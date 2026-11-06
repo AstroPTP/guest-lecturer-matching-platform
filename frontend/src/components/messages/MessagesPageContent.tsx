@@ -13,6 +13,7 @@ import type { ChatMessage, Conversation, ConversationParticipant, ConversationSe
 import type { UserRole } from "@/types/shared/userRole";
 import { ServiceError } from "@/lib/serviceErrors";
 import CreateEventModal from "@/components/events/CreateEventModal";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import PushPromptBanner from "./PushPromptBanner";
 import SessionCard from "./SessionCard";
 import { acceptEvent, createEvent, declineEvent, getEventPrefill, getEventsForCoordinator, getEventsForGuestLecturer } from "@/services/events/eventService";
@@ -106,6 +107,8 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Shown in the page, in place of a browser alert, once a report has been sent.
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
   // Unmatching takes several seconds; this stops a second click sending it again.
   const [isUnmatching, setIsUnmatching] = useState(false);
   // Requests for details from CCAE, and the one file chosen for the next reply.
@@ -328,6 +331,7 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
 
   async function handleReport(conversation: Conversation, reason: string) {
     setActionError(null);
+    setActionNotice(null);
     try {
       await reportUser({
         reportedUserId: conversation.participant.id,
@@ -339,7 +343,7 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
       return;
     }
 
-    window.alert("Report submitted. Thank you for helping keep the community safe.");
+    setActionNotice("Report submitted. Thank you for helping keep the community safe.");
   }
 
   async function handleUnmatch(conversation: Conversation) {
@@ -434,6 +438,22 @@ export default function MessagesPageContent({ userType, conversationSeeds, parti
         {actionError && (
           <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-sm text-amber-700" role="alert">
             {actionError}
+          </div>
+        )}
+
+        {actionNotice && (
+          <div
+            className="flex items-center justify-between gap-4 border-b border-emerald-200 bg-emerald-50 px-6 py-3 text-sm text-emerald-800"
+            role="status"
+          >
+            <span>{actionNotice}</span>
+            <button
+              type="button"
+              onClick={() => setActionNotice(null)}
+              className="rounded-lg px-3 py-1 font-semibold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+            >
+              Dismiss
+            </button>
           </div>
         )}
 
@@ -887,103 +907,56 @@ function ChatInfoPanel({conversation, participantProfileHref,onClose, onReport, 
         </section>
       </div>
 
-      {showDeleteConfirmation && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-chat-title"
-            aria-describedby="delete-chat-description"
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-          >
-            <h3 id="delete-chat-title" className="text-xl font-bold text-[#2d2d2d]">
-              Delete this chat?
-            </h3>
+      <ConfirmDialog
+        open={showDeleteConfirmation}
+        title="Delete this chat?"
+        description={
+          <p>
+            Do you want to unmatch with <span className="font-semibold text-[#2d2d2d]">{participant.fullName}</span> and permanently delete this conversation?
+            This action cannot be undone.
+          </p>
+        }
+        confirmLabel={isUnmatching ? "Deleting..." : "Delete"}
+        confirmDisabled={isUnmatching}
+        tone="danger"
+        fallbackFocus="aside h2"
+        onCancel={() => setShowDeleteConfirmation(false)}
+        onConfirm={onUnmatch}
+      />
 
-            <p id="delete-chat-description" className="mt-3 leading-6 text-gray-600">
-              Do you want to unmatch with <span className="font-semibold text-[#2d2d2d]">{participant.fullName}</span> and permanently delete this conversation?
-              This action cannot be undone.
-            </p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirmation(false)}
-                className="rounded-full px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={onUnmatch}
-                disabled={isUnmatching}
-                className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isUnmatching ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showReportForm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="report-user-title"
-            aria-describedby="report-user-description"
-            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
-          >
-            <h3 id="report-user-title" className="text-xl font-bold text-[#2d2d2d]">
-              Report this user?
-            </h3>
-
-            <p id="report-user-description" className="mt-3 leading-6 text-gray-600">
-              Tell us why you are reporting <span className="font-semibold text-[#2d2d2d]">{participant.fullName}</span>. Your report will be saved for review.
-            </p>
-
-            <label className="mt-5 block">
-              <span className="mb-2 block text-sm font-semibold text-[#2d2d2d]">Reason</span>
-              <textarea
-                value={reportReason}
-                onChange={(event) => setReportReason(event.target.value)}
-                rows={4}
-                maxLength={500}
-                placeholder="Describe what happened..."
-                autoFocus
-                className="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#2d2d2d]"
-              />
-              <span className="mt-1 block text-right text-xs text-gray-400">{reportReason.length}/500</span>
-            </label>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReportForm(false);
-                  setReportReason("");
-                }}
-                className="rounded-full px-5 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={!reportReason.trim()}
-                onClick={() => {
-                  onReport(reportReason.trim());
-                  setShowReportForm(false);
-                  setReportReason("");
-                }}
-                className="rounded-full bg-[#2d2d2d] px-6 py-2.5 text-sm font-semibold text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Submit report
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showReportForm}
+        title="Report this user?"
+        description={
+          <p>
+            Tell us why you are reporting <span className="font-semibold text-[#2d2d2d]">{participant.fullName}</span>. Your report will be saved for review.
+          </p>
+        }
+        confirmLabel="Submit report"
+        confirmDisabled={!reportReason.trim()}
+        onCancel={() => {
+          setShowReportForm(false);
+          setReportReason("");
+        }}
+        onConfirm={() => {
+          onReport(reportReason.trim());
+          setShowReportForm(false);
+          setReportReason("");
+        }}
+      >
+        <label className="mt-5 block">
+          <span className="mb-2 block text-sm font-semibold text-[#2d2d2d]">Reason</span>
+          <textarea
+            value={reportReason}
+            onChange={(event) => setReportReason(event.target.value)}
+            rows={4}
+            maxLength={500}
+            placeholder="Describe what happened..."
+            className="w-full resize-none rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-[#2d2d2d]"
+          />
+          <span className="mt-1 block text-right text-xs text-gray-400">{reportReason.length}/500</span>
+        </label>
+      </ConfirmDialog>
     </aside>
   );
 }

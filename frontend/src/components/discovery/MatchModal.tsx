@@ -1,7 +1,7 @@
 "use client";
 
 import { withFixedTopicSpelling } from "@/utils/customTopics";
-import { getInitials } from "@/utils/displayFormatters";
+import { getInitials, normalizeOptionValue } from "@/utils/displayFormatters";
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,9 @@ import Image from "next/image";
 import closeIcon from "@/assets/close.png";
 import matchIcon from "@/assets/match.png";
 import type { DiscoveryItem } from "@/types/discovery/discoveryTypes";
-import { formatOptions as unitCoordinatorFormatOptions } from "@/constants/profileOptions/shared";
+import { formatOptions, sessionDurationOptions } from "@/constants/profileOptions/shared";
+import type { SelectOption } from "@/constants/profileOptions/shared";
+import { schoolDepartmentOptions } from "@/constants/profileOptions/unitCoordinator";
 interface MatchModalProps {
   currentUserName: string;
   currentUserPhoto?: string;
@@ -140,25 +142,33 @@ function getMatchDetails(item: DiscoveryItem) {
   if (item.profileType === "unitCoordinator") {
     return {
       title: topicTitle,
-      subtitle: item.profile.basicInformation.schoolDepartment,
+      subtitle: optionLabel(item.profile.basicInformation.schoolDepartment, schoolDepartmentOptions),
       location: item.profile.engagementProfile.primaryLocation,
-      duration: item.profile.engagementProfile.sessionDuration,
-      format: formatUnitCoordinatorDeliveryFormat(item.profile.engagementProfile.formats[0]),
+      duration: optionLabel(item.profile.engagementProfile.sessionDuration, sessionDurationOptions),
+      format: optionLabel(item.profile.engagementProfile.formats[0], formatOptions),
     };
   }
+
+  const { format, formats } = item.profile.engagementProfile;
+  const deliveryFormats = formats ?? format.split(",");
 
   return {
     title: topicTitle,
     subtitle: item.profile.basicInformation.professionalField,
     location: item.profile.engagementProfile.primaryLocation,
-    duration: item.profile.engagementProfile.sessionDuration,
-    format: item.profile.engagementProfile.format,
+    duration: optionLabel(item.profile.engagementProfile.sessionDuration, sessionDurationOptions),
+    format: deliveryFormats.map((value) => optionLabel(value, formatOptions)).filter(Boolean).join(", "),
   };
 }
 
-function formatUnitCoordinatorDeliveryFormat(value: string | undefined): string {
-  if (!value) {
+// A stored value as the label the profile forms use for it. A value with no
+// label is shown as stored, with its hyphens as spaces.
+function optionLabel(value: string | undefined, options: SelectOption[]): string {
+  const stored = value?.trim();
+  if (!stored) {
     return "";
   }
-  return unitCoordinatorFormatOptions.find((option) => option.value === value)?.label ?? value;
+  const target = normalizeOptionValue(stored);
+  const option = options.find((item) => normalizeOptionValue(item.value) === target);
+  return option ? option.label : stored.replace(/-/g, " ");
 }

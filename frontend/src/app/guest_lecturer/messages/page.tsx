@@ -7,7 +7,8 @@ import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
 import { BackendError } from "@/lib/api/backendClient";
 import { getMatchedProfiles } from "@/services/matches/matchedProfileService";
 import type { ConversationSeed } from "@/types/messages/messageTypes";
-import { formatStoredValue } from "@/utils/displayFormatters";
+import { formatOptions } from "@/constants/profileOptions/shared";
+import { formatOptionLabel, formatStoredValue } from "@/utils/displayFormatters";
 
 export default function GuestLecturerMessagesPage() {
   const [conversationSeeds, setConversationSeeds] = useState<ConversationSeed[]>([]);
@@ -39,7 +40,7 @@ export default function GuestLecturerMessagesPage() {
 
             matchedUnit: {
               location: engagementProfile.primaryLocation,
-              format: engagementProfile.formats[0] ? formatStoredValue(engagementProfile.formats[0]) : "Flexible",
+              format: engagementProfile.formats[0] ? formatOptionLabel(engagementProfile.formats[0], formatOptions) : "Flexible",
               duration: formatStoredValue(engagementProfile.sessionDuration) || "Not specified",
               semester: "Sem 2",
             },
