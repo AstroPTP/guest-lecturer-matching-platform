@@ -169,12 +169,15 @@ describe('GuestSpeakersService', () => {
 
   describe('saveConsent', () => {
     it('marks the profile as complete and returns the current profile', async () => {
-      const update = jest.spyOn(prisma.users, 'update');
+      const update = jest.spyOn(prisma.users, 'updateMany');
 
       await expect(service.saveConsent(userId, consent)).resolves.toBeNull();
 
       expect(update).toHaveBeenCalledWith({
-        where: { userid: 1n },
+        where: {
+          userid: 1n,
+          OR: [{ consentstate: null }, { consentstate: false }],
+        },
         data: { consentstate: true },
       });
     });
@@ -266,7 +269,7 @@ describe('GuestSpeakersService', () => {
       describe('listing the viewer’s own matches', () => {
         async function matchesOfViewer() {
           const query = jest.spyOn(prisma.guests, 'findMany');
-          await service.findAll('auth0|viewer', true);
+          await service.findAll('auth0|viewer', undefined, true);
           const { where } = query.mock.calls[0][0] as {
             where: { AND: unknown[] };
           };
@@ -472,7 +475,7 @@ describe('GuestSpeakersService behaviour', () => {
 
     it('marks consent for the caller only, and writes nothing else to the user', async () => {
       jest.spyOn(prismaModule, 'resolveUserId').mockResolvedValue(8n);
-      const update = jest.spyOn(prisma.users, 'update');
+      const update = jest.spyOn(prisma.users, 'updateMany');
 
       await service.saveConsent('auth0|jane', {
         profileMatchingConsent: true,
@@ -480,7 +483,10 @@ describe('GuestSpeakersService behaviour', () => {
 
       expect(update).toHaveBeenCalledTimes(1);
       expect(update).toHaveBeenCalledWith({
-        where: { userid: 8n },
+        where: {
+          userid: 8n,
+          OR: [{ consentstate: null }, { consentstate: false }],
+        },
         data: { consentstate: true },
       });
     });

@@ -5,6 +5,13 @@ import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
 import { prisma, resolveUserId, splitName } from '../prisma';
 import { profileImageUrl } from '../images/images.service';
+import { orderCoordinatorsForViewer } from '../suggestions/discovery-ranking';
+import {
+  isManualSort,
+  sortDiscovery,
+  type DiscoverySort,
+} from '../suggestions/discovery-sort';
+import { noticeGuestsOfNewCoordinator } from '../suggestions/new-profile-notices';
 import { visibleCoordinatorsWhere } from '../admin/platform-rules';
 
 type CoordinatorRow = NonNullable<
@@ -165,14 +172,28 @@ export class UnitCoordinatorsService {
    * (schema gap), so the individual answers aren't stored; what is stored is
    * `users.consentstate`, which marks the profile as complete so a returning
    * user is sent to the dashboard instead of back through the wizard.
+   *
+   * Finishing the profile for the first time is when a coordinator becomes
+   * visible, so it is also when guest lecturers who share a topic are told.
+   * Saving consent again tells no one.
    */
   async saveConsent(auth0Id: string, _dto: ConsentDto) {
     const userId = await resolveUserId(auth0Id);
 
-    await prisma.users.update({
-      where: { userid: userId },
+    // One statement both saves the consent and says whether this was the first
+    // time: it matches only while consent is not yet true, so of two saves at
+    // once exactly one sees a count of 1.
+    const { count } = await prisma.users.updateMany({
+      where: {
+        userid: userId,
+        OR: [{ consentstate: null }, { consentstate: false }],
+      },
       data: { consentstate: true },
     });
+
+    if (count === 1) {
+      await noticeGuestsOfNewCoordinator(auth0Id);
+    }
 
     return this.findByUserId(auth0Id);
   }
@@ -182,11 +203,22 @@ export class UnitCoordinatorsService {
    * Deactivated accounts, anyone on hold after reports, and anyone the viewer
    * has an open report with are left out.
    *
+   * The order is the viewer's choice (`sort`, see ../suggestions/discovery-sort.ts).
+   * Left out, a guest sees the best match first while ranked matching is on and
+   * the order people joined while it is off. `best` while it is off gives the
+   * order people joined too, so a choice remembered from when it was on never
+   * fails. Only the order changes: nobody is added or removed, and no score,
+   * count or sign-in time is returned.
+   *
    * `forMatches` is for listing the profiles of the viewer's own matches
    * rather than for discovery: a person the viewer has an open report with is
    * kept, so their conversation stays where it was.
    */
-  async findAll(viewerAuth0Id?: string, forMatches = false) {
+  async findAll(
+    viewerAuth0Id?: string,
+    sort?: DiscoverySort,
+    forMatches = false,
+  ) {
     const coordinators = await prisma.coordinators.findMany({
       where: await visibleCoordinatorsWhere(viewerAuth0Id, {
         keepReportedPair: forMatches,
@@ -203,7 +235,27 @@ export class UnitCoordinatorsService {
       prisma.availability.findMany({ where: { user_id: { in: userIds } } }),
     ]);
 
-    return coordinators.map((coordinator) => {
+    const ordered = isManualSort(sort)
+      ? await sortDiscovery(
+          coordinators,
+          sort,
+          (coordinator) => ({
+            id: coordinator.coordinator_id,
+            userId: coordinator.user_id,
+            firstName: coordinator.first_name,
+            lastName: coordinator.last_name,
+          }),
+          expertiseRows,
+          viewerAuth0Id,
+        )
+      : await orderCoordinatorsForViewer(
+          coordinators,
+          expertiseRows,
+          availabilityRows,
+          viewerAuth0Id,
+        );
+
+    return ordered.map((coordinator) => {
       const hasUser = coordinator.user_id !== null;
       return {
         id: String(coordinator.coordinator_id),

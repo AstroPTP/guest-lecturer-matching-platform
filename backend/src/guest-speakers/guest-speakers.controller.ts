@@ -8,11 +8,13 @@ import { BasicInformationDto } from './dto/basic-information.dto';
 import { ExpertiseDto } from './dto/expertise.dto';
 import { EngagementDto } from './dto/engagement.dto';
 import { ConsentDto } from './dto/consent.dto';
+import { DiscoveryQueryDto } from '../suggestions/dto/discovery-query.dto';
 
 /**
  * Saving a profile is limited to the guest speaker role, so a coordinator or
- * administrator cannot create a guest profile. Reads stay open to any signed-in
- * role: coordinators browse guest speakers.
+ * administrator cannot create a guest profile. Reading your own profile stays
+ * open to any signed-in role, and the Discovery list is for the other side only:
+ * unit coordinators browse guest speakers.
  */
 @Controller('guest-speakers')
 export class GuestSpeakersController {
@@ -56,12 +58,22 @@ export class GuestSpeakersController {
     return this.guestSpeakersService.saveConsent(user.id, dto);
   }
 
-  /** `?forMatches=true` lists the caller's matched profiles instead of Discovery's. */
+  /**
+   * The Discovery list, for unit coordinators. `?sort=` is optional and one of
+   * joined, newest, name, topics, active or best; anything else is a 400.
+   * `?forMatches=true` lists the caller's matched profiles instead of
+   * Discovery's.
+   */
   @Get()
+  @Roles(AppRole.UnitCoordinator)
   findAll(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('forMatches') forMatches?: string,
+    @Query() query: DiscoveryQueryDto = {},
   ) {
-    return this.guestSpeakersService.findAll(user.id, forMatches === 'true');
+    return this.guestSpeakersService.findAll(
+      user.id,
+      query.sort,
+      query.forMatches === 'true',
+    );
   }
 }

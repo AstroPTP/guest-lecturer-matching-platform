@@ -82,7 +82,11 @@ describe('UnitCoordinatorsService.findAll visibility', () => {
     describe('listing the viewer’s own matches', () => {
       async function matchesOfViewer() {
         const query = jest.spyOn(prisma.coordinators, 'findMany');
-        await new UnitCoordinatorsService().findAll('auth0|viewer', true);
+        await new UnitCoordinatorsService().findAll(
+          'auth0|viewer',
+          undefined,
+          true,
+        );
         return query.mock.calls[0][0];
       }
 

@@ -139,6 +139,61 @@ export class NotificationsService {
   }
 
   /**
+   * Raises one notice for each of the given people, except those who were sent
+   * the same one (same type, title and href) in the last day. One read finds
+   * who already has it and one insert writes the rest, so the number of
+   * queries does not grow with the number of people.
+   *
+   * The read and the insert run together under a lock on the notice, so two
+   * of these started at once cannot both find nobody told and both write. The
+   * lock is held for the transaction only. The push is sent after the commit,
+   * to the people who were written for.
+   *
+   * Returns how many were written.
+   */
+  async createUnlessRecentForUsers(
+    userIds: bigint[],
+    notice: AdminNotice,
+  ): Promise<number> {
+    const unique = [...new Set(userIds)];
+    if (unique.length === 0) {
+      return 0;
+    }
+    const lockKey = [notice.type, notice.title, notice.href].join('|');
+
+    const { recipients, count } = await prisma.$transaction(async (tx) => {
+      // cspell:disable-next-line -- hashtext is a Postgres function
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${NOTIFICATION_LOCK_NAMESPACE}::int, hashtext(${lockKey}::text))`;
+
+      const earlier = await tx.notifications.findMany({
+        where: {
+          user_id: { in: unique },
+          type: notice.type,
+          title: notice.title,
+          href: notice.href,
+          created_at: { gte: new Date(Date.now() - REPEAT_WINDOW_MS) },
+        },
+        select: { user_id: true },
+      });
+      const alreadyTold = new Set(earlier.map((row) => row.user_id));
+      const toTell = unique.filter((userId) => !alreadyTold.has(userId));
+      if (toTell.length === 0) {
+        return { recipients: toTell, count: 0 };
+      }
+
+      const written = await tx.notifications.createMany({
+        data: toTell.map((userId) => this.toRowData(userId, notice)),
+      });
+      return { recipients: toTell, count: written.count };
+    });
+
+    if (count > 0) {
+      void pushToUsers(recipients, notice);
+    }
+    return count;
+  }
+
+  /**
    * Deletes the person's notices with this type, title and href, read or not.
    * Those are the fields `createUnlessRecent` compares, so once the notice a
    * request raised is gone, the same request raised again is a new notice

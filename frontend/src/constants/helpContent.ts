@@ -98,6 +98,7 @@ const guestLecturer: HelpContent = {
         "Open Discovery to see unit coordinators and the units they teach.",
         "Express interest in a coordinator you would like to work with, or dismiss one that is not a fit.",
         "Use Filters to narrow the list by field, expertise topics, delivery format, available days or location, then choose Apply Filters.",
+        "Use Sort by to change the order: oldest or newest first, name, most shared topics or recently active, grouped by week, month or longer, updated once a day and counted from the day after a sign-in. If CCAE has switched on ranked matching, Best match is offered too.",
         "Changed your mind? Open Dismissed Profiles to restore a coordinator or express interest after all.",
       ],
     },
@@ -154,6 +155,17 @@ const guestLecturer: HelpContent = {
       feature: "suggestions",
     },
     {
+      question: "Why do I get 'New units match your expertise'?",
+      answer:
+        "A unit coordinator who needs a topic you speak on has just joined. Choose the notice to open Discovery and see who is looking. You get at most one of these a day.",
+      feature: "suggestions",
+    },
+    {
+      question: "How do I change the order of the coordinators in Discovery?",
+      answer:
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the coordinator both name, or Recently active, which groups people by when they last signed in (in the last 7 days, in the last 30 days, in the last 90 days, or longer ago or never) and keeps the order they joined in inside each group. It updates once a day and counts from the day after someone signs in, so signing in does not move anyone until then. Only the order changes, and your choice is remembered on this browser.",
+    },
+    {
       question: "I dismissed a coordinator by mistake.",
       answer: "In Discovery, open Dismissed Profiles. You can restore them or express interest from there.",
     },
@@ -197,6 +209,7 @@ const unitCoordinator: HelpContent = {
         "Open Discovery to see guest lecturers and their expertise.",
         "Express interest in a lecturer who suits your unit, or dismiss one that is not a fit.",
         "Use Filters to narrow the list by expertise topics, delivery format, session duration, audience size, available days or location, then choose Apply Filters.",
+        "Use Sort by to change the order: oldest or newest first, name, most shared topics or recently active, grouped by week, month or longer, updated once a day and counted from the day after a sign-in. If CCAE has switched on ranked matching, Best match is offered too.",
         "Changed your mind? Open Dismissed Profiles to restore a lecturer or express interest after all.",
       ],
     },
@@ -253,6 +266,17 @@ const unitCoordinator: HelpContent = {
       answer:
         "They match your topics best. Lecturers who have waited longer, or been invited less often, also rank a little higher so everyone gets a turn.",
       feature: "suggestions",
+    },
+    {
+      question: "Why does Discovery show some people first?",
+      answer:
+        "While ranked matching is on, Discovery starts with Best match. Lecturers whose topics fit yours come first, and lecturers who have waited longer or been invited less often get a small lift so everyone gets a turn. You can choose another order from Sort by at any time. Only the order changes: nobody is hidden and your filters work as before. If an administrator switches ranked matching off, Best match is no longer offered and Discovery starts in the order people joined.",
+      feature: "suggestions",
+    },
+    {
+      question: "How do I change the order of the lecturers in Discovery?",
+      answer:
+        "Use Sort by above the list. Joined (oldest first) is where it starts unless CCAE has ranked matching on, then it starts with Best match. You can also choose Newest first, Name (A to Z), Most shared topics, which counts the topics you and the lecturer both name, or Recently active, which groups people by when they last signed in (in the last 7 days, in the last 30 days, in the last 90 days, or longer ago or never) and keeps the order they joined in inside each group. It updates once a day and counts from the day after someone signs in, so signing in does not move anyone until then. Only the order changes, and your choice is remembered on this browser.",
     },
     {
       question: "Why can't I see a speaker I know?",

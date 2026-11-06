@@ -82,8 +82,8 @@ export default function SuggestedSpeakersCard({ value, onChange, storedHalfLifeD
       <header>
         <h2 id={`${ids}-title`}>Ranking settings</h2>
         <p>
-          How ranked matching orders guest lecturers. Choose how the order balances topic fit against sharing sessions
-          around.
+          How ranked matching orders guest lecturers in Suggested speakers and in Discovery. Choose how the order
+          balances topic fit against sharing sessions around.
         </p>
       </header>
 

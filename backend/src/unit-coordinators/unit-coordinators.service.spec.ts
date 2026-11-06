@@ -147,14 +147,17 @@ describe('UnitCoordinatorsService behaviour', () => {
 
   it('marks the profile complete when consent is saved', async () => {
     const update = jest
-      .spyOn(prisma.users, 'update')
-      .mockResolvedValue({} as never);
+      .spyOn(prisma.users, 'updateMany')
+      .mockResolvedValue({ count: 0 });
     jest.spyOn(service, 'findByUserId').mockResolvedValue(null);
 
     await service.saveConsent('auth0|ann', {} as never);
 
     expect(update).toHaveBeenCalledWith({
-      where: { userid: 1n },
+      where: {
+        userid: 1n,
+        OR: [{ consentstate: null }, { consentstate: false }],
+      },
       data: { consentstate: true },
     });
   });
