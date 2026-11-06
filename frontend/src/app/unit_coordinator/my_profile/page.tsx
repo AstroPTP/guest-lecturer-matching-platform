@@ -4,7 +4,7 @@ import { ProfileField, ProfileLabel, ProfileInput, ProfileSelect, TagList } from
 import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 
-import { useEffect, useState } from "react";
+import { Ref, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
@@ -19,6 +19,8 @@ import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions,
 import { formatStoredValue as formatSharedStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
+import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
+import { cleanStoredTopics, expertiseWithCleanTopics, noDroppedTopics, withFixedTopicSpelling, type DroppedTopics } from "@/utils/customTopics";
 
 const experienceLevelOptions = experienceLevels.map((level) => ({
   value: level.value,
@@ -37,6 +39,7 @@ export default function UnitCoordinatorMyProfilePage() {
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
     const router = useRouter();
+  const topicsField = useRef<CustomTopicsFieldHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,7 +59,7 @@ export default function UnitCoordinatorMyProfilePage() {
 
         setProfile(savedProfile);
         setBasicDraft(cloneData(savedProfile.basicInformation));
-        setExpertiseDraft(cloneData(savedProfile.expertise));
+        setExpertiseDraft(expertiseWithCleanTopics(cloneData(savedProfile.expertise)));
         setEngagementDraft(cloneData(savedProfile.engagementProfile));
       } catch {
         if (!cancelled) {
@@ -78,7 +81,7 @@ export default function UnitCoordinatorMyProfilePage() {
       return;
     }
     setBasicDraft(cloneData(profile.basicInformation));
-    setExpertiseDraft(cloneData(profile.expertise));
+    setExpertiseDraft(expertiseWithCleanTopics(cloneData(profile.expertise)));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(section);
     setSavedMessage("");
@@ -89,7 +92,7 @@ export default function UnitCoordinatorMyProfilePage() {
       return;
     }
     setBasicDraft(cloneData(profile.basicInformation));
-    setExpertiseDraft(cloneData(profile.expertise));
+    setExpertiseDraft(expertiseWithCleanTopics(cloneData(profile.expertise)));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(null);
   }
@@ -126,19 +129,23 @@ export default function UnitCoordinatorMyProfilePage() {
 
   async function saveExpertise() {
     if (!profile || !expertiseDraft) return;
-    if (expertiseDraft.selectedTopics.length === 0) return alert("Please select at least one expertise topic.");
+    // A topic left typed in the Other box counts as added.
+    const topics = topicsField.current ? topicsField.current.commitDraft() : expertiseDraft.selectedTopics;
+    if (!topics) return;
+    if (topics.length === 0) return alert("Please select at least one expertise topic.");
     if (expertiseDraft.experienceLevelsRequired.length === 0) return alert("Please select at least one required experience level.");
     if (!expertiseDraft.industryRelevance.trim()) return alert("Please explain the industry relevance.");
     if (!expertiseDraft.learningObjective.trim()) return alert("Please enter the learning objective.");
 
+    const updatedExpertise = { ...expertiseDraft, selectedTopics: topics };
     try {
-      await saveUnitCoordinatorExpertise(expertiseDraft);
+      await saveUnitCoordinatorExpertise(updatedExpertise);
     } catch {
       alert("This isn't connected to a backend yet, so your changes couldn't be saved.");
       return;
     }
 
-    setProfile({ ...profile, expertise: cloneData(expertiseDraft) });
+    setProfile({ ...profile, expertise: cloneData(updatedExpertise) });
     setEditingSection(null);
     showSavedMessage("Guest lecturer requirements saved successfully.");
   }
@@ -236,6 +243,9 @@ export default function UnitCoordinatorMyProfilePage() {
     });
   }
 
+  // Saved topics that saving would remove because they break the topic rules.
+  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : noDroppedTopics;
+
   if (isLoading) {
     return (
       <CoordinatorDashboardShell>
@@ -316,11 +326,13 @@ export default function UnitCoordinatorMyProfilePage() {
                   setDraft={setExpertiseDraft}
                   onToggleTopic={toggleExpertiseTopic}
                   onToggleExperienceLevel={toggleExperienceLevel}
+                  topicsField={topicsField}
+                  droppedTopics={droppedTopics}
                 />
               }
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile.expertise.selectedTopics} />
+                <TagList label="Expertise Topics" items={withFixedTopicSpelling(profile.expertise.selectedTopics)} formatItems={false} />
                 <TagList
                   label="Required Experience Levels"
                   items={profile.expertise.experienceLevelsRequired.map((item) => formatOption(item, experienceLevelOptions))}
@@ -427,20 +439,27 @@ function ExpertiseEditor({
   setDraft,
   onToggleTopic,
   onToggleExperienceLevel,
+  topicsField,
+  droppedTopics,
 }: {
   draft: UnitCoordinatorExpertiseData;
   setDraft: NullableStateSetter<UnitCoordinatorExpertiseData>;
   onToggleTopic: (topic: string) => void;
   onToggleExperienceLevel: (level: string) => void;
+  topicsField: Ref<CustomTopicsFieldHandle>;
+  droppedTopics: DroppedTopics;
 }) {
   return (
     <div className="space-y-7">
-      <ChoiceButtons
-        label="Expertise Topics (maximum 5)"
-        options={expertiseTopics.map((item) => ({ value: item, label: item }))}
-        selectedValues={draft.selectedTopics}
-        onToggle={onToggleTopic}
-      />
+      <div>
+        <ChoiceButtons
+          label="Expertise Topics (maximum 5)"
+          options={expertiseTopics.map((item) => ({ value: item, label: item }))}
+          selectedValues={draft.selectedTopics}
+          onToggle={onToggleTopic}
+        />
+        <CustomTopicsField ref={topicsField} compact droppedTopics={droppedTopics} selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
+      </div>
       <ChoiceButtons
         label="Required Experience Levels"
         options={experienceLevelOptions}
