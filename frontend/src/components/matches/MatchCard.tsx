@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { MatchedProfile } from "@/types/matches/matchedProfileTypes";
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 import { formatStoredValue, getInitials } from "@/utils/displayFormatters";
 
 interface MatchCardProps {
@@ -12,7 +13,7 @@ interface MatchCardProps {
 
 export default function MatchCard({ item, onViewProfile, onChat }: MatchCardProps) {
   const { fullName, photoPreview } = item.profile.basicInformation;
-  const topics = item.profile.expertise.selectedTopics;
+  const topics = withFixedTopicSpelling(item.profile.expertise.selectedTopics);
   return (
     <article className="grid grid-cols-1 items-center gap-6 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:bg-gray-50 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_260px]">
       <div className="flex min-w-0 items-center gap-4">
