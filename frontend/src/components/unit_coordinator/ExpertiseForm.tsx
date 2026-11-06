@@ -1,14 +1,18 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import FormSkeleton from "@/components/shared/FormSkeleton";
 import FormNavButtons from "@/components/shared/FormNavButtons";
 import { getUnitCoordinatorExpertise, saveUnitCoordinatorExpertise } from "@/services/profile/unitCoordinatorProfileService";
 import { experienceLevels, expertiseTopics } from "@/constants/profileOptions/shared";
+import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
+import { cleanStoredTopics, noDroppedTopics, type DroppedTopics } from "@/utils/customTopics";
 export default function ExpertiseForm() {
   const router = useRouter();
+  const topicsField = useRef<CustomTopicsFieldHandle>(null);
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
+  const [droppedTopics, setDroppedTopics] = useState<DroppedTopics>(noDroppedTopics);
   const [experienceLevelsRequired, setExperienceLevelsRequired] = useState<string[]>([]);
   const [industryRelevance, setIndustryRelevance] = useState("");
   const [learningObjective, setLearningObjective] = useState("");
@@ -26,7 +30,9 @@ export default function ExpertiseForm() {
           return;
         }
 
-        setSelectedTopics(data.selectedTopics);
+        const { kept, dropped } = cleanStoredTopics(data.selectedTopics);
+        setSelectedTopics(kept);
+        setDroppedTopics(dropped);
         setExperienceLevelsRequired(data.experienceLevelsRequired);
         setIndustryRelevance(data.industryRelevance);
         setLearningObjective(data.learningObjective);
@@ -70,7 +76,13 @@ export default function ExpertiseForm() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedTopics.length === 0) {
+    // A topic left typed in the Other box counts as added.
+    const topics = topicsField.current ? topicsField.current.commitDraft() : selectedTopics;
+    if (!topics) {
+      return;
+    }
+
+    if (topics.length === 0) {
       alert("Please select at least one expertise topic.");
       return;
     }
@@ -94,7 +106,7 @@ export default function ExpertiseForm() {
     setIsSaving(true);
     try {
       await saveUnitCoordinatorExpertise({
-        selectedTopics,
+        selectedTopics: topics,
         experienceLevelsRequired,
         industryRelevance,
         learningObjective,
@@ -137,7 +149,9 @@ export default function ExpertiseForm() {
       <form onSubmit={handleSubmit} className="space-y-7">
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
           <h2 className="text-2xl font-bold text-[#1f1f1f]">Expertise Topics</h2>
-          <p className="mt-2 text-sm text-gray-500">Select up to 5 topics you would like a Guest Lecturer to address.</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Select up to 5 topics you would like a Guest Lecturer to address. Choose Other to add up to 3 of your own.
+          </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {expertiseTopics.map((topic) => {
               const isSelected = selectedTopics.includes(topic);
@@ -157,6 +171,7 @@ export default function ExpertiseForm() {
               );
             })}
           </div>
+          <CustomTopicsField ref={topicsField} selectedTopics={selectedTopics} onChange={setSelectedTopics} droppedTopics={droppedTopics} />
         </section>
 
         <section className="rounded-3xl bg-white p-8 shadow-sm md:p-10">
