@@ -5,7 +5,7 @@ import { cloneData } from "@/utils/cloneData";
 import { formatTimeRange } from "@/utils/displayFormatters";
 import { useRouter } from "next/navigation";
 
-import { useEffect, useState } from "react";
+import { Ref, useEffect, useRef, useState } from "react";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import EditableProfileSection from "@/components/profile/EditableProfileSection";
 import { guestLecturerMenu } from "@/config/guestLecturerDashboard";
@@ -15,6 +15,8 @@ import { professionalFields, professionalRoles } from "@/constants/profileOption
 import { formatOptionLabel, formatStoredValue } from "@/utils/displayFormatters";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import { BackendError } from "@/lib/api/backendClient";
+import CustomTopicsField, { CustomTopicsFieldHandle } from "@/components/shared/CustomTopicsField";
+import { cleanStoredTopics, expertiseWithCleanTopics, noDroppedTopics, withFixedTopicSpelling, type DroppedTopics } from "@/utils/customTopics";
 import { deliveryFocusOptions, experienceLevels, expertiseTopics, formatOptions, guestLecturerAudienceSizeOptions,guestLecturerAvailabilityFrequencyOptions,sessionDurationOptions,weekDays } from "@/constants/profileOptions/shared";
 
 type EditingSection = "basic" | "expertise" | "engagement" | "availability" | null;
@@ -28,6 +30,7 @@ export default function GuestLecturerMyProfilePage() {
   const [savedMessage, setSavedMessage] = useState("");
   const [loadError, setLoadError] = useState("");
   const router = useRouter();
+  const topicsField = useRef<CustomTopicsFieldHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +48,7 @@ export default function GuestLecturerMyProfilePage() {
         }
         setProfile(savedProfile);
         setBasicDraft(cloneData(savedProfile.basicInformation));
-        setExpertiseDraft(cloneData(savedProfile.expertise));
+        setExpertiseDraft(expertiseWithCleanTopics(cloneData(savedProfile.expertise)));
         setEngagementDraft(cloneData(savedProfile.engagementProfile));
       } catch {
         if (!cancelled) {
@@ -69,7 +72,7 @@ export default function GuestLecturerMyProfilePage() {
       return;
     }     
     setBasicDraft(cloneData(profile.basicInformation));
-    setExpertiseDraft(cloneData(profile.expertise));
+    setExpertiseDraft(expertiseWithCleanTopics(cloneData(profile.expertise)));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(section);
     setSavedMessage("");
@@ -79,7 +82,7 @@ export default function GuestLecturerMyProfilePage() {
       return;
     }
     setBasicDraft(cloneData(profile.basicInformation));
-    setExpertiseDraft(cloneData(profile.expertise));
+    setExpertiseDraft(expertiseWithCleanTopics(cloneData(profile.expertise)));
     setEngagementDraft(cloneData(profile.engagementProfile));
     setEditingSection(null);
   }
@@ -134,7 +137,12 @@ export default function GuestLecturerMyProfilePage() {
     if (!profile || !expertiseDraft){
       return;
     }
-    if (expertiseDraft.selectedTopics.length === 0) {
+    // A topic left typed in the Other box counts as added.
+    const topics = topicsField.current ? topicsField.current.commitDraft() : expertiseDraft.selectedTopics;
+    if (!topics) {
+      return;
+    }
+    if (topics.length === 0) {
       alert("Please select at least one expertise topic.");
       return;
     }
@@ -146,6 +154,7 @@ export default function GuestLecturerMyProfilePage() {
 
     const updatedExpertise = {
       ...expertiseDraft,
+      selectedTopics: topics,
       speakingDetails: expertiseDraft.hasSpeakingExperience ? expertiseDraft.speakingDetails : "",
       internationalDetails: expertiseDraft.hasInternationalExperience ? expertiseDraft.internationalDetails : "",
     };
@@ -281,6 +290,9 @@ export default function GuestLecturerMyProfilePage() {
     });
   }
 
+  // Saved topics that saving would remove because they break the topic rules.
+  const droppedTopics = profile ? cleanStoredTopics(profile.expertise.selectedTopics).dropped : noDroppedTopics;
+
   if (isLoading) {
     return (
       <DashboardShell
@@ -366,10 +378,10 @@ export default function GuestLecturerMyProfilePage() {
               onEdit={() => startEditing("expertise")}
               onCancel={cancelEditing}
               onSave={saveExpertise}
-              editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} />}
+              editContent={<ExpertiseEditor draft={expertiseDraft} setDraft={setExpertiseDraft} onToggleTopic={toggleExpertiseTopic} topicsField={topicsField} droppedTopics={droppedTopics} />}
             >
               <div className="space-y-7">
-                <TagList label="Expertise Topics" items={profile?.expertise.selectedTopics ?? []} />
+                <TagList label="Expertise Topics" items={withFixedTopicSpelling(profile?.expertise.selectedTopics ?? [])} formatItems={false} />
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <ProfileField label="Experience Level" value={formatStoredValue(profile?.expertise.experienceLevel ?? "")} />
                   <ProfileField label="Speaking Experience" value={profile?.expertise.hasSpeakingExperience ? "Yes" : "No"} />
@@ -514,10 +526,14 @@ function ExpertiseEditor({
   draft,
   setDraft,
   onToggleTopic,
+  topicsField,
+  droppedTopics,
 }: {
   draft: GuestLecturerExpertiseData;
   setDraft: React.Dispatch<React.SetStateAction<GuestLecturerExpertiseData | null>>;
   onToggleTopic: (topic: string) => void;
+  topicsField: Ref<CustomTopicsFieldHandle>;
+  droppedTopics: DroppedTopics;
 }) {
   return (
     <div className="space-y-7">
@@ -539,6 +555,7 @@ function ExpertiseEditor({
             );
           })}
         </div>
+        <CustomTopicsField ref={topicsField} compact droppedTopics={droppedTopics} selectedTopics={draft.selectedTopics} onChange={(selectedTopics) => setDraft({ ...draft, selectedTopics })} />
       </div>
 
       <ProfileSelect

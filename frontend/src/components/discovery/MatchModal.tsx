@@ -1,5 +1,6 @@
 "use client";
 
+import { withFixedTopicSpelling } from "@/utils/customTopics";
 import { getInitials, normalizeOptionValue } from "@/utils/displayFormatters";
 
 import { useEffect } from "react";
@@ -134,7 +135,7 @@ function ProfileImage({ photo, name, initials, variant }: { photo?: string; name
 
 
 function getMatchDetails(item: DiscoveryItem) {
-  const topics = item.profile.expertise.selectedTopics;
+  const topics = withFixedTopicSpelling(item.profile.expertise.selectedTopics);
 
   const topicTitle = topics.length > 0 ? topics.slice(0, 2).join(" · ") : "Academic collaboration";
 
