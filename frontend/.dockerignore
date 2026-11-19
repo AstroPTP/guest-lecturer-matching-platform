@@ -1,0 +1,11 @@
+# The admin portal is a separate app with its own image.
+admin
+frontend
+node_modules
+.next
+out
+coverage
+*.tsbuildinfo
+.env*
+!.env.local.template
+*.log
