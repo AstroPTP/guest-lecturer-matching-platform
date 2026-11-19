@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import {
   DEFAULT_THEME,
@@ -181,7 +181,8 @@ describe('the theme switch', () => {
       .filter((file) =>
         readFileSync(file, 'utf8').includes('theme/ThemeToggle'),
       )
-      .map((file) => relative(FRONTEND_SRC, file))
+      // Forward slashes, so the comparison also holds on Windows.
+      .map((file) => relative(FRONTEND_SRC, file).split(sep).join('/'))
       .sort();
 
     expect(importers).toEqual(['components/dashboard/DashboardHeader.tsx']);
