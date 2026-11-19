@@ -1,0 +1,90 @@
+name: Bug report
+description: Something is broken or behaves differently from what it should.
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. **Security problems go through private reporting, not here** (see SECURITY.md).
+        Do not paste real user data, tokens or `.env` values into this issue.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the platform is affected?
+      options:
+        - Main site (frontend/)
+        - Admin portal (frontend/admin/)
+        - API (backend/)
+        - Database schema or migrations (backend/prisma/)
+        - Dev identity provider (tools/dev-idp/)
+        - Docker, deployment or CI
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: Signed in as
+      options:
+        - Not signed in
+        - Guest speaker
+        - Unit coordinator
+        - CCAE administrator
+        - Not relevant
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see? Include error messages or screenshots.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Where it happened
+      options:
+        - Production deployment
+        - Docker compose (local)
+        - Local development (npm run start:dev / dev)
+        - CircleCI
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Branch or commit
+      placeholder: "main @ 0a5b390"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output from the browser console, `docker compose logs`, or the terminal. Remove any secrets first.
+      render: shell
