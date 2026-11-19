@@ -3,6 +3,10 @@
 Welcome to the project! Please read this before writing any code or making any commits.
 This document is the single source of truth for how we work together.
 
+By taking part you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
+Found a security problem? Do not open an issue: report it privately as described in
+[SECURITY.md](SECURITY.md).
+
 ---
 
 ## Table of Contents
@@ -22,8 +26,8 @@ This document is the single source of truth for how we work together.
 
 1. Clone the repository:
    ```bash
-   git clone https://21664322@bitbucket.org/curtincomputingprojects/bentley-sem-1-05.git
-   cd bentley-sem-1-05
+   git clone https://github.com/AstroPTP/guest-lecturer-matching-platform.git
+   cd guest-lecturer-matching-platform
    ```
 
 2. Always work from an up-to-date `develop` branch:
@@ -123,7 +127,8 @@ Follow these steps every time you work on something new:
 
 ## Pull Requests
 
-When opening a PR:
+New PRs are pre-filled from [`.github/pull_request_template.md`](.github/pull_request_template.md).
+Fill in every section and tick the checklist. When opening a PR:
 
 - **Title:** Use the same format as a commit message (e.g. `feat: add login page`)
 - **Description:** Briefly explain what you changed and why

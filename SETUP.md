@@ -41,7 +41,7 @@ The database is **PostgreSQL 16**. The team used a hosted Supabase database; a l
 Get the code:
 
 ```bash
-git clone https://21664322@bitbucket.org/curtincomputingprojects/bentley-sem-1-05.git glmp
+git clone https://github.com/AstroPTP/guest-lecturer-matching-platform.git glmp
 cd glmp
 git checkout main
 ```

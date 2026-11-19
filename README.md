@@ -59,6 +59,12 @@ docker compose ps
 |---|---|
 | [SETUP.md](SETUP.md) | Deployment, configuration, local development, operations, troubleshooting |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Branching, commits, pull requests, automated checks |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Expected behaviour and how to report problems |
+| [SECURITY.md](SECURITY.md) | Supported branches and how to report a vulnerability privately |
 | [backend/.env.example](backend/.env.example) | Every API setting, with what it does and where to obtain it |
 | [frontend/FRONTEND.md](frontend/FRONTEND.md) | Frontend structure and conventions |
 | [tools/dev-idp/README.md](tools/dev-idp/README.md) | Running sign-in without an Auth0 account |
+
+## License
+
+Released under the [MIT License](LICENSE.md).
