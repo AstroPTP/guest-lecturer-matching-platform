@@ -22,8 +22,8 @@ This document is the single source of truth for how we work together.
 
 1. Clone the repository:
    ```bash
-   git clone https://21664322@bitbucket.org/curtincomputingprojects/bentley-sem-1-05.git
-   cd bentley-sem-1-05
+   git clone https://github.com/AstroPTP/guest-lecturer-matching-platform.git
+   cd guest-lecturer-matching-platform
    ```
 
 2. Always work from an up-to-date `develop` branch:
