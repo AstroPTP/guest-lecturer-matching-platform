@@ -1,0 +1,360 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  // The application is compiled as CommonJS. Without this the generator emits
+  // ES modules, which build fine and then fail at startup with "exports is not
+  // defined in ES module scope".
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Availability can be one of the following: WEEKLY, FORTNIGHTLY, MONTHLY, AVAILABLE ON REQUEST
+model availability {
+  id             BigInt    @id @default(autoincrement())
+  user_id        BigInt?   
+  monday         Boolean?  @default(false)
+  tuesday        Boolean?  @default(false)
+  wednesday      Boolean?  @default(false)
+  thursday       Boolean?  @default(false)
+  friday         Boolean?  @default(false)
+  available_from DateTime? @db.Time(6)
+  available_to   DateTime? @db.Time(6)
+  frequency      String?
+  notes          String?   @db.VarChar
+  users          users?    @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Faculty can be one of the following: LAW, ACCOUNTING, MANAGEMENT, INFORMATION SYSTEMS, OTHER
+/// Role can be one of the following: UNIT COORDINATOR, COURSE COORDINATOR, LECTURER, SENIOR LECTURER, ASSOCIATE PROFESSOR, PROFESSOR, ACADEMIC LEAD
+/// required_experience can be one of the following: EARLY CAREER, MID CAREER, SENIOR PROFESSIONAL, EXECUTIVE
+model coordinators {
+  coordinator_id              BigInt   @id @default(autoincrement())
+  user_id                     BigInt?  @unique
+  profile_image_id            BigInt?
+  first_name                  String?  @db.VarChar
+  last_name                   String?  @db.VarChar
+  faculty                     String?  @db.VarChar
+  role                        String?  @db.VarChar
+  bio                         String?  @db.VarChar
+  required_experience         String?  @db.VarChar
+  discipline                  String?  @db.VarChar
+  learning_objective          String?  @db.VarChar
+  duration                    String?
+  audience                    String?
+  format_online               Boolean? @default(false)
+  format_inperson             Boolean? @default(false)
+  format_prerecorded          Boolean? @default(false)
+  focus_lecture               Boolean? @default(false)
+  focus_casestudy             Boolean? @default(false)
+  focus_workshop              Boolean? @default(false)
+  focus_discussion            Boolean? @default(false)
+  focus_ama                   Boolean? @default(false)
+  created_at                  DateTime @default(now()) @db.Timestamptz(6)
+  location                    String?  @db.VarChar
+  users              users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "cooridnator_user_id_fkey")
+  match_requests match_requests[]
+  dismissals     dismissals[]
+  image                 images?  @relation(fields: [profile_image_id], references: [image_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Expertise can be one of the following: ACCOUNTING, BANKING & FINANCE, BUSINESS ANALYTICS, BUSINESS ETHICS, CORORATE GOVERNANCE, CORPORATE LAW, ECONOMICS, EMPLOYMENT LAW, ENTREPRENEURSHIP, FINANCE & INVESTMENT, HUMAN RESOURCE MANAGEMENT, INTERNATIONAL BUSINESS, INTERNATIONAL TRADE LAW, MANAGEMENT, MARKETING STRATEGY, RISK MANAGEMENT, TAXATION LAW, ESG & SUSTAINABILITY
+model user_expertise {
+  user_id   BigInt 
+  expertise String @db.VarChar
+  users     users  @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+
+  @@id([user_id, expertise])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+/// Field can be one of the following: ACCOUNTING, BANKING & FINANCE, BUSINESS ANALYTICS, ECONOMICS, ENTREPRENEURSHIP, HUMAN RESOURCE MANAGEMENT, INTERNATIONAL BUSINESS, MANAGEMENT, MARKETING, COMMERCIAL LAW, CORPORATE LAW, EMPLOYMENT LAW, TAXATION LAW
+/// Role can be one of the following: EXECUTIVE, SENIOR MANAGER, DIRECTOR, CONSULTANT, BUSINESS OWNER, PRACTITIONER, SOLICITOR, BARRISTER, JUDGE, GOVERNMENT OFFICER
+// Duration can be one of the following: 30 MINUTES, 60 MINUTES, 90 MINUTES, 120 MINUTES, FLEXIBLE
+// Audience can be one of the following: SMALL, MEDIUM, LARGE, NO PREFERENCE
+/// experience can be one of the following: EARLY CAREER, MID CAREER, SENIOR PROFESSIONAL, EXECUTIVE
+model guests {
+  guest_id              BigInt   @id(map: "Guest_pkey") @default(autoincrement())
+  user_id               BigInt?  @unique
+  profile_image_id      BigInt?
+  first_name            String?  @db.VarChar
+  last_name             String?  @db.VarChar
+  field                 String?  @db.VarChar
+  role                  String?  @db.VarChar
+  experience            String?  @db.VarChar
+  bio                   String?  @db.VarChar
+  prior_details         String?  @db.VarChar
+  international_details String?  @db.VarChar
+  linkedIn_profile      String?  @db.VarChar
+  location              String?  @db.VarChar
+  duration              String?  
+  audience              String?  
+  format_online         Boolean? @default(false)
+  format_inperson       Boolean? @default(false)
+  format_prerecorded    Boolean? @default(false)
+  focus_lecture         Boolean? @default(false)
+  focus_casestudy       Boolean? @default(false)
+  focus_workshop        Boolean? @default(false)
+  focus_discussion      Boolean? @default(false)
+  focus_ama             Boolean? @default(false)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  /// Set when an administrator approves the profile. Only checked while the
+  /// "require admin approval" setting is on.
+  approved_at           DateTime? @db.Timestamptz(6)
+  users                 users?   @relation(fields: [user_id], references: [userid], onDelete: NoAction, onUpdate: NoAction, map: "Guest_user_id_fkey")
+  image                 images?  @relation(fields: [profile_image_id], references: [image_id])
+  match_requests match_requests[]
+  dismissals     dismissals[]
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+///
+model users {
+  userid                BigInt         @id @default(autoincrement())
+  auth0Id               String         @unique @db.VarChar
+  email                 String?
+  role                  String?
+  consentstate          Boolean?
+  createdat             DateTime?      @db.Timestamp(6)
+  lastloginat           DateTime?      @db.Timestamp(6)
+  deletedat             DateTime?      @db.Timestamp(6)
+  availability          availability[]
+  coordinator           coordinators?
+  user_expertise        user_expertise[]
+  guest                 guests?
+  notifications         notifications[]
+  audit_entries         audit_entries[]
+  support_threads       support_threads[]
+  push_subscriptions    push_subscriptions[]
+}
+
+model admins {
+  admin_id     BigInt         @id @default(autoincrement())
+  admin_level  String         @db.VarChar
+  last_login   DateTime?      @db.Timestamp(6)
+
+}
+
+model units{
+  unit_code String @id @db.VarChar
+  unit_name String @db.VarChar
+}
+
+///
+///Status can be either: "PENDING," "ACCEPTED," "REJECTED" or "UNMATCHED" (a match one side ended)
+model match_requests{
+  match_id        BigInt    @id @default(autoincrement())
+  coordinator_id  BigInt
+  guest_id        BigInt
+  status          String?   @db.VarChar
+  requested_at    DateTime? @db.Timestamp(6)
+  updated_at      DateTime? @db.Timestamp(6)
+  /// Which side sent the request: "coordinator" or "guest". Null on rows from
+  /// before this column, which coordinators sent.
+  requested_by    String?   @db.VarChar
+
+  coordinator coordinators @relation(fields: [coordinator_id], references: [coordinator_id], onDelete: Cascade)
+  guest guests @relation(fields: [guest_id], references: [guest_id], onDelete: Cascade)
+
+  message messages[]
+  events  events[]
+
+  @@unique([coordinator_id, guest_id])
+}
+
+/// A profile someone hid from their Discovery list.
+/// dismissed_by says which side did the dismissing: "coordinator" (hid the guest) or "guest" (hid the coordinator),
+/// so a coordinator dismissing a guest stays separate from that guest dismissing the coordinator.
+model dismissals{
+  dismissal_id    BigInt    @id @default(autoincrement())
+  coordinator_id  BigInt
+  guest_id        BigInt
+  dismissed_by    String    @db.VarChar
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  coordinator coordinators @relation(fields: [coordinator_id], references: [coordinator_id], onDelete: Cascade)
+  guest guests @relation(fields: [guest_id], references: [guest_id], onDelete: Cascade)
+
+  @@unique([coordinator_id, guest_id, dismissed_by])
+}
+
+model messages{
+  message_id BigInt     @id @default(autoincrement())
+  match_id BigInt       
+  content String        @db.VarChar
+  image_id BigInt?
+  sent_at DateTime?     @db.Timestamp(6)
+  /// Which side of the match wrote it: "coordinator" or "guest".
+  sent_by String?       @db.VarChar
+
+  image                 images?  @relation(fields: [image_id], references: [image_id])
+  match match_requests  @relation(fields: [match_id], references: [match_id], onDelete: Cascade)
+}
+
+model images{
+  image_id BigInt       @id @default(autoincrement())
+  image_data Bytes      
+  mime_type String
+  filename String
+  uploaded_at DateTime @default(now())
+
+  guests guests[]
+  coordinators coordinators[]
+  messages messages[]
+}
+
+/// A session a coordinator invites a matched guest to.
+/// Status is one of: invitation-sent, accepted, declined, completed, cancelled.
+/// Format is one of: face-to-face, online, pre-recorded.
+/// date is YYYY-MM-DD and the times HH:MM, stored as the form sent them.
+model events {
+  event_id            BigInt    @id @default(autoincrement())
+  match_id            BigInt
+  coordinator_name    String    @db.VarChar
+  guest_lecturer_name String    @db.VarChar
+  title               String    @db.VarChar
+  description         String    @db.VarChar
+  date                String    @db.VarChar
+  start_time          String    @db.VarChar
+  end_time            String    @db.VarChar
+  location            String    @db.VarChar
+  format              String    @db.VarChar
+  status              String    @default("invitation-sent") @db.VarChar
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  responded_at        DateTime? @db.Timestamptz(6)
+  completed_at        DateTime? @db.Timestamptz(6)
+
+  match match_requests @relation(fields: [match_id], references: [match_id], onDelete: Cascade)
+
+  @@index([match_id])
+}
+
+/// Something a user should know about. Type is one of: match, event, message, profile.
+model notifications {
+  notification_id BigInt   @id @default(autoincrement())
+  user_id         BigInt
+  type            String   @db.VarChar
+  title           String   @db.VarChar
+  description     String   @db.VarChar
+  action_label    String   @db.VarChar
+  href            String   @db.VarChar
+  read            Boolean  @default(false)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  users users @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+
+  @@index([user_id, created_at])
+}
+
+/// A browser or phone that has agreed to receive pushed notifications. The
+/// endpoint is the push service's address for that one device, and the two keys
+/// are what a message to it is encrypted with.
+model push_subscriptions {
+  subscription_id BigInt   @id @default(autoincrement())
+  user_id         BigInt
+  endpoint        String   @unique
+  p256dh          String
+  auth            String
+  user_agent      String?  @db.VarChar(200)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  last_used_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  users users @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+
+  @@index([user_id, created_at])
+}
+
+/// Append-only record of administrator actions and user reports.
+model audit_entries {
+  entry_id      BigInt   @id @default(autoincrement())
+  actor_user_id BigInt?
+  action        String   @db.VarChar
+  target_type   String?  @db.VarChar
+  target_id     String?  @db.VarChar
+  detail        Json?
+  occurred_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  actor users? @relation(fields: [actor_user_id], references: [userid], onDelete: SetNull)
+
+  @@index([occurred_at])
+  @@index([action])
+  @@index([action, target_id])
+}
+
+/// Platform settings an administrator can change. A single row, id 1.
+model admin_settings {
+  id                     Int      @id @default(1)
+  system_name            String   @default("Guest Lecturer Matching Platform") @db.VarChar
+  support_email          String   @default("ccae@curtin.edu.au") @db.VarChar
+  require_admin_approval Boolean  @default(false)
+  /// Minimum days between contact requests to the same guest lecturer. 0 turns the limit off.
+  contact_limit_days     Int      @default(90)
+  /// Ranked matching (Suggested speakers). Off by default; off hides the feature (404). The three weights are
+  /// whole percentages of the ranking score; they sum to 100 and fit is at least
+  /// 50, so topic fit always counts most. The half-life, in days, is how fast
+  /// the time since a lecturer's last session stops counting. Checked by
+  /// constraints in the migration, which Prisma does not model.
+  suggestions_enabled         Boolean  @default(false)
+  suggestions_fit_weight      Int      @default(65)
+  suggestions_rotation_weight Int      @default(20)
+  suggestions_exposure_weight Int      @default(15)
+  suggestions_half_life_days  Int      @default(90)
+  updated_at             DateTime @default(now()) @db.Timestamptz(6)
+  updated_by             BigInt?
+}
+
+/// A request from a CCAE administrator for more details from one user, and the
+/// conversation that follows. Status is one of: open, closed.
+model support_threads {
+  thread_id           BigInt   @id @default(autoincrement())
+  user_id             BigInt
+  subject             String   @db.VarChar(150)
+  status              String   @default("open") @db.VarChar
+  /// The Auth0 id of the administrator who opened it.
+  opened_by_auth0_id  String   @db.VarChar
+  created_at          DateTime @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime @default(now()) @db.Timestamptz(6)
+
+  users    users              @relation(fields: [user_id], references: [userid], onDelete: Cascade)
+  messages support_messages[]
+
+  @@index([user_id])
+  @@index([status, updated_at])
+}
+
+/// One message in a support thread. Sender is one of: admin, user.
+model support_messages {
+  message_id    BigInt    @id @default(autoincrement())
+  thread_id     BigInt
+  sender        String    @db.VarChar
+  content       String    @db.VarChar(2000)
+  attachment_id BigInt?
+  /// When the other side read it. Null while unread.
+  read_at       DateTime? @db.Timestamptz(6)
+  sent_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  thread     support_threads      @relation(fields: [thread_id], references: [thread_id], onDelete: Cascade)
+  attachment support_attachments? @relation(fields: [attachment_id], references: [attachment_id], onDelete: SetNull)
+
+  @@index([thread_id, sent_at])
+  @@index([sent_at])
+  @@index([attachment_id])
+}
+
+/// A file a user attached to a reply. Kept apart from images so it can only be
+/// reached through the support routes, which check who is asking.
+model support_attachments {
+  attachment_id BigInt   @id @default(autoincrement())
+  data          Bytes
+  mime_type     String   @db.VarChar
+  filename      String   @db.VarChar
+  size_bytes    Int
+  uploaded_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  messages support_messages[]
+}

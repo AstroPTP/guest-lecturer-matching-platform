@@ -1,37 +1,151 @@
+# Guest Lecturer Matchmaking Platform: the whole stack in Docker.
+#
+#   docker compose up -d --build     build and start the application
+#   docker compose ps                check every service is running / healthy
+#   docker compose logs -f backend   follow one service's log
+#   docker compose down              stop (data in the database is untouched)
+#
+# Services
+#   migrate   one-shot: applies pending Prisma migrations, then exits
+#   backend   NestJS API              http://127.0.0.1:${BACKEND_PORT:-3001} (this machine only)
+#   frontend  main site               http://<host>:${FRONTEND_PORT:-3000}
+#   admin     administrator portal    http://<host>:${ADMIN_PORT:-3002}
+#
+# Optional, only with `--profile local-db` (local PostgreSQL instead of Supabase):
+#   db        PostgreSQL 16           127.0.0.1:${DB_PORT:-5432}
+#   pgadmin   database browser        http://127.0.0.1:${PGADMIN_PORT:-5050}
+#
+# Configuration lives in four files, none of them committed (see SETUP.md):
+#   .env                    this file's own variables: ports, build options, local db
+#   backend/.env            the API          (template: backend/.env.example)
+#   frontend/.env.local     the main site    (template: frontend/.env.local.template)
+#   frontend/admin/.env.local  the admin portal (template: frontend/admin/.env.local.template)
+#
+# Values under `environment:` below override the same name in those files. They
+# are the ones that must differ inside Docker (container addresses, production mode).
+
+name: glmp
+
+x-node-defaults: &node-defaults
+  restart: unless-stopped
+  init: true
+  logging:
+    driver: json-file
+    options:
+      max-size: '10m'
+      max-file: '5'
+
 services:
-  db:
-    image: postgres:16
-    restart: always
+  migrate:
+    build:
+      context: ./backend
+      target: build
+    image: glmp-backend-build
+    env_file: backend/.env
+    command: ['npx', 'prisma', 'migrate', 'deploy']
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false # only waits when the local-db profile is in use
+
+  backend:
+    <<: *node-defaults
+    build:
+      context: ./backend
+      target: runtime
+    image: glmp-backend
+    env_file: backend/.env
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      NODE_ENV: production
+      PORT: '3001'
     ports:
-      - '5432:5432'
+      # Bound to this machine only. Browsers never call the API directly: both
+      # sites forward to it over the internal Docker network. The published port
+      # is for health checks and local troubleshooting.
+      - '127.0.0.1:${BACKEND_PORT:-3001}:3001'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    <<: *node-defaults
+    build:
+      context: ./frontend
+      args:
+        # Baked into the build. Rebuild (`up -d --build frontend`) after changing it.
+        NEXT_PUBLIC_MATCHING_SUGGESTIONS: ${NEXT_PUBLIC_MATCHING_SUGGESTIONS:-true}
+    image: glmp-frontend
+    env_file: frontend/.env.local
+    environment:
+      BACKEND_URL: http://backend:3001
+    ports:
+      - '${BIND_ADDRESS:-0.0.0.0}:${FRONTEND_PORT:-3000}:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  admin:
+    <<: *node-defaults
+    build:
+      context: ./frontend/admin
+    image: glmp-admin
+    env_file: frontend/admin/.env.local
+    environment:
+      BACKEND_URL: http://backend:3001
+    ports:
+      - '${BIND_ADDRESS:-0.0.0.0}:${ADMIN_PORT:-3002}:3002'
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ---- Optional local database: `docker compose --profile local-db up -d` ----
+  # Point DATABASE_URL and DIRECT_URL in backend/.env at
+  #   postgresql://<DB_USER>:<DB_PASSWORD>@db:5432/<DB_NAME>
+  # (host `db`, not localhost, because the API runs inside Docker too).
+
+  db:
+    profiles: ['local-db']
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-glma_local}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-}
+      POSTGRES_DB: ${DB_NAME:-glma}
+    ports:
+      - '127.0.0.1:${DB_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - matchmaking_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   pgadmin:
+    profiles: ['local-db']
     image: dpage/pgadmin4:9.13
-    restart: always
+    restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}  
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-}
     ports:
-      - '5050:80'
+      - '127.0.0.1:${PGADMIN_PORT:-5050}:80'
     depends_on:
       - db
     volumes:
       - pgadmin_data:/var/lib/pgadmin
-    networks:
-      - matchmaking_network
 
 volumes:
   postgres_data:
   pgadmin_data:
-
-networks:
-  matchmaking_network:
-    driver: bridge
